@@ -681,6 +681,8 @@ describe("adaptRunStart", () => {
         nickname: "brave-otter",
         frozen_assignment: {
           schema_version: 1,
+          digest:
+            "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
           assignments: [
             {
               role_id: "role-issued-id",
@@ -688,7 +690,10 @@ describe("adaptRunStart", () => {
               execution_mode: "execution-lane-issued-id",
               catalog_revision: "catalog-revision-issued-id",
               entry_id: "entry-issued-id",
-              controls: {},
+              model_name: "provider-issued-model-value",
+              controls: [],
+              fallbacks: [],
+              provenance: { selection_source: "team_selection" },
             },
           ],
         },
@@ -712,6 +717,19 @@ describe("adaptRunStart", () => {
 
   it("treats a null envelope (a2a down) as ok:false", () => {
     expect(adaptRunStart({ envelope: null }).ok).toBe(false);
+  });
+
+  it("marks a present malformed frozen start acknowledgement as invalid", () => {
+    const result = adaptRunStart({
+      envelope: {
+        run_id: "run-invalid-frozen-ack",
+        status: "active",
+        frozen_assignment: { schema_version: 2 },
+      },
+    });
+
+    expect(result.frozen_assignment).toBeUndefined();
+    expect(result.frozen_assignment_invalid).toBe(true);
   });
 });
 
@@ -758,6 +776,195 @@ describe("adaptRunStatus", () => {
         model_name: "legacy-frozen-model",
       },
     ]);
+  });
+
+  it("admits only complete frozen run evidence and drops extra provenance fields", () => {
+    const status = adaptRunStatus({
+      envelope: {
+        run_id: "frozen-run",
+        status: "running",
+        frozen_assignment: {
+          schema_version: 1,
+          digest:
+            "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          assignments: [
+            {
+              role_id: "writer",
+              agent_id: "writer-agent",
+              provider_id: "provider-issued-id",
+              provider_display_name: "Provider-issued display",
+              execution_mode: "execution-lane-issued-id",
+              catalog_revision: "catalog-revision-issued-id",
+              entry_id: "entry-issued-id",
+              model_name: "provider-issued-model-value",
+              model_display_name: "Provider-issued model display",
+              controls: [
+                {
+                  control_id: "provider-native-control",
+                  option_id: "provider-option",
+                  provider_value: "provider-issued-native-value",
+                  display_name: "Provider-native control",
+                  option_display_name: "Provider-native option",
+                },
+              ],
+              fallbacks: [
+                {
+                  provider_id: "fallback-provider-issued-id",
+                  provider_display_name: "Fallback provider display",
+                  execution_mode: "fallback-execution-lane-issued-id",
+                  catalog_revision: "fallback-catalog-revision-issued-id",
+                  entry_id: "fallback-entry-issued-id",
+                  model_name: "fallback-provider-issued-model-value",
+                  controls: [],
+                },
+              ],
+              provenance: {
+                selection_source: "role_override",
+                api_key: "must-never-reach-the-header",
+              },
+            },
+          ],
+        },
+      },
+    });
+
+    expect(status.frozen_assignment).toEqual({
+      schema_version: 1,
+      digest: "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      assignments: [
+        {
+          role_id: "writer",
+          agent_id: "writer-agent",
+          provider_id: "provider-issued-id",
+          provider_display_name: "Provider-issued display",
+          execution_mode: "execution-lane-issued-id",
+          catalog_revision: "catalog-revision-issued-id",
+          entry_id: "entry-issued-id",
+          model_name: "provider-issued-model-value",
+          model_display_name: "Provider-issued model display",
+          controls: [
+            {
+              control_id: "provider-native-control",
+              option_id: "provider-option",
+              provider_value: "provider-issued-native-value",
+              display_name: "Provider-native control",
+              option_display_name: "Provider-native option",
+            },
+          ],
+          fallbacks: [
+            {
+              provider_id: "fallback-provider-issued-id",
+              provider_display_name: "Fallback provider display",
+              execution_mode: "fallback-execution-lane-issued-id",
+              catalog_revision: "fallback-catalog-revision-issued-id",
+              entry_id: "fallback-entry-issued-id",
+              model_name: "fallback-provider-issued-model-value",
+              controls: [],
+            },
+          ],
+          provenance: { selection_source: "role_override" },
+        },
+      ],
+    });
+    expect(JSON.stringify(status)).not.toContain("must-never-reach-the-header");
+  });
+
+  it("drops an incomplete catalog-shaped frozen assignment rather than presenting a partial history", () => {
+    const status = adaptRunStatus({
+      envelope: {
+        run_id: "partial-frozen-run",
+        status: "running",
+        frozen_assignment: {
+          schema_version: 1,
+          digest:
+            "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          assignments: [
+            {
+              role_id: "writer",
+              provider_id: "provider-issued-id",
+              execution_mode: "execution-lane-issued-id",
+              catalog_revision: "catalog-revision-issued-id",
+              entry_id: "entry-issued-id",
+              model_name: "provider-issued-model-value",
+              controls: [],
+              fallbacks: [],
+              provenance: { selection_source: "not-a-served-source" },
+            },
+          ],
+        },
+        assignments: [
+          {
+            role_id: "legacy-writer",
+            provider_id: "legacy-provider",
+            model_name: "legacy-model",
+          },
+        ],
+      },
+    });
+
+    expect(status.frozen_assignment).toBeUndefined();
+    expect(status.frozen_assignment_invalid).toBe(true);
+    expect(status.assignments).toEqual([]);
+  });
+
+  it("fails closed for an unknown schema or duplicate frozen identities", () => {
+    const fallback = {
+      provider_id: "fallback-provider-issued-id",
+      execution_mode: "fallback-execution-lane-issued-id",
+      catalog_revision: "fallback-catalog-revision-issued-id",
+      entry_id: "fallback-entry-issued-id",
+      model_name: "fallback-provider-issued-model-value",
+      controls: [],
+    };
+    const assignment = {
+      role_id: "writer",
+      provider_id: "provider-issued-id",
+      execution_mode: "execution-lane-issued-id",
+      catalog_revision: "catalog-revision-issued-id",
+      entry_id: "entry-issued-id",
+      model_name: "provider-issued-model-value",
+      controls: [
+        {
+          control_id: "provider-native-control-issued-id",
+          option_id: "provider-native-option-issued-id",
+          provider_value: "provider-native-value",
+        },
+      ],
+      fallbacks: [],
+      provenance: { selection_source: "team_selection" },
+    };
+    const frozen = {
+      schema_version: 1,
+      digest: "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      assignments: [assignment],
+    };
+
+    for (const malformed of [
+      { ...frozen, schema_version: 2 },
+      { ...frozen, assignments: [assignment, { ...assignment }] },
+      {
+        ...frozen,
+        assignments: [
+          {
+            ...assignment,
+            controls: [...assignment.controls, { ...assignment.controls[0]! }],
+          },
+        ],
+      },
+      {
+        ...frozen,
+        assignments: [{ ...assignment, fallbacks: [fallback, { ...fallback }] }],
+      },
+    ]) {
+      const status = adaptRunStatus({
+        envelope: {
+          run_id: "rejected-frozen-run",
+          status: "running",
+          frozen_assignment: malformed,
+        },
+      });
+      expect(status.frozen_assignment).toBeUndefined();
+    }
   });
 
   it("floors a sparse status body without throwing", () => {

@@ -7,11 +7,12 @@
 // It is collapsible and collapsed-by-default-once-terminal, because a settled run's
 // metadata is reference material, not something to keep occupying the panel.
 //
-// The roster carries per-role provider/model from the run's FROZEN profile
-// (`run-status.assignments`) — what the run is actually using, not what the composer
-// has selected since. Elapsed is real when the sibling serves a start time and is
-// OMITTED when it does not: measuring from when this panel started watching is not
-// the run's elapsed time and would read as a lie on a reloaded panel.
+// The roster is a compact read-only projection. The frozen execution evidence is
+// read separately from authoritative `run-status.frozen_assignment`, never
+// re-resolved through the current catalog or the composer. Elapsed is real when
+// the sibling serves a start time and is OMITTED when it does not: measuring from
+// when this panel started watching is not the run's elapsed time and would read
+// as a lie on a reloaded panel.
 //
 // "Sources" remains genuinely unserved by any surface and is therefore absent — a
 // named gap, not an oversight.
@@ -27,6 +28,12 @@ import {
 import { formatDuration } from "../../platform/localization/formatters";
 import { authoredDisplayText } from "../../platform/localization/displayText";
 import { FoldSection, SectionLabel } from "../kit";
+import type {
+  FrozenTeamExecutionSnapshot,
+  FrozenTeamNativeControl,
+  FrozenTeamRoleAssignment,
+  FrozenTeamRoleProvenance,
+} from "../../stores/server/agent/a2aTeam";
 import type { TeamRosterMember } from "./teamRun";
 import { useTeamRunProgress } from "./TeamRunProgressContext";
 
@@ -36,8 +43,191 @@ const MSG = {
   roster: "common:agent.runHeader.roster",
   elapsed: "common:agent.runHeader.elapsed",
   mixedProvider: "common:agent.runHeader.mixedProvider",
+  frozenAssignment: "common:agent.runHeader.frozenAssignment",
+  frozenAssignmentInvalid: "common:agent.runHeader.frozenAssignmentInvalid",
+  schemaVersion: "common:agent.runHeader.schemaVersion",
+  role: "common:agent.runHeader.role",
+  provider: "common:agent.runHeader.provider",
+  providerIdentity: "common:agent.runHeader.providerIdentity",
+  executionMode: "common:agent.runHeader.executionMode",
+  model: "common:agent.runHeader.model",
+  modelValue: "common:agent.runHeader.modelValue",
+  entryId: "common:agent.runHeader.entryId",
+  catalogRevision: "common:agent.runHeader.catalogRevision",
+  nativeControls: "common:agent.runHeader.nativeControls",
+  fallbackPlan: "common:agent.runHeader.fallbackPlan",
+  selectionSource: "common:agent.runHeader.selectionSource",
+  teamSelection: "common:agent.runHeader.teamSelection",
+  roleOverride: "common:agent.runHeader.roleOverride",
+  digest: "common:agent.runHeader.digest",
+  labeledValue: "common:agent.runHeader.labeledValue",
+  controlValue: "common:agent.runHeader.controlValue",
   degraded: "common:agent.transcript.team.degraded",
 } as const;
+
+interface FrozenEvidenceLabels {
+  readonly role: string;
+  readonly provider: string;
+  readonly providerIdentity: string;
+  readonly executionMode: string;
+  readonly model: string;
+  readonly modelValue: string;
+  readonly entryId: string;
+  readonly catalogRevision: string;
+  readonly nativeControls: string;
+  readonly fallbackPlan: string;
+  readonly selectionSource: string;
+  readonly labeledValue: (label: string, value: string) => string;
+  readonly controlValue: (control: FrozenTeamNativeControl) => string;
+  readonly selectionSourceLabels: Record<
+    FrozenTeamRoleProvenance["selection_source"],
+    string
+  >;
+}
+
+function FrozenFact({
+  label,
+  value,
+  testId,
+}: {
+  label: string;
+  value: string;
+  testId: string;
+}) {
+  return (
+    <>
+      <dt className="text-caption text-ink-faint">{label}</dt>
+      <dd className="min-w-0 truncate text-caption text-ink" data-frozen-value={testId}>
+        {authoredDisplayText(value)}
+      </dd>
+    </>
+  );
+}
+
+/** Render only control ids and option ids that the frozen record itself contains.
+ * This deliberately does not consult the current provider catalog for labels or
+ * defaults: either can have changed since this historical run was admitted. */
+function FrozenControls({
+  controls,
+  label,
+  controlValue,
+}: {
+  controls: readonly FrozenTeamNativeControl[];
+  label: string;
+  controlValue: (control: FrozenTeamNativeControl) => string;
+}) {
+  if (controls.length === 0) return null;
+  return (
+    <>
+      <dt className="text-caption text-ink-faint">{label}</dt>
+      <dd>
+        <ul className="flex flex-col gap-fg-0-5" data-frozen-controls>
+          {controls.map((control) => (
+            <li
+              className="min-w-0 truncate text-caption text-ink"
+              key={control.control_id}
+            >
+              <span data-frozen-control>{controlValue(control)}</span>
+            </li>
+          ))}
+        </ul>
+      </dd>
+    </>
+  );
+}
+
+function FrozenSelectionFacts({
+  selection,
+  labels,
+}: {
+  selection: FrozenTeamExecutionSnapshot;
+  labels: FrozenEvidenceLabels;
+}) {
+  return (
+    <>
+      {selection.provider_display_name !== undefined && (
+        <FrozenFact
+          label={labels.provider}
+          value={selection.provider_display_name}
+          testId="provider"
+        />
+      )}
+      <FrozenFact
+        label={labels.providerIdentity}
+        value={selection.provider_id}
+        testId="provider-identity"
+      />
+      <FrozenFact
+        label={labels.executionMode}
+        value={selection.execution_mode}
+        testId="execution-mode"
+      />
+      <FrozenFact label={labels.entryId} value={selection.entry_id} testId="entry-id" />
+      {selection.model_display_name !== undefined && (
+        <FrozenFact
+          label={labels.model}
+          value={selection.model_display_name}
+          testId="model"
+        />
+      )}
+      <FrozenFact
+        label={labels.modelValue}
+        value={selection.model_name}
+        testId="model-value"
+      />
+      <FrozenFact
+        label={labels.catalogRevision}
+        value={selection.catalog_revision}
+        testId="catalog-revision"
+      />
+      <FrozenControls
+        controls={selection.controls}
+        label={labels.nativeControls}
+        controlValue={labels.controlValue}
+      />
+    </>
+  );
+}
+
+function FrozenRoleEvidence({
+  assignment,
+  labels,
+}: {
+  assignment: FrozenTeamRoleAssignment;
+  labels: FrozenEvidenceLabels;
+}) {
+  const selectionSource =
+    labels.selectionSourceLabels[assignment.provenance.selection_source];
+  return (
+    <li className="flex min-w-0 flex-col gap-fg-1" data-frozen-role>
+      <p className="min-w-0 truncate text-meta text-ink" data-frozen-role-id>
+        {labels.labeledValue(labels.role, assignment.role_id)}
+      </p>
+      <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-fg-2 gap-y-fg-0-5">
+        <FrozenSelectionFacts selection={assignment} labels={labels} />
+        <FrozenFact
+          label={labels.selectionSource}
+          value={selectionSource}
+          testId="selection-source"
+        />
+      </dl>
+      {assignment.fallbacks.length > 0 && (
+        <div className="flex min-w-0 flex-col gap-fg-0-5" data-frozen-fallback-plan>
+          <SectionLabel>{labels.fallbackPlan}</SectionLabel>
+          <ol className="flex flex-col gap-fg-1">
+            {assignment.fallbacks.map((fallback, index) => (
+              <li key={`${fallback.provider_id}:${fallback.entry_id}:${index}`}>
+                <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-fg-2 gap-y-fg-0-5">
+                  <FrozenSelectionFacts selection={fallback} labels={labels} />
+                </dl>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+    </li>
+  );
+}
 
 function RosterRow({ member }: { member: TeamRosterMember }) {
   // Per-role provider and model, both served. They are shown TOGETHER on the role's
@@ -127,6 +317,43 @@ export function TeamRunHeader({ roster }: { roster: readonly TeamRosterMember[] 
   const region = resolveMessage({ key: MSG.region });
   const phaseLabel = resolveMessage({ key: MSG.phase });
   const rosterLabel = resolveMessage({ key: MSG.roster });
+  const frozenAssignmentLabel = resolveMessage({ key: MSG.frozenAssignment });
+  const frozenAssignmentInvalid = resolveMessage({ key: MSG.frozenAssignmentInvalid });
+  const schemaVersionLabel = resolveMessage({ key: MSG.schemaVersion });
+  const digestLabel = resolveMessage({ key: MSG.digest });
+  const frozenEvidenceLabels: FrozenEvidenceLabels = {
+    role: resolveMessage({ key: MSG.role }).message,
+    provider: resolveMessage({ key: MSG.provider }).message,
+    providerIdentity: resolveMessage({ key: MSG.providerIdentity }).message,
+    executionMode: resolveMessage({ key: MSG.executionMode }).message,
+    model: resolveMessage({ key: MSG.model }).message,
+    modelValue: resolveMessage({ key: MSG.modelValue }).message,
+    entryId: resolveMessage({ key: MSG.entryId }).message,
+    catalogRevision: resolveMessage({ key: MSG.catalogRevision }).message,
+    nativeControls: resolveMessage({ key: MSG.nativeControls }).message,
+    fallbackPlan: resolveMessage({ key: MSG.fallbackPlan }).message,
+    selectionSource: resolveMessage({ key: MSG.selectionSource }).message,
+    labeledValue: (label, value) =>
+      resolveMessage({
+        key: MSG.labeledValue,
+        values: { label, value: authoredDisplayText(value) },
+      }).message,
+    controlValue: (control) =>
+      resolveMessage({
+        key: MSG.controlValue,
+        values: {
+          control: authoredDisplayText(control.display_name ?? control.control_id),
+          controlId: authoredDisplayText(control.control_id),
+          value: authoredDisplayText(control.provider_value),
+          option: authoredDisplayText(control.option_display_name ?? control.option_id),
+          optionId: authoredDisplayText(control.option_id),
+        },
+      }).message,
+    selectionSourceLabels: {
+      team_selection: resolveMessage({ key: MSG.teamSelection }).message,
+      role_override: resolveMessage({ key: MSG.roleOverride }).message,
+    },
+  };
   if (region.usedFallback) return null;
 
   return (
@@ -179,6 +406,57 @@ export function TeamRunHeader({ roster }: { roster: readonly TeamRosterMember[] 
             </ul>
           </>
         )}
+        {progress.status?.frozen_assignment !== undefined &&
+          !frozenAssignmentLabel.usedFallback && (
+            <div
+              className="mt-fg-2 flex min-w-0 flex-col gap-fg-1"
+              data-frozen-assignment
+            >
+              <SectionLabel>{frozenAssignmentLabel.message}</SectionLabel>
+              {!schemaVersionLabel.usedFallback && (
+                <p className="text-caption text-ink-muted" data-frozen-schema-version>
+                  {frozenEvidenceLabels.labeledValue(
+                    schemaVersionLabel.message,
+                    String(progress.status.frozen_assignment.schema_version),
+                  )}
+                </p>
+              )}
+              {!digestLabel.usedFallback && (
+                <p
+                  className="min-w-0 truncate text-caption text-ink-muted"
+                  data-frozen-digest
+                >
+                  {frozenEvidenceLabels.labeledValue(
+                    digestLabel.message,
+                    progress.status.frozen_assignment.digest,
+                  )}
+                </p>
+              )}
+              <ul className="flex flex-col gap-fg-2">
+                {progress.status.frozen_assignment.assignments.map((assignment) => (
+                  <FrozenRoleEvidence
+                    assignment={assignment}
+                    key={assignment.role_id}
+                    labels={frozenEvidenceLabels}
+                  />
+                ))}
+              </ul>
+            </div>
+          )}
+        {progress.status?.frozen_assignment === undefined &&
+          progress.status?.frozen_assignment_invalid === true &&
+          !frozenAssignmentLabel.usedFallback &&
+          !frozenAssignmentInvalid.usedFallback && (
+            <div
+              className="mt-fg-2 flex min-w-0 flex-col gap-fg-1"
+              data-frozen-assignment-invalid
+            >
+              <SectionLabel>{frozenAssignmentLabel.message}</SectionLabel>
+              <p className="text-caption text-ink-muted">
+                {frozenAssignmentInvalid.message}
+              </p>
+            </div>
+          )}
       </FoldSection>
     </section>
   );

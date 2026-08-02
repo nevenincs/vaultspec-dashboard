@@ -108,6 +108,68 @@ describe("A2aTeamClient transport identity", () => {
           return;
         }
 
+        if (request.url === "/ops/a2a/run-status") {
+          requestBodies.push(body);
+          response.writeHead(200, { "content-type": "application/json" });
+          response.end(
+            JSON.stringify({
+              data: {
+                envelope: {
+                  run_id: "run-0123456789abcdef0123456789abcdef",
+                  status: "running",
+                  frozen_assignment: {
+                    schema_version: 1,
+                    digest:
+                      "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                    assignments: [
+                      {
+                        role_id: "role-issued-id",
+                        provider_id: "provider-issued-id",
+                        provider_display_name: "Provider-issued display",
+                        execution_mode: "execution-lane-issued-id",
+                        catalog_revision: "catalog-revision-issued-id",
+                        entry_id: "entry-issued-id",
+                        model_name: "provider-issued-model-value",
+                        model_display_name: "Provider-issued model display",
+                        controls: [
+                          {
+                            control_id: "provider-native-control-issued-id",
+                            option_id: "provider-native-default-issued-id",
+                            provider_value: "provider-native-value",
+                            display_name: "Provider-native control",
+                            option_display_name: "Provider-native option",
+                          },
+                        ],
+                        fallbacks: [
+                          {
+                            provider_id: "fallback-provider-issued-id",
+                            execution_mode: "fallback-execution-lane-issued-id",
+                            catalog_revision: "fallback-catalog-revision-issued-id",
+                            entry_id: "fallback-entry-issued-id",
+                            model_name: "fallback-provider-issued-model-value",
+                            controls: [],
+                          },
+                        ],
+                        provenance: {
+                          selection_source: "team_selection",
+                          authorization: "must-never-reach-the-browser-view",
+                        },
+                      },
+                    ],
+                  },
+                },
+              },
+              tiers: {
+                declared: { available: true },
+                structural: { available: true },
+                temporal: { available: true },
+                semantic: { available: true },
+              },
+            }),
+          );
+          return;
+        }
+
         response.writeHead(200, { "content-type": "text/event-stream" });
         response.end();
       });
@@ -185,11 +247,32 @@ describe("A2aTeamClient transport identity", () => {
       expect(started.ok).toBe(true);
       expect(started.run_id).toBe(payload.run_id);
       expect((await client.startRun(emptyPayload)).ok).toBe(true);
+      const recovered = await client.runStatus(payload.run_id);
+      expect(recovered.frozen_assignment).toMatchObject({
+        schema_version: 1,
+        digest:
+          "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      });
+      expect(recovered.frozen_assignment?.assignments[0]).toMatchObject({
+        provider_id: "provider-issued-id",
+        model_name: "provider-issued-model-value",
+        controls: [
+          {
+            control_id: "provider-native-control-issued-id",
+            provider_value: "provider-native-value",
+          },
+        ],
+        provenance: { selection_source: "team_selection" },
+      });
+      expect(JSON.stringify(recovered)).not.toContain(
+        "must-never-reach-the-browser-view",
+      );
       expect(requestBodies).toEqual([
         "{}",
         JSON.stringify(payload),
         JSON.stringify(payload),
         JSON.stringify(emptyPayload),
+        JSON.stringify({ run_id: payload.run_id }),
       ]);
       expect(requestTargets).toContain("/ops/a2a/provider-catalog");
 
