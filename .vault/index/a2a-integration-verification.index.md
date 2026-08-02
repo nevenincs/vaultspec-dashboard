@@ -6,7 +6,7 @@ tags:
 date: '2026-08-02'
 modified: '2026-08-02'
 body_schema: 'body-v1'
-body_hash: 'sha256:0802691fe375af027e171952ac244e45b338c9dd18fd9788eb65a86c572b4cd5'
+body_hash: 'sha256:5d97fb3f92cc477a91fdb9c4d1146081e9b7c970a8670cde6ff15a8907fbbbee'
 related:
   - '[[2026-07-31-a2a-integration-verification-W01-P01-S01]]'
   - '[[2026-07-31-a2a-integration-verification-W01-P01-S02]]'
@@ -17,6 +17,7 @@ related:
   - '[[2026-07-31-a2a-integration-verification-W01-P02-S31]]'
   - '[[2026-07-31-a2a-integration-verification-W01-P02-summary]]'
   - '[[2026-07-31-a2a-integration-verification-W01-P03-S06]]'
+  - '[[2026-07-31-a2a-integration-verification-W01-P03-S07]]'
   - '[[2026-07-31-a2a-integration-verification-adr]]'
   - '[[2026-07-31-a2a-integration-verification-plan]]'
   - '[[2026-07-31-a2a-integration-verification-verification-surface-inventory-reference]]'
@@ -49,6 +50,7 @@ Auto-generated index of all documents tagged with `#a2a-integration-verification
 - `2026-07-31-a2a-integration-verification-W01-P02-S31` - Manually inspect the S05 run-bound artifact review bundle and record an approving sign-off
 - `2026-07-31-a2a-integration-verification-W01-P02-summary` - `W01.P02` completion-proof summary
 - `2026-07-31-a2a-integration-verification-W01-P03-S06` - Configure the deterministic scenario substrate as the permanent completion floor
+- `2026-07-31-a2a-integration-verification-W01-P03-S07` - Deliver four production-factory deterministic scripted scenarios
 
 ### plan
 
