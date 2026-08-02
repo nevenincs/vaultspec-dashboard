@@ -113,6 +113,8 @@ export const operations = {
       pauseUnavailable: "Start the service, then try again.",
       resumeHeld:
         "Another program is using the search hardware. Wait for it to finish, then resume again.",
+      pauseReverted:
+        "The service could not pause while work was in flight. It is still running. Wait for the work to finish, then pause again.",
     },
     states: {
       completed: "Completed",

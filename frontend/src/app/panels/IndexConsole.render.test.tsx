@@ -237,6 +237,18 @@ describe("IndexConsoleHeader", () => {
     expect(document.body.textContent).toContain(SM.service.resumeHeld);
   });
 
+  it("says out loud when a pause could not take the hold", () => {
+    // A busy service can outlast the drain budget: the pause answers
+    // non-achieved and the service stays RUNNING. Observed live as a silent
+    // revert — the console must state the outcome, not just flip the health
+    // word back.
+    setup({ quiesceWord: "running", pauseReverted: true });
+    expect(document.body.textContent).toContain(SM.service.pauseReverted);
+    // The service is running, so the pause verb stays available for a retry
+    // the USER chooses — never an automatic one.
+    expect(screen.getByRole("button", { name: SM.actions.pause })).toBeTruthy();
+  });
+
   it("states the service's own port and process first among the identity facts", () => {
     setup({
       identity: {

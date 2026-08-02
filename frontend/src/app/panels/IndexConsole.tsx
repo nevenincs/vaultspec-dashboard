@@ -95,6 +95,7 @@ const M = {
   rebuildUnavailable: { key: "operations:searchMaintenance.service.updateUnavailable" },
   pauseUnavailable: { key: "operations:searchMaintenance.service.pauseUnavailable" },
   resumeHeld: { key: "operations:searchMaintenance.service.resumeHeld" },
+  pauseReverted: { key: "operations:searchMaintenance.service.pauseReverted" },
   progress: { key: "operations:searchMaintenance.accessibility.progress" },
   working: { key: "operations:searchMaintenance.progress.working" },
   pauseTitle: { key: "operations:searchMaintenance.confirmations.pause.title" },
@@ -160,6 +161,10 @@ export interface IndexConsoleHeaderProps {
   quiescePending?: boolean;
   /** The last resume was refused: another program borrowed the search hardware. */
   resumeHeld?: boolean;
+  /** The last pause could not take the hold (work was in flight; the drain
+   *  timed out) and the service is STILL RUNNING — said out loud, never a
+   *  silent revert. */
+  pauseReverted?: boolean;
   onStart: (autoProvision?: boolean) => void;
   onStop: () => void;
   onRestart: () => void;
@@ -193,6 +198,7 @@ export function IndexConsoleHeader({
   quiesceWord = "unknown",
   quiescePending = false,
   resumeHeld = false,
+  pauseReverted = false,
   onStart,
   onStop,
   onRestart,
@@ -334,6 +340,11 @@ export function IndexConsoleHeader({
         {resumeHeld && (
           <p className="text-caption text-state-stale" data-index-resume-held>
             {resolve(M.resumeHeld).message}
+          </p>
+        )}
+        {pauseReverted && (
+          <p className="text-caption text-state-stale" data-index-pause-reverted>
+            {resolve(M.pauseReverted).message}
           </p>
         )}
         {needsInstall && (
@@ -520,6 +531,19 @@ export function IndexConsole() {
   const resumeHeld =
     resumeEnvelope?.status === "borrower_lease_required" &&
     (quiesce.word === "paused" || quiesce.word === "pausing");
+  const pauseEnvelope =
+    pause.data && typeof pause.data.envelope === "object"
+      ? (pause.data.envelope as Record<string, unknown> | null)
+      : null;
+  // A pause that answered non-achieved while the service is back to running is
+  // a REVERTED hold (rag budgets the drain; in-flight work can outlast it) —
+  // stated in words, never a silent flip back to "Running". A non-achieved
+  // `already_paused` never matches: the quiesce word is `paused` then.
+  const pauseReverted =
+    pauseEnvelope?.achieved === false &&
+    !quiesce.paused &&
+    !quiesce.transitional &&
+    !pause.isPending;
 
   return (
     <div className="flex flex-col gap-fg-3" data-index-console>
@@ -537,6 +561,7 @@ export function IndexConsole() {
         quiesceWord={quiesce.word}
         quiescePending={pause.isPending || resume.isPending || quiesce.transitional}
         resumeHeld={resumeHeld}
+        pauseReverted={pauseReverted}
         onStart={(autoProvision) =>
           start.mutate(autoProvision ? { qdrant_auto_provision: true } : undefined)
         }

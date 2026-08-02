@@ -116,6 +116,7 @@ export const SEARCH_MAINTENANCE_MESSAGE_POLICY = {
   "operations:searchMaintenance.service.updateUnavailable": { role: "disabled-reason" },
   "operations:searchMaintenance.service.pauseUnavailable": { role: "disabled-reason" },
   "operations:searchMaintenance.service.resumeHeld": { role: "error-message" },
+  "operations:searchMaintenance.service.pauseReverted": { role: "error-message" },
   "operations:searchMaintenance.states.available": { role: "status" },
   "operations:searchMaintenance.states.checking": { role: "status" },
   "operations:searchMaintenance.states.completed": { role: "status" },

@@ -120,6 +120,7 @@ export const EXPECTED_SEARCH_MAINTENANCE_KEYS = [
   "operations:searchMaintenance.service.updateUnavailable",
   "operations:searchMaintenance.service.pauseUnavailable",
   "operations:searchMaintenance.service.resumeHeld",
+  "operations:searchMaintenance.service.pauseReverted",
   "operations:searchMaintenance.states.completed",
   "operations:searchMaintenance.states.failed",
   "operations:searchMaintenance.states.queued",
