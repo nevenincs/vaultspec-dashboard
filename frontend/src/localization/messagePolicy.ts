@@ -1169,6 +1169,11 @@ export const PROHIBITED_TERM_EXEMPTIONS: Readonly<Record<string, readonly string
       "operations:searchMaintenance.",
       "common:systemStatus.",
       "common:advanced.",
+      // The agent plane's own unreachable sentence. The owner names this thing
+      // "the agent service" and asked for it verbatim; naming the program the
+      // user is being told about beats a generic noun, which is the same
+      // argument that admitted the word in the console namespaces above.
+      "common:agent.transcript.unavailable",
     ]),
   });
 

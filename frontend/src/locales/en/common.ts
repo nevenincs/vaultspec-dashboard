@@ -391,7 +391,7 @@ export const common = {
       error:
         "This conversation couldn’t be loaded. It may have expired. Open a new session.",
       unavailable:
-        "Agent data is unavailable right now. Reload the page and try again.",
+        "Could not connect to the agent service. Reload the page and try again.",
       showingRecent: "Showing the most recent messages.",
       timeline: "Work timeline",
       usedTools_one: "Used {{count, number}} tool",
