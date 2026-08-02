@@ -14,6 +14,7 @@ import { onboardingSpecimens } from "./onboarding";
 import { paletteSpecimens } from "./palette";
 import { panelsSpecimens } from "./panels";
 import { rightSpecimens } from "./right";
+import { settingsSpecimens } from "./settings";
 import { sceneBoundSpecimens } from "./sceneBound";
 import { shellSpecimens } from "./shell";
 import { stageSpecimens } from "./stage";
@@ -30,6 +31,7 @@ export const AREA_SPECIMENS: Readonly<Record<string, SpecimenDef>> = {
   ...paletteSpecimens,
   ...panelsSpecimens,
   ...rightSpecimens,
+  ...settingsSpecimens,
   ...sceneBoundSpecimens,
   ...shellSpecimens,
   ...stageSpecimens,

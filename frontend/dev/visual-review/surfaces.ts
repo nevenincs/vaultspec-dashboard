@@ -49,6 +49,12 @@ const DATA_BEARING = [
   // status through these slice-specific hooks.
   "useStatusRollup",
   "useCoreStatus",
+  // Settings ▸ the dialog and its Advanced section. The dialog is schema-driven —
+  // its whole body is a served registry read with pending and empty states — and
+  // Advanced hosts the operational consoles. Neither composes a state primitive of
+  // its own, so without these the entire SETTINGS area was invisible to the desk.
+  "useSettingsDialogView",
+  "useExpandedAdvancedConsole",
 ];
 
 /** Areas that are never principal surfaces regardless of markers. */
