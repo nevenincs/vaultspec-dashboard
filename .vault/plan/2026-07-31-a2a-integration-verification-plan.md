@@ -3,12 +3,13 @@ tags:
   - '#plan'
   - '#a2a-integration-verification'
 date: '2026-07-31'
-modified: '2026-08-01'
-body_hash: 'sha256:3b85d3572849fa1bba7e949fd64cc92e1eb47e6f9b146b7de0baf86f1fdc22c3'
+modified: '2026-08-02'
+body_hash: 'sha256:851a61cb3270066cb4385b50bda6a78db0f91918c567f91d9cae475d15f04325'
 tier: L3
 related:
   - '[[2026-07-31-a2a-integration-verification-adr]]'
   - '[[2026-07-31-a2a-integration-verification-verification-surface-inventory-reference]]'
+  - '[[2026-08-01-a2a-integration-verification-deterministic-completion-review-research]]'
 ---
 
 # `a2a-integration-verification` plan
@@ -17,7 +18,7 @@ related:
 
 ## Steps
 
-## Wave `W01` - a2a mock-lane truth: make a run COMPLETE and lock it
+## Wave `W01` - a2a deterministic-lane truth: make a run COMPLETE and lock it
 
 Nothing downstream is testable until a run executes to a terminal state through the real model chain.
 
@@ -39,19 +40,18 @@ Because the defect is already gone, this phase can no longer demonstrate its own
 
 ### Phase `W01.P02` - the completion proof
 
-Land the permanent proof that a bundled-preset run reaches a terminal completed state through the real gateway and worker. Deliberately not named "the mock run": the substrate is settled in `W01.P03`, and the tape-server dependency makes the bundled mock the weaker candidate, so this proof is written against whichever preset that Step chooses. Shaped by a discriminator step, so the destination file is decided rather than assumed.
-
-The completion this proves has already happened once, by hand. The Step is red anyway, and that is the point: the manual run left nothing behind that fails when the chain breaks again.
+Land the always-executed completion floor through the in-process deterministic model resolved by the production provider factory, then keep completion open until its exact-script, run-bound artifact bundle receives a separate approving manual sign-off; automated success, a skip, missing evidence, or an unreviewed bundle is not completion.
 
 - [x] `W01.P02.S04` - Settle where the completion proof runs by checking whether the deterministic service-test stack is container-gated on the current fleet and whether its tests are among the capsule-gated set that passes without executing, delivering a written verdict; `src/vaultspec_a2a/service_tests/`.
-- [ ] `W01.P02.S05` - Land the permanent completion proof driving a bundled preset run to a completed terminal state through the real gateway and real worker with run history carrying the scripted message content, red today because completion has only ever been shown by a manual run and no test requires it, and red if an absent substrate is silently tolerated; `src/vaultspec_a2a/acceptance/tests/`.
+- [ ] `W01.P02.S05` - Land the permanent completion proof by driving an in-process deterministic-model run resolved through the production provider factory to a completed terminal state through the real gateway and real worker, asserting exact scripted content and emitting a durable review bundle containing the authored output plus transcript or execution evidence bound to the exact scenario and run, failing rather than skipping when the substrate or any required artifact is absent; `src/vaultspec_a2a/acceptance/tests/`.
+- [ ] `W01.P02.S31` - Manually inspect the S05 run-bound artifact review bundle and record an approving sign-off containing the reviewer, artifact identity, scenario identity, run identity, disposition, and reason, leaving the completion gate open when the run was skipped, a required artifact is missing, the bundle is unreviewed, the sign-off is absent, or the disposition is not approval; `.vault/audit/`.
 
-### Phase `W01.P03` - the scenario substrate
+### Phase `W01.P03` - the deterministic scenario substrate
 
-Choose between the container-backed tape server and the in-process deterministic provider on portability across the fleet, then deliver the four scripted scenarios the wire and product ladders consume.
+Keep the in-process deterministic provider resolved through the production factory as the permanent completion floor and deliver the scripted scenarios the wire and product ladders consume; tape-backed cases may add optional provider-specific breadth but can neither block nor satisfy completion.
 
-- [ ] `W01.P03.S06` - Choose the scenario substrate between the container-backed tape server and the in-process deterministic provider, judged on availability across all four self-hosted targets and against the standing evidence that the mock preset cannot complete without a tape server on a fixed loopback port while the deterministic preset has already completed a run in-process, and record the decision with its portability rationale; `src/vaultspec_a2a/providers/`.
-- [ ] `W01.P03.S07` - Deliver the four scripted scenarios covering a tool call, a permission pause, a failure and a cancel window on the chosen substrate, reusing existing tape content where it already covers the behaviour; `src/vaultspec_a2a/team/presets/mock/`.
+- [ ] `W01.P03.S06` - Configure the scenario substrate so the in-process deterministic model resolved through the production provider factory remains the permanent completion floor on every target, while tape-backed cases are classified as optional supplemental coverage that can neither block nor satisfy completion; `src/vaultspec_a2a/providers/`.
+- [ ] `W01.P03.S07` - Deliver the four deterministic scripted scenarios covering a tool call, a permission pause, a failure, and a cancel window through the production provider factory, reusing tape content only as optional supplemental provider coverage where it already covers the behavior; `src/vaultspec_a2a/team/presets/`.
 
 ## Wave `W02` - dashboard harness and the wire ladder: attach, streaming, tool calls
 
@@ -150,4 +150,8 @@ Demonstrate one real red per lane at review and wire the agent lane into the qua
 
 ## Parallelization
 
+`W01.P02.S05` precedes `W01.P02.S31`: the automated lane must emit the exact-script, run-bound review bundle before manual inspection can begin. `W01.P02.S31` is the completion gate for downstream capability claims; it remains open for a skipped run, a missing required artifact, an unreviewed bundle, an absent sign-off, or any disposition other than approval. Tape-backed supplemental coverage may run independently but cannot block or satisfy this gate.
+
 ## Verification
+
+The permanent completion floor executes the in-process deterministic model through the production provider factory, real gateway, and real worker; asserts exact scripted content; and emits authored output plus binding transcript or execution evidence carrying the exact scenario and run identity. A reviewer then records reviewer identity, artifact identity, scenario identity, run identity, disposition, and reason. The plan cannot claim completion from automated success alone, and skipped, missing, unreviewed, unsigned, or non-approved evidence is non-completion.
