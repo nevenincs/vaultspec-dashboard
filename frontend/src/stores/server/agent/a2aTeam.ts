@@ -246,6 +246,20 @@ export interface TeamRunStartPayload {
   autonomous?: boolean;
 }
 
+/** Exactly one resolution for a parked clarification: the questionnaire's
+ * answers, a new prompt that continues the same run, or a payload-free decline
+ * (refusal — the run proceeds with no answer given, distinct from a cancel).
+ * Mirrors the brokered verb's exactly-one-of body; the union makes an ambiguous
+ * two-outcome submission unrepresentable at the seam. */
+export type ClarificationResolutionPayload = {
+  readonly runId: string;
+  readonly requestId: string;
+} & (
+  | { readonly answers: Readonly<Record<string, string>> }
+  | { readonly prompt: string }
+  | { readonly decline: true }
+);
+
 /** Create the path-safe idempotency identity for one deliberate run-start
  * submission. The exact payload object (and therefore this id) is retained by
  * `startRun` across its bounded transport retry. A later user submit calls this
@@ -915,19 +929,26 @@ export class A2aTeamClient {
     );
   }
 
-  /** Answer a parked clarification (agent-flow D5(c)). The engine bounds both ids
-   *  and every answer before forwarding; a refusal comes back as the same
+  /** Resolve a parked clarification (agent-flow D5(c)) with exactly ONE outcome:
+   *  the questionnaire's answers, a new prompt continuing the run, or a
+   *  payload-free decline (refusal — the run proceeds with no answer given,
+   *  distinct from a cancel). The engine bounds every argument and enforces the
+   *  exactly-one-of rule before forwarding; a refusal comes back as the same
    *  ok/refusal shape every other verb uses, so the card surfaces it identically. */
-  async respondToClarification(payload: {
-    runId: string;
-    requestId: string;
-    answers: Record<string, string>;
-  }): Promise<TeamRunStartResult> {
+  async respondToClarification(
+    payload: ClarificationResolutionPayload,
+  ): Promise<TeamRunStartResult> {
+    const outcome =
+      "answers" in payload
+        ? { answers: payload.answers }
+        : "prompt" in payload
+          ? { prompt: payload.prompt }
+          : { decline: true };
     return adaptRunStart(
       await this.passThrough("clarification-respond", {
         run_id: payload.runId,
         request_id: payload.requestId,
-        answers: payload.answers,
+        ...outcome,
       }),
     );
   }
@@ -1147,17 +1168,16 @@ export function useStartTeamRun() {
   });
 }
 
-/** Answer a parked clarification. On success the run resumes, so the AUTHORITATIVE
- *  status is invalidated — the card's collapse into its recap follows the re-read,
- *  never an optimistic local guess about whether the graph accepted the answers. */
+/** Resolve a parked clarification with exactly one outcome — answers, a new
+ *  prompt, or a decline. On success the run resumes, so the AUTHORITATIVE
+ *  status is invalidated — the card's collapse into its recap follows the
+ *  re-read, never an optimistic local guess about whether the graph accepted
+ *  the resolution. */
 export function useRespondToClarification() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: {
-      runId: string;
-      requestId: string;
-      answers: Record<string, string>;
-    }) => a2aTeamClient.respondToClarification(payload),
+    mutationFn: (payload: ClarificationResolutionPayload) =>
+      a2aTeamClient.respondToClarification(payload),
     onSuccess: (_result, payload) => {
       void queryClient.invalidateQueries({
         queryKey: a2aKeys.runStatus(payload.runId),
