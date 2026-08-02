@@ -149,6 +149,7 @@ fn run_start_call(state: &AppState, run_id: &str) -> ForwardedCall {
 /// preserves provider-issued strings and provider-native controls unchanged.
 fn served_catalog_selection() -> CatalogSelectionReference {
     CatalogSelectionReference {
+        schema_version: 1,
         provider_id: "provider-issued-id".to_string(),
         execution_mode: "execution-lane-issued-id".to_string(),
         catalog_revision: "catalog-revision-issued-id".to_string(),
