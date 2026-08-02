@@ -208,6 +208,30 @@ namespace — it is orchestration control only.
 > `2026-08-01-a2a-agent-flow-adr` D3 — no wire change was needed or made
 > for model selection.
 
+> **Amendment (2026-08-02, clarification resolution widens to three
+> outcomes — reviewed cross-repo contract event, a2a-orchestration-edge
+> campaign):** NO new verb. The brokered `clarification-respond` body
+> widens to EXACTLY ONE OF three alternatives, enforced at the engine
+> BEFORE any round-trip: `answers` (unchanged), `prompt` (the sibling's
+> 2026-08-02 `clarification-continuation` outcome — a new prompt resuming
+> the parked run; broker carry-through landed engine-side `184caa8323`),
+> and `decline` (the sibling's 2026-08-02 `clarification-decline` outcome
+> — a payload-free refusal that resumes the run with NO answer given,
+> distinct from `run-cancel`; the sibling's gate appends one fixed marker
+> turn as its downstream trace, producer landed a2a-side `e5ff51bb`).
+> `decline` admits only the literal `true`, mirroring the sibling schema's
+> refusal of the contradictory `false`. The sibling additionally renders
+> an ANSWERED questionnaire into one human transcript turn
+> (`clarification-decline` / `clarification-answers-grounding` records,
+> a2a vault) — a sibling-side behaviour change with no engine wire
+> impact, noted here so the transcript a viewer reads is not mistaken for
+> client-fabricated content. Producer-first ordering was honoured for
+> decline; the continuation carry-through corrected the inverse gap
+> (sibling served an outcome the broker could not reach). Stores seam:
+> `useRespondToClarification` takes the exactly-one-of union
+> (`answers | prompt | decline`), making an ambiguous two-outcome
+> submission unrepresentable in the client.
+
 **D2 — Actors and tokens are provisioned by the engine at run start.** The
 brokered `run-start` verb is the provisioning moment: the engine registers (or
 re-resolves) one agent actor per pipeline role in the run (researcher,

@@ -90,6 +90,62 @@ fn clarification_respond_carries_the_continuation_prompt_alternative() {
 }
 
 #[test]
+fn clarification_respond_carries_the_decline_alternative() {
+    // The third outcome: a payload-free refusal that resumes the parked run
+    // with no answer given, distinct from a cancel. The sibling appends its own
+    // fixed marker turn; the engine forwards the literal and judges nothing.
+    let (_dir, state) = test_state();
+    let cell = state.active_cell();
+
+    let call = build_forwarded_call(
+        &state,
+        "clarification-respond",
+        &cell,
+        &A2aVerbBody {
+            run_id: Some("run-7".to_string()),
+            request_id: Some("clr-1".to_string()),
+            decline: Some(true),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(call.method, Method::Post);
+    assert_eq!(call.path, "/v1/runs/run-7/clarifications/clr-1/respond");
+    assert_eq!(
+        call.budget, A2A_CONTROL_BUDGET,
+        "a decline dispatches the parked graph exactly as an answer does"
+    );
+    let body = call.body.expect("the resume forwards the decline");
+    assert_eq!(body["decline"], true);
+    assert_eq!(
+        body.as_object().unwrap().len(),
+        1,
+        "a decline forwards the literal alone — no empty answers map beside it"
+    );
+}
+
+#[test]
+fn clarification_respond_refuses_a_false_decline() {
+    // Mirrors the sibling schema: `decline: false` is "not declining" while
+    // supplying no other outcome — a contradiction refused before any round-trip.
+    let (_dir, state) = test_state();
+    let cell = state.active_cell();
+
+    let refused = build_forwarded_call(
+        &state,
+        "clarification-respond",
+        &cell,
+        &A2aVerbBody {
+            run_id: Some("run-7".to_string()),
+            request_id: Some("clr-1".to_string()),
+            decline: Some(false),
+            ..Default::default()
+        },
+    );
+    assert!(refused.is_err(), "decline admits only the literal true");
+}
+
+#[test]
 fn clarification_respond_refuses_both_alternatives_and_neither() {
     // Exactly-one-of is enforced at the boundary, BEFORE any round-trip, so a
     // malformed resume never reaches the parked graph and never spends a budget.
@@ -111,6 +167,40 @@ fn clarification_respond_refuses_both_alternatives_and_neither() {
     assert!(
         both.is_err(),
         "answers AND prompt is two resolutions of one transition — refused"
+    );
+
+    let answers_and_decline = build_forwarded_call(
+        &state,
+        "clarification-respond",
+        &cell,
+        &A2aVerbBody {
+            run_id: Some("run-7".to_string()),
+            request_id: Some("clr-1".to_string()),
+            answers: json!({ "q1": "option-b" }).as_object().cloned(),
+            decline: Some(true),
+            ..Default::default()
+        },
+    );
+    assert!(
+        answers_and_decline.is_err(),
+        "answers AND decline is two resolutions of one transition — refused"
+    );
+
+    let prompt_and_decline = build_forwarded_call(
+        &state,
+        "clarification-respond",
+        &cell,
+        &A2aVerbBody {
+            run_id: Some("run-7".to_string()),
+            request_id: Some("clr-1".to_string()),
+            prompt: Some("chat instead".to_string()),
+            decline: Some(true),
+            ..Default::default()
+        },
+    );
+    assert!(
+        prompt_and_decline.is_err(),
+        "prompt AND decline is two resolutions of one transition — refused"
     );
 
     let neither = build_forwarded_call(

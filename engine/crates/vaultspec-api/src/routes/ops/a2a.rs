@@ -252,12 +252,19 @@ pub struct A2aVerbBody {
     pub answers: Option<serde_json::Map<String, Value>>,
     /// clarification-respond: the CONTINUATION alternative — a new prompt that
     /// resumes the parked run instead of answering its questions. The sibling's
-    /// respond route accepts exactly one of `answers` or `prompt`; the engine
-    /// forwards whichever the client sent and refuses both or neither, so the
-    /// exactly-one-of rule is enforced before any round-trip rather than being
-    /// discovered as a sibling refusal.
+    /// respond route accepts exactly one of `answers`, `prompt`, or `decline`;
+    /// the engine forwards whichever the client sent and refuses anything other
+    /// than exactly one, so the exactly-one-of rule is enforced before any
+    /// round-trip rather than being discovered as a sibling refusal.
     #[serde(default)]
     pub prompt: Option<String>,
+    /// clarification-respond: the DECLINE alternative — a payload-free refusal
+    /// that resumes the parked run with no answer given, distinct from a cancel
+    /// (the run continues on its own judgement). Only the literal `true` is
+    /// admitted, mirroring the sibling schema: `decline: false` is a client
+    /// saying "not declining" while supplying no other outcome.
+    #[serde(default)]
+    pub decline: Option<bool>,
 }
 
 /// The forwarded HTTP call an engine verb resolves to: the method, the sibling
