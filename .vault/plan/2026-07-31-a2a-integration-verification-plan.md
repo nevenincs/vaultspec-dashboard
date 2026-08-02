@@ -4,7 +4,7 @@ tags:
   - '#a2a-integration-verification'
 date: '2026-07-31'
 modified: '2026-08-02'
-body_hash: 'sha256:7783f69c14e1b5f377b2a5abee9dd1f524329947b5b40e2e9789488c99aa8794'
+body_hash: 'sha256:e62b55a934b270edce35e76f6e248c217784180b5163ee1860c7db184d87da10'
 tier: L3
 related:
   - '[[2026-07-31-a2a-integration-verification-adr]]'
@@ -61,7 +61,7 @@ One two-process harness feeding the wire lane, asserted over HTTP and server-sen
 
 Reproduce the manual cold-run recipe mechanically, owning both process lifetimes, behind an environment gate whose absence is a distinct skipped status rather than a pass.
 
-- [ ] `W02.P04.S08` - Author the two-process harness spawning a2a against a scratch application home and the engine against a scratch worktree, wired both directions through their real discovery records and owning both teardowns, reading the existing authoring harness whole first; `frontend/e2e/agent/harness.ts`.
+- [x] `W02.P04.S08` - Author the two-process harness spawning a2a against a scratch application home and the engine against a scratch worktree, wired both directions through their real discovery records and owning both teardowns, reading the existing authoring harness whole first; `frontend/e2e/agent/harness.ts`.
 - [ ] `W02.P04.S09` - Wire the environment-gated agent lane into its own playwright configuration reporting a distinct skipped status when the substrate is absent, red if unsetting the gate yields a pass rather than a skip; `frontend/dev/playwright.agent.config.ts`.
 
 ### Phase `W02.P05` - attach and the degraded flip

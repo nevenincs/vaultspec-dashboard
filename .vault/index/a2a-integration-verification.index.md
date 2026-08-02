@@ -6,7 +6,7 @@ tags:
 date: '2026-08-02'
 modified: '2026-08-02'
 body_schema: 'body-v1'
-body_hash: 'sha256:d0e6b442fc7dc10cd3c0c12eb26ee6d7cdecd310f9390fbeef031190cacbca4e'
+body_hash: 'sha256:7f1200a618402c898dc061154bc86e7c7e1bd1f67cbe50a153122b97fac487e3'
 related:
   - '[[2026-07-31-a2a-integration-verification-W01-P01-S01]]'
   - '[[2026-07-31-a2a-integration-verification-W01-P01-S02]]'
@@ -19,6 +19,7 @@ related:
   - '[[2026-07-31-a2a-integration-verification-W01-P03-S06]]'
   - '[[2026-07-31-a2a-integration-verification-W01-P03-S07]]'
   - '[[2026-07-31-a2a-integration-verification-W01-P03-summary]]'
+  - '[[2026-07-31-a2a-integration-verification-W02-P04-S08]]'
   - '[[2026-07-31-a2a-integration-verification-adr]]'
   - '[[2026-07-31-a2a-integration-verification-plan]]'
   - '[[2026-07-31-a2a-integration-verification-verification-surface-inventory-reference]]'
@@ -53,6 +54,7 @@ Auto-generated index of all documents tagged with `#a2a-integration-verification
 - `2026-07-31-a2a-integration-verification-W01-P03-S06` - Configure the deterministic scenario substrate as the permanent completion floor
 - `2026-07-31-a2a-integration-verification-W01-P03-S07` - Deliver four production-factory deterministic scripted scenarios
 - `2026-07-31-a2a-integration-verification-W01-P03-summary` - `W01.P03` deterministic scenario substrate summary
+- `2026-07-31-a2a-integration-verification-W02-P04-S08` - Author the real two-process dashboard and A2A harness
 
 ### plan
 
