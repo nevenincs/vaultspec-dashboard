@@ -59,6 +59,9 @@ export interface ProviderCatalogEntry {
   readonly display_name?: string;
   readonly description?: string;
   readonly capabilities: string[];
+  /** Provider-issued control ids applicable to this model only. An omitted value
+   * remains an empty set; Dashboard never promotes lane-wide controls to a model. */
+  readonly native_control_ids?: readonly string[];
 }
 
 /** A provider-native control and its provider-issued option ids. There is no
@@ -167,6 +170,7 @@ function adaptCatalogEntry(raw: unknown): ProviderCatalogEntry | null {
     display_name: asStr(raw.display_name),
     description: asStr(raw.description),
     capabilities: strArr(raw.capabilities),
+    native_control_ids: strArr(raw.native_control_ids).filter((controlId) => controlId),
   };
 }
 
@@ -325,6 +329,33 @@ export function isProviderCatalogSelectable(record: ProviderCatalogRecord): bool
   );
 }
 
+function nativeControlsForEntry(
+  record: ProviderCatalogRecord,
+  entryId: string,
+): readonly ProviderNativeControl[] | null {
+  const entry = record.catalog.models.find((candidate) => candidate.entry_id === entryId);
+  if (entry === undefined) return null;
+  const controlIds = entry.native_control_ids ?? [];
+  if (new Set(controlIds).size !== controlIds.length) return null;
+  const controls = controlIds.map((controlId) =>
+    record.catalog.native_controls.find((candidate) => candidate.control_id === controlId),
+  );
+  return controls.every(
+    (control): control is ProviderNativeControl => control !== undefined,
+  )
+    ? controls
+    : null;
+}
+
+/** Returns only the controls A2A attached to one current model entry. A malformed
+ * control reference remains unavailable instead of falling back to lane controls. */
+export function nativeControlsForCatalogEntry(
+  record: ProviderCatalogRecord,
+  entryId: string,
+): readonly ProviderNativeControl[] {
+  return nativeControlsForEntry(record, entryId) ?? [];
+}
+
 /** Construct a selection only from a current provider record and entry. Native
  * control defaults are included only when A2A advertised them; an absent default
  * remains absent rather than becoming an invented level. */
@@ -333,9 +364,10 @@ export function selectionFromCatalogEntry(
   entryId: string,
 ): ProviderCatalogSelection | null {
   if (!isProviderCatalogSelectable(record)) return null;
-  if (!record.catalog.models.some((entry) => entry.entry_id === entryId)) return null;
+  const nativeControls = nativeControlsForEntry(record, entryId);
+  if (nativeControls === null) return null;
   const controls: Record<string, string> = {};
-  for (const control of record.catalog.native_controls) {
+  for (const control of nativeControls) {
     if (control.default_option_id !== undefined) {
       controls[control.control_id] = control.default_option_id;
     }
@@ -359,7 +391,7 @@ export function selectionWithCatalogControl(
   optionId: string,
 ): ProviderCatalogSelection | null {
   if (!isCurrentCatalogSelection(record, selection)) return null;
-  const control = record.catalog.native_controls.find(
+  const control = nativeControlsForEntry(record, selection.entry_id)?.find(
     (candidate) => candidate.control_id === controlId,
   );
   if (!control?.options.some((option) => option.option_id === optionId)) return null;
@@ -381,8 +413,10 @@ export function isCurrentCatalogSelection(
   ) {
     return false;
   }
+  const nativeControls = nativeControlsForEntry(record, selection.entry_id);
+  if (nativeControls === null) return false;
   return Object.entries(selection.controls).every(([controlId, optionId]) => {
-    const control = record.catalog.native_controls.find(
+    const control = nativeControls.find(
       (candidate) => candidate.control_id === controlId,
     );
     return control?.options.some((option) => option.option_id === optionId) ?? false;

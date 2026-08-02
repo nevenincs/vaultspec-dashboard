@@ -3,13 +3,15 @@
 // level: every row, native control, reason, and opaque selection reference is
 // served by the active execution lane.
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import type { RefObject } from "react";
 
 import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 import { authoredDisplayText } from "../../platform/localization/displayText";
 import {
   isCurrentCatalogSelection,
   isProviderCatalogSelectable,
+  nativeControlsForCatalogEntry,
   selectionFromCatalogEntry,
   selectionWithCatalogControl,
   type ProviderCatalogRecord,
@@ -45,7 +47,9 @@ function ProviderModelRow({
   provider,
   entry,
   selected,
+  selectable,
   onSelect,
+  buttonRef,
 }: {
   provider: ProviderCatalogRecord;
   entry: {
@@ -54,25 +58,28 @@ function ProviderModelRow({
     readonly description?: string;
   };
   selected: boolean;
+  selectable: boolean;
   onSelect: () => void;
+  buttonRef?: RefObject<HTMLButtonElement | null>;
 }) {
-  const selectable = isProviderCatalogSelectable(provider);
   const reason = provider.health.reasons.join(" ");
   return (
     <li>
       <button
+        ref={buttonRef}
         type="button"
-        role="menuitemradio"
-        aria-checked={selected}
+        aria-pressed={selected}
         disabled={!selectable}
         title={
-          selectable || reason.length === 0 ? undefined : authoredDisplayText(reason)
+          selectable || reason.length === 0
+            ? undefined
+            : authoredDisplayText(provider.health.reasons.join(" "))
         }
         data-provider-id={provider.provider_id}
         data-model-entry-id={entry.entry_id}
         data-model-selectable={selectable ? "" : undefined}
         onClick={selectable ? onSelect : undefined}
-        className="flex w-full flex-col gap-fg-0-5 rounded-fg-sm px-fg-2 py-fg-1 text-left text-label text-ink transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus aria-[checked=true]:bg-paper-sunken disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent"
+        className="flex w-full flex-col gap-fg-0-5 rounded-fg-sm px-fg-2 py-fg-1 text-left text-label text-ink transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus aria-[pressed=true]:bg-paper-sunken disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent"
       >
         <span className="flex min-w-0 items-baseline justify-between gap-fg-2">
           <span className="min-w-0 truncate">
@@ -89,7 +96,7 @@ function ProviderModelRow({
         )}
         {!selectable && reason.length > 0 && (
           <span className="truncate text-meta text-ink-faint" data-model-reason>
-            {authoredDisplayText(reason)}
+            {authoredDisplayText(provider.health.reasons.join(" "))}
           </span>
         )}
       </button>
@@ -105,14 +112,20 @@ export function ComposerModelPicker({
   selection,
   onSelectSelection,
   locked,
+  surfaceId,
 }: {
   providers: readonly ProviderCatalogRecord[];
   selection: ProviderCatalogSelection | null;
   onSelectSelection: (selection: ProviderCatalogSelection | null) => void;
   locked: boolean;
+  /** The primary picker retains the legacy composer hooks. Expert pickers use a
+   * stable local id so independent disclosures never share a popover trigger. */
+  surfaceId?: string;
 }) {
   const resolveMessage = useLocalizedMessageResolver();
   const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const firstModelRef = useRef<HTMLButtonElement>(null);
   const selectedProvider =
     providers.find((provider) => isCurrentCatalogSelection(provider, selection)) ??
     null;
@@ -134,7 +147,10 @@ export function ComposerModelPicker({
       : modelLabel;
   const selectable = providers.some(
     (provider) =>
-      isProviderCatalogSelectable(provider) && provider.catalog.models.length > 0,
+      isProviderCatalogSelectable(provider) &&
+      provider.catalog.models.some(
+        (entry) => selectionFromCatalogEntry(provider, entry.entry_id) !== null,
+      ),
   );
   const disabled = !selectable || locked;
   const reason = resolveMessage({ key: MSG.modelUnavailable }).message;
@@ -150,31 +166,60 @@ export function ComposerModelPicker({
     : pill;
   const menuAria = resolveMessage({ key: MSG.menuAria });
   const disabledTitle = disabled ? authoredDisplayText(reason) : undefined;
+  const primarySurface = surfaceId === undefined;
+  const triggerSelector = primarySurface
+    ? "[data-composer-model-trigger]"
+    : `[data-expert-model-trigger="${surfaceId}"]`;
+  const firstSelectable = providers
+    .flatMap((provider) =>
+      provider.catalog.models.map((entry) => ({ provider, entry })),
+    )
+    .find(
+      ({ provider, entry }) =>
+        selectionFromCatalogEntry(provider, entry.entry_id) !== null,
+    );
+  const selectedControls =
+    selectedProvider === null || selection === null
+      ? []
+      : nativeControlsForCatalogEntry(selectedProvider, selection.entry_id);
 
   return (
-    <div className="relative" data-composer-model>
+    <div
+      className="relative"
+      {...(primarySurface
+        ? { "data-composer-model": "" }
+        : { "data-expert-model-picker": surfaceId })}
+    >
       <span
         title={disabledTitle}
-        data-composer-model-trigger
+        {...(primarySurface
+          ? { "data-composer-model-trigger": "" }
+          : { "data-expert-model-trigger": surfaceId })}
         data-provider-id={selectedProvider?.provider_id}
         data-model-entry-id={selectedEntry?.entry_id}
       >
         <DropdownButton
+          ref={triggerRef}
           label={value}
           open={open}
           onClick={() => setOpen((current) => !current)}
           disabled={disabled}
           ariaLabel={ariaLabel}
+          ariaHasPopup="dialog"
         />
       </span>
       {open && !disabled && !menuAria.usedFallback && (
         <Popover
           open
           onDismiss={() => setOpen(false)}
-          ignoreSelector="[data-composer-model-trigger]"
-          role="menu"
+          ignoreSelector={triggerSelector}
+          returnFocusRef={triggerRef}
+          role="dialog"
           aria-label={menuAria.message}
-          data-composer-model-menu
+          initialFocusRef={firstModelRef}
+          {...(primarySurface
+            ? { "data-composer-model-menu": "" }
+            : { "data-expert-model-menu": surfaceId })}
           className="absolute bottom-full right-0 z-40 mb-fg-1 max-h-80 min-w-64 overflow-y-auto rounded-fg-md border border-rule bg-paper-raised p-fg-1 shadow-fg-popover"
         >
           <ul className="flex flex-col gap-fg-0-5">
@@ -191,32 +236,49 @@ export function ComposerModelPicker({
                   aria-label={authoredDisplayText(providerLabel(provider))}
                 >
                   {provider.catalog.models.map((entry) => (
-                    <ProviderModelRow
-                      key={entry.entry_id}
-                      provider={provider}
-                      entry={entry}
-                      selected={
-                        selectedProvider?.provider_id === provider.provider_id &&
-                        selectedProvider.execution_mode === provider.execution_mode &&
-                        selectedEntry?.entry_id === entry.entry_id
-                      }
-                      onSelect={() =>
-                        onSelectSelection(
-                          selectionFromCatalogEntry(provider, entry.entry_id),
-                        )
-                      }
-                    />
+                    (() => {
+                      const catalogSelection = selectionFromCatalogEntry(
+                        provider,
+                        entry.entry_id,
+                      );
+                      const modelSelectable = catalogSelection !== null;
+                      return (
+                        <ProviderModelRow
+                          key={entry.entry_id}
+                          provider={provider}
+                          entry={entry}
+                          selected={
+                            selectedProvider?.provider_id === provider.provider_id &&
+                            selectedProvider.execution_mode === provider.execution_mode &&
+                            selectedEntry?.entry_id === entry.entry_id
+                          }
+                          selectable={modelSelectable}
+                          buttonRef={
+                            firstSelectable?.provider === provider &&
+                            firstSelectable.entry === entry
+                              ? firstModelRef
+                              : undefined
+                          }
+                          onSelect={() => {
+                            if (catalogSelection !== null) {
+                              onSelectSelection(catalogSelection);
+                              setOpen(false);
+                            }
+                          }}
+                        />
+                      );
+                    })()
                   ))}
                 </ul>
               </li>
             ))}
           </ul>
-          {selectedProvider !== null && selection !== null && (
+          {selectedProvider !== null && selection !== null && selectedControls.length > 0 && (
             <div
               className="mt-fg-1 flex flex-col gap-fg-1 border-t border-rule pt-fg-1"
               data-provider-native-controls
             >
-              {selectedProvider.catalog.native_controls.map((control) => {
+              {selectedControls.map((control) => {
                 const selectedOption = selection.controls[control.control_id] ?? "";
                 return (
                   <label

@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { A2aTeamClient, type TeamRunStartPayload } from "./a2aTeam";
 
 describe("A2aTeamClient transport identity", () => {
-  it("retries one lost run-start acknowledgement with the exact run id and resumes relay by cursor", async () => {
+  it("carries bounded advanced selections, omits empty fields, retries one lost acknowledgement, and resumes relay by cursor", async () => {
     const requestBodies: string[] = [];
     const runStartBodies: string[] = [];
     const requestTargets: string[] = [];
@@ -43,8 +43,21 @@ describe("A2aTeamClient transport identity", () => {
                           status: "available",
                           revision: "catalog-revision-issued-id",
                         },
-                        models: [{ entry_id: "entry-issued-id", capabilities: [] }],
-                        native_controls: [],
+                        models: [
+                          {
+                            entry_id: "entry-issued-id",
+                            capabilities: [],
+                            native_control_ids: ["provider-native-control-issued-id"],
+                          },
+                        ],
+                        native_controls: [
+                          {
+                            control_id: "provider-native-control-issued-id",
+                            options: [
+                              { option_id: "provider-native-default-issued-id" },
+                            ],
+                          },
+                        ],
                       },
                     },
                   ],
@@ -117,17 +130,47 @@ describe("A2aTeamClient transport identity", () => {
           entry_id: "entry-issued-id",
           controls: {},
         },
+        overrides: {
+          "role-issued-id": {
+            provider_id: "provider-issued-id",
+            execution_mode: "execution-lane-issued-id",
+            catalog_revision: "catalog-revision-issued-id",
+            entry_id: "entry-issued-id",
+            controls: {},
+          },
+        },
+        fallbacks: [
+          {
+            provider_id: "provider-issued-id",
+            execution_mode: "execution-lane-issued-id",
+            catalog_revision: "catalog-revision-issued-id",
+            entry_id: "entry-issued-id",
+            controls: {},
+          },
+        ],
+      };
+      const emptyPayload: TeamRunStartPayload = {
+        run_id: "run-fedcba9876543210fedcba9876543210",
+        team_preset: "vaultspec-authoring",
+        message: "Audit the empty optional fields",
+        expected_scope: "scope-token",
+        selection: payload.selection,
       };
 
       const catalog = await client.listProviderCatalog();
       expect(catalog.providers[0]?.catalog.models[0]?.entry_id).toBe("entry-issued-id");
+      expect(catalog.providers[0]?.catalog.models[0]?.native_control_ids).toEqual([
+        "provider-native-control-issued-id",
+      ]);
       const started = await client.startRun(payload);
       expect(started.ok).toBe(true);
       expect(started.run_id).toBe(payload.run_id);
+      expect((await client.startRun(emptyPayload)).ok).toBe(true);
       expect(requestBodies).toEqual([
         "{}",
         JSON.stringify(payload),
         JSON.stringify(payload),
+        JSON.stringify(emptyPayload),
       ]);
       expect(requestTargets).toContain("/ops/a2a/provider-catalog");
 

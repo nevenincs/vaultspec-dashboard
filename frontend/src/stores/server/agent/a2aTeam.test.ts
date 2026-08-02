@@ -292,6 +292,7 @@ describe("adaptPresetsList", () => {
             loadable: true,
             display_name: "Authoring team",
             required_roles: ["researcher", "planner"],
+            required_role_labels: { researcher: "Researcher" },
             is_mock: false,
             origin: "bundled",
           },
@@ -307,6 +308,7 @@ describe("adaptPresetsList", () => {
     const { presets, tiers } = adaptPresetsList(pass);
     expect(presets.map((p) => p.id)).toEqual(["vaultspec-authoring", "broken"]);
     expect(presets[0].required_roles).toEqual(["researcher", "planner"]);
+    expect(presets[0].required_role_labels).toEqual({ researcher: "Researcher" });
     expect(presets[1].loadable).toBe(false);
     expect(presets[1].unavailable_reason).toBe("preset not found");
     expect(tiers).toBe(pass.tiers);
@@ -315,6 +317,28 @@ describe("adaptPresetsList", () => {
   it("returns an empty list when a2a is down (null envelope)", () => {
     const { presets } = adaptPresetsList({ envelope: null, tiers: {} });
     expect(presets).toEqual([]);
+  });
+
+  it("preserves a prototype-colliding served role label as an owned value", () => {
+    const { presets } = adaptPresetsList({
+      envelope: {
+        presets: [
+          {
+            id: "prototype-role",
+            loadable: true,
+            required_roles: ["constructor"],
+            required_role_labels: { constructor: "Constructor worker" },
+            is_mock: false,
+          },
+        ],
+      },
+      tiers: {},
+    });
+
+    const labels = presets[0]?.required_role_labels;
+    expect(labels).toBeDefined();
+    expect(Object.getPrototypeOf(labels!)).toBeNull();
+    expect(labels!["constructor"]).toBe("Constructor worker");
   });
 });
 
@@ -347,6 +371,7 @@ describe("adaptProviderCatalog", () => {
                 entry_id: "entry-issued-id",
                 display_name: "Entry-issued display",
                 capabilities: ["provider-issued-capability"],
+                native_control_ids: ["provider-native-control-id"],
               },
             ],
             native_controls: [
@@ -365,6 +390,11 @@ describe("adaptProviderCatalog", () => {
                     display_name: "Provider-native alternative",
                   },
                 ],
+              },
+              {
+                control_id: "lane-only-control-id",
+                default_option_id: "lane-only-default-option",
+                options: [{ option_id: "lane-only-default-option" }],
               },
             ],
           },
@@ -385,6 +415,9 @@ describe("adaptProviderCatalog", () => {
       selectable: true,
     });
     expect(provider.catalog.models[0]?.entry_id).toBe("entry-issued-id");
+    expect(provider.catalog.models[0]?.native_control_ids).toEqual([
+      "provider-native-control-id",
+    ]);
     expect(provider.catalog.native_controls[0]?.kind).toBe("provider-issued-kind");
     expect(provider.catalog.native_controls[0]?.options).toHaveLength(2);
   });
@@ -481,6 +514,41 @@ describe("adaptProviderCatalog", () => {
           },
         },
         initial,
+      ),
+    ).toBe(false);
+  });
+
+  it("rejects a lane control outside the selected model and invalidates it after control-scope drift", () => {
+    const provider = adaptProviderCatalog(providerCatalogPass).providers[0]!;
+    const selection = selectionFromCatalogEntry(provider, "entry-issued-id");
+    expect(selection).not.toBeNull();
+    expect(
+      selectionWithCatalogControl(
+        provider,
+        selection!,
+        "lane-only-control-id",
+        "lane-only-default-option",
+      ),
+    ).toBeNull();
+    expect(
+      isCurrentCatalogSelection(provider, {
+        ...selection!,
+        controls: { "lane-only-control-id": "lane-only-default-option" },
+      }),
+    ).toBe(false);
+    expect(
+      isCurrentCatalogSelection(
+        {
+          ...provider,
+          catalog: {
+            ...provider.catalog,
+            models: provider.catalog.models.map((entry) => ({
+              ...entry,
+              native_control_ids: [],
+            })),
+          },
+        },
+        selection,
       ),
     ).toBe(false);
   });

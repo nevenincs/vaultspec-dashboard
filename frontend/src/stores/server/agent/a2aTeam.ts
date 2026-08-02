@@ -90,6 +90,8 @@ export interface TeamPreset {
   readonly topology?: string;
   readonly worker_count?: number;
   readonly required_roles: string[];
+  /** Optional A2A-authored display text for required role ids. */
+  readonly required_role_labels?: Readonly<Record<string, string>>;
   readonly authoring_capability?: string;
   readonly is_mock: boolean;
   readonly origin?: string;
@@ -302,6 +304,17 @@ function adaptPreset(raw: unknown): TeamPreset | null {
   if (!isRec(raw)) return null;
   const id = asStr(raw.id);
   if (!id) return null;
+  let requiredRoleLabels: Record<string, string> | undefined;
+  if (isRec(raw.required_role_labels)) {
+    // Role ids are opaque A2A values; a null prototype preserves values such as
+    // `constructor` and `__proto__` without inheriting vocabulary from the browser.
+    requiredRoleLabels = Object.create(null) as Record<string, string>;
+    for (const [roleId, label] of Object.entries(raw.required_role_labels)) {
+      if (roleId.length > 0 && typeof label === "string" && label.length > 0) {
+        requiredRoleLabels[roleId] = label;
+      }
+    }
+  }
   return {
     id,
     loadable: asBool(raw.loadable),
@@ -311,6 +324,7 @@ function adaptPreset(raw: unknown): TeamPreset | null {
     topology: asStr(raw.topology),
     worker_count: typeof raw.worker_count === "number" ? raw.worker_count : undefined,
     required_roles: strArr(raw.required_roles),
+    ...(requiredRoleLabels === undefined ? {} : { required_role_labels: requiredRoleLabels }),
     authoring_capability: asStr(raw.authoring_capability),
     is_mock: asBool(raw.is_mock),
     origin: asStr(raw.origin),

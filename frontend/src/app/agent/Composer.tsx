@@ -115,6 +115,10 @@ import { AutocompleteCombobox, type ComboOption } from "../viewer/AutocompleteCo
 import { Button, DropdownButton, IconButton, Popover, Spinner } from "../kit";
 import { ComposerAutonomyBanner } from "./ComposerAutonomyBanner";
 import { ComposerEvidencePicker } from "./ComposerEvidencePicker";
+import {
+  ComposerExpertSelection,
+  reconcileExpertSelections,
+} from "./ComposerExpertSelection";
 import { ComposerModelPicker } from "./ComposerModelPicker";
 import { ComposerFeatureChip } from "./ComposerFeatureChip";
 import {
@@ -164,6 +168,9 @@ const MSG = {
   clarificationParked: "common:agent.composer.clarificationParked",
   attachContext: "common:agent.composer.attachContext",
 } as const;
+
+const EMPTY_REQUIRED_ROLES: readonly string[] = [];
+const EMPTY_REQUIRED_ROLE_LABELS: Readonly<Record<string, string>> = {};
 
 /** Cap the slash popover's rendered rows (bounded-by-default). */
 export const COMPOSER_SLASH_RESULTS_CAP = 12;
@@ -559,12 +566,28 @@ function ComposerThinkingControls({
   locked,
   providers,
   selection,
+  showExpert,
+  requiredRoles,
+  requiredRoleLabels,
+  overrides,
+  fallbacks,
   onSelectSelection,
+  onChangeOverrides,
+  onChangeFallbacks,
 }: {
   locked: boolean;
   providers: readonly ProviderCatalogRecord[];
   selection: ProviderCatalogSelection | null;
+  showExpert: boolean;
+  requiredRoles: readonly string[];
+  requiredRoleLabels: Readonly<Record<string, string>>;
+  overrides: Readonly<Record<string, ProviderCatalogSelection>>;
+  fallbacks: readonly ProviderCatalogSelection[];
   onSelectSelection: (selection: ProviderCatalogSelection | null) => void;
+  onChangeOverrides: (
+    overrides: Readonly<Record<string, ProviderCatalogSelection>>,
+  ) => void;
+  onChangeFallbacks: (fallbacks: readonly ProviderCatalogSelection[]) => void;
 }) {
   return (
     <div className="flex min-w-0 items-center gap-fg-1" data-composer-thinking>
@@ -574,6 +597,19 @@ function ComposerThinkingControls({
         onSelectSelection={onSelectSelection}
         locked={locked}
       />
+      {showExpert && (
+        <ComposerExpertSelection
+          requiredRoles={requiredRoles}
+          requiredRoleLabels={requiredRoleLabels}
+          providers={providers}
+          selection={selection}
+          overrides={overrides}
+          fallbacks={fallbacks}
+          onChangeOverrides={onChangeOverrides}
+          onChangeFallbacks={onChangeFallbacks}
+          locked={locked}
+        />
+      )}
     </div>
   );
 }
@@ -765,12 +801,21 @@ export function Composer() {
       ? null
       : (teamSelector.presets.find((preset) => preset.id === selectedTeamPreset) ??
         null);
+  const requiredRoles = activePreset?.required_roles ?? EMPTY_REQUIRED_ROLES;
+  const requiredRoleLabels =
+    activePreset?.required_role_labels ?? EMPTY_REQUIRED_ROLE_LABELS;
   const providerCatalog = useProviderCatalog(scope, { enabled: teamMode });
   const providers = teamMode ? (providerCatalog.data?.providers ?? []) : [];
   const [selectedCatalogSelection, setSelectedCatalogSelection] =
     useState<ProviderCatalogSelection | null>(null);
+  const [roleOverrides, setRoleOverrides] = useState<
+    Readonly<Record<string, ProviderCatalogSelection>>
+  >({});
+  const [fallbacks, setFallbacks] = useState<readonly ProviderCatalogSelection[]>([]);
   useEffect(() => {
     setSelectedCatalogSelection(null);
+    setRoleOverrides({});
+    setFallbacks([]);
   }, [scope, selectedTeamPreset]);
   // A retained browser selection is meaningful only while the same provider lane,
   // catalog revision, entry and native options remain served and selectable.
@@ -788,6 +833,29 @@ export function Composer() {
       setSelectedCatalogSelection(null);
     }
   }, [runSelection, selectedCatalogSelection]);
+  const reconciledExpertSelections = useMemo(
+    () =>
+      reconcileExpertSelections({
+        requiredRoles,
+        providers,
+        overrides: roleOverrides,
+        fallbacks,
+      }),
+    [fallbacks, providers, requiredRoles, roleOverrides],
+  );
+  // A refreshed catalog or a switched preset can revoke a retained expert choice.
+  // Keep the browser state aligned before the start mutation sees it; the server
+  // remains the final admission authority for the supplied current references.
+  useEffect(() => {
+    if (roleOverrides !== reconciledExpertSelections.overrides) {
+      setRoleOverrides(reconciledExpertSelections.overrides);
+    }
+    if (fallbacks !== reconciledExpertSelections.fallbacks) {
+      setFallbacks(reconciledExpertSelections.fallbacks);
+    }
+  }, [fallbacks, reconciledExpertSelections, roleOverrides]);
+  const runOverrides = reconciledExpertSelections.overrides;
+  const runFallbacks = reconciledExpertSelections.fallbacks;
 
   // S44 — the CORNERSTONE feature binding. Which presets need one is SERVED
   // (`authoring_capability`), the default comes from the open document, and the
@@ -1026,6 +1094,8 @@ export function Composer() {
         message: prompt,
         expected_scope: scope,
         selection: runSelection,
+        ...(Object.keys(runOverrides).length === 0 ? {} : { overrides: runOverrides }),
+        ...(runFallbacks.length === 0 ? {} : { fallbacks: runFallbacks }),
         title: sessionTitleFromPrompt(prompt),
         ...(runFeatureTag === null ? {} : { feature_tag: runFeatureTag }),
       });
@@ -1285,7 +1355,14 @@ export function Composer() {
               locked={activeRun !== null || teamRunActive || startTeamRun.isPending}
               providers={providers}
               selection={runSelection}
+              showExpert={teamMode}
+              requiredRoles={requiredRoles}
+              requiredRoleLabels={requiredRoleLabels}
+              overrides={runOverrides}
+              fallbacks={runFallbacks}
               onSelectSelection={setSelectedCatalogSelection}
+              onChangeOverrides={setRoleOverrides}
+              onChangeFallbacks={setFallbacks}
             />
             {/* The RUN SLOT (D10, C6): nothing at idle — Enter sends and Enter
               starts a team run; there is no send or start button to drift from

@@ -144,6 +144,16 @@ export const AGENT_MESSAGE_POLICY = {
   // Non-actionable unavailability reasons ride the `status` role, mirroring the
   // `common:disabledReasons.*` precedent (nothing the operator can do yet).
   "common:agent.composer.modelUnavailable": { role: "status" },
+  "common:agent.composer.advancedSelection": { role: "label" },
+  "common:agent.composer.advancedSelectionDescription": { role: "description" },
+  "common:agent.composer.roleOverrides": { role: "label" },
+  "common:agent.composer.roleOverride": { role: "accessibility" },
+  "common:agent.composer.noRoleOverrides": { role: "status" },
+  "common:agent.composer.roleOrdinal": { role: "label" },
+  "common:agent.composer.fallbacks": { role: "label" },
+  "common:agent.composer.addFallback": { role: "action" },
+  "common:agent.composer.removeFallback": { role: "accessibility" },
+  "common:agent.composer.fallbackOrdinal": { role: "label" },
   "common:agent.composer.team": { role: "label" },
   "common:agent.composer.teamDefault": { role: "label" },
   "common:agent.composer.teamUnset": { role: "label" },
