@@ -125,6 +125,13 @@ pub(super) fn validate_catalog_selection_reference(
     field: &str,
     selection: &CatalogSelectionReference,
 ) -> Result<(), (StatusCode, Json<Value>)> {
+    if selection.schema_version != 1 {
+        return Err(crate::routes::api_error(
+            state,
+            StatusCode::BAD_REQUEST,
+            format!("`{field}.schema_version` must be the admitted version 1"),
+        ));
+    }
     validate_opaque_catalog_value(
         state,
         &format!("{field}.provider_id"),

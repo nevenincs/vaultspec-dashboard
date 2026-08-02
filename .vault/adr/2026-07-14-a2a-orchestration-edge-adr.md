@@ -238,6 +238,37 @@ namespace — it is orchestration control only.
 > with no line-safety rule, so the answer posture refused prompts the
 > sibling accepts and stranded the user on a parked run.
 
+> **Amendment (2026-08-02, run-start selection becomes
+> optional-until-served — owner-directed ruling, relayed by the review
+> router):** the brokered `run-start` had come to REQUIRE an A2A-served
+> catalog `selection` while the sibling's extra-forbid `RunStartRequest`
+> admits no such field and `/v1/provider-catalog` (whitelisted, engine
+> `12f7de9796`) is not yet served — so no run could start through an
+> engine built from current main in either direction (evidence:
+> `2026-08-02-a2a-orchestration-edge-provider-catalog-inversion-audit`).
+> This relaxation is the RESTORATION of producer-first, not a tolerated
+> violation of it: the rule exists so a consumer never demands what no
+> producer serves, and the mandatory selection was the engine enforcing a
+> future contract against the present sibling. The relaxed contract:
+> `selection` is OPTIONAL on brokered run-start; when absent, the
+> forwarded body carries no selection-shaped key at all (never a null,
+> never an empty object) — the only body the deployed sibling accepts;
+> when present, it is validated exactly as before and forwarded, so the
+> catalog consumer stack stays intact for the moment its producer lands.
+> Orphan `overrides`/`fallbacks` without a `selection` are refused: they
+> modify a whole-team selection that is not there. Landing with the fix,
+> not after it, is the conformance pin
+> (`run_start_forwards_only_keys_the_sibling_schema_admits`): every
+> forwarded run-start key must be in the sibling's pinned
+> `RunStartRequest` field list, with the selection keys deliberately
+> absent until served — extending that list is a reviewed
+> cross-repository contract event, never a local edit. **SUNSET:**
+> `selection` becomes mandatory again in ONE reviewed event when the
+> sibling BOTH serves the catalog read AND admits the selection fields on
+> run-start (the provider-model-catalog record's producer milestones,
+> a2a vault); the reversal re-tightens `validate.rs` and moves the three
+> selection keys into the pinned admitted list together.
+
 **D2 — Actors and tokens are provisioned by the engine at run start.** The
 brokered `run-start` verb is the provisioning moment: the engine registers (or
 re-resolves) one agent actor per pipeline role in the run (researcher,

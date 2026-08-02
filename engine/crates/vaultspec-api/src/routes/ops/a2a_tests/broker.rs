@@ -357,9 +357,31 @@ fn build_run_start_validates_and_omits_actor_tokens() {
         StatusCode::BAD_REQUEST
     );
 
-    // A required selection is the replacement for the retired profile id. The
-    // Rust edge verifies only bounded shape; A2A verifies that this reference
-    // was actually served by the selected provider lane and remains current.
+    // TRANSITIONAL, optional-until-served: a start WITHOUT a selection is
+    // admitted and forwards NO selection-shaped key at all — the only start
+    // the sibling's current extra-forbid schema accepts. Overrides or
+    // fallbacks without a selection stay refused: they modify a whole-team
+    // selection that is not there.
+    let bare = build_forwarded_call(
+        &state,
+        "run-start",
+        &cell,
+        &A2aVerbBody {
+            expected_scope: Some(crate::routes::scope_token(&cell.root)),
+            run_id: Some("run-missing-selection".to_string()),
+            team_preset: Some("p".to_string()),
+            message: Some("x".to_string()),
+            ..Default::default()
+        },
+    )
+    .expect("a selection-less start is the only start the sibling accepts today");
+    let bare_body = bare.body.expect("run-start builds a body");
+    for absent in ["selection", "overrides", "fallbacks"] {
+        assert!(
+            bare_body.get(absent).is_none(),
+            "an absent {absent} forwards no key — not a null and not an empty object"
+        );
+    }
     assert_eq!(
         build_forwarded_call(
             &state,
@@ -367,9 +389,12 @@ fn build_run_start_validates_and_omits_actor_tokens() {
             &cell,
             &A2aVerbBody {
                 expected_scope: Some(crate::routes::scope_token(&cell.root)),
-                run_id: Some("run-missing-selection".to_string()),
+                run_id: Some("run-orphan-overrides".to_string()),
                 team_preset: Some("p".to_string()),
                 message: Some("x".to_string()),
+                overrides: Some(
+                    std::iter::once(("role-a".to_string(), served_catalog_selection())).collect()
+                ),
                 ..Default::default()
             }
         )
@@ -377,6 +402,61 @@ fn build_run_start_validates_and_omits_actor_tokens() {
         .0,
         StatusCode::BAD_REQUEST
     );
+}
+
+#[test]
+fn run_start_forwards_only_keys_the_sibling_schema_admits() {
+    // The agreement pin whose absence let a mandatory field ship against an
+    // extra-forbid consumer. The admitted set is the sibling's
+    // `RunStartRequest` field list (a2a `api/schemas/gateway.py`,
+    // `model_config = ConfigDict(extra="forbid")`): a forwarded key outside it
+    // is refused wholesale by the sibling, so run-start would be broken for
+    // every caller — the failure must land here, in a test, first.
+    // `selection`/`overrides`/`fallbacks` are DELIBERATELY absent from this
+    // list until the sibling's provider-catalog producer serves them; adding
+    // a key here is a reviewed cross-repository contract event, not a local
+    // edit.
+    const SIBLING_ADMITTED_RUN_START_KEYS: &[&str] = &[
+        "stage",
+        "reservation_id",
+        "team_preset",
+        "message",
+        "actor_tokens",
+        "metadata",
+        "autonomous",
+        "title",
+        "feature_tag",
+        "run_id",
+        "profile_id",
+        "feedback_batch_id",
+    ];
+
+    let (_dir, state) = test_state();
+    let cell = state.active_cell();
+    let call = build_forwarded_call(
+        &state,
+        "run-start",
+        &cell,
+        &A2aVerbBody {
+            expected_scope: Some(crate::routes::scope_token(&cell.root)),
+            run_id: Some("run-admitted-keys".to_string()),
+            team_preset: Some("p".to_string()),
+            message: Some("x".to_string()),
+            feature_tag: Some("f".to_string()),
+            title: Some("t".to_string()),
+            autonomous: Some(true),
+            ..Default::default()
+        },
+    )
+    .expect("a fully-populated selection-less start builds");
+    let body = call.body.expect("run-start builds a body");
+    for key in body.as_object().expect("object body").keys() {
+        assert!(
+            SIBLING_ADMITTED_RUN_START_KEYS.contains(&key.as_str()),
+            "forwarded run-start key `{key}` is not admitted by the sibling's \
+             extra-forbid RunStartRequest — the sibling refuses the whole body"
+        );
+    }
 }
 
 #[test]
