@@ -21,6 +21,7 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { liveScope, liveTransport } from "../../testing/liveClient";
 import { engineClient } from "./engine";
+import { dispatchOps } from "./opsActions";
 import { unwrapEnvelope } from "./liveAdapters";
 import { queryClient } from "./queryClient";
 import { engineKeys } from "./queries";
@@ -65,13 +66,23 @@ import {
   useRagJobs,
   useRagProjects,
   useRagReadiness,
+  useRagSearchActivity,
   useRagServiceState,
   useRagWatcher,
+  RAG_SEARCH_ACTIVITY_LIMIT_CAP,
+  RAG_SEARCH_ACTIVITY_LIMIT_DEFAULT,
+  RAG_SEARCH_ACTIVITY_ROWS_CAP,
+  RAG_SEARCH_QUERY_MAX_CHARS,
+  boundedRagSearchActivityLimit,
+  interpretRagQuiesce,
+  interpretRagSearchActivity,
+  normalizeRagSearchActivityRecord,
   type BrokeredResult,
   type RagJobsSnapshot,
   type RagLogsEnvelope,
   type RagProjectsState,
   type RagProjectSlot,
+  type RagSearchActivityEnvelope,
 } from "./ragControl";
 import { ENGINE_WAIT } from "../../testing/timing";
 
@@ -876,6 +887,149 @@ describe("rag job interpreters", () => {
   });
 });
 
+// --- service quiesce + served-search interpreters (pure) --------------------------
+
+const AVAILABLE_TIERS = { semantic: { available: true } };
+const DEGRADED_TIERS = { semantic: { available: false, reason: "down" } };
+
+function jobsWithQuiesce(
+  state: string | undefined,
+  failure_reason: string | null = null,
+): BrokeredResult<RagJobsSnapshot> {
+  return {
+    envelope: {
+      jobs: [],
+      ...(state !== undefined ? { quiesce: { state, failure_reason } } : {}),
+    },
+    tiers: AVAILABLE_TIERS,
+  };
+}
+
+describe("rag service quiesce interpreter", () => {
+  it("maps rag's quiesce lifecycle onto the pause words", () => {
+    expect(interpretRagQuiesce(jobsWithQuiesce("running"))).toMatchObject({
+      word: "running",
+      paused: false,
+      transitional: false,
+      failed: false,
+    });
+    expect(interpretRagQuiesce(jobsWithQuiesce("pausing"))).toMatchObject({
+      word: "pausing",
+      transitional: true,
+    });
+    expect(interpretRagQuiesce(jobsWithQuiesce("quiesced"))).toMatchObject({
+      word: "paused",
+      paused: true,
+      transitional: false,
+    });
+    expect(interpretRagQuiesce(jobsWithQuiesce("warming"))).toMatchObject({
+      word: "resuming",
+      transitional: true,
+    });
+  });
+
+  it("yields unknown for an absent or unrecognized quiesce block", () => {
+    expect(interpretRagQuiesce(jobsWithQuiesce(undefined)).word).toBe("unknown");
+    expect(interpretRagQuiesce(jobsWithQuiesce("mystery")).word).toBe("unknown");
+    expect(interpretRagQuiesce(undefined).word).toBe("unknown");
+  });
+
+  it("surfaces a failed transition and reads offline from tiers only", () => {
+    expect(
+      interpretRagQuiesce(jobsWithQuiesce("pausing", "drain timed out")),
+    ).toMatchObject({ failed: true });
+    const offline = interpretRagQuiesce({
+      envelope: { jobs: [], quiesce: { state: "quiesced" } },
+      tiers: DEGRADED_TIERS,
+    });
+    expect(offline.semanticOffline).toBe(true);
+    // A stale envelope behind a degraded tier never asserts a pause word.
+    expect(offline.word).toBe("unknown");
+  });
+});
+
+describe("served-search activity interpreters", () => {
+  it("clamps the requested row window, defaulting a bad value", () => {
+    expect(boundedRagSearchActivityLimit(undefined)).toBe(
+      RAG_SEARCH_ACTIVITY_LIMIT_DEFAULT,
+    );
+    expect(boundedRagSearchActivityLimit(0)).toBe(1);
+    expect(boundedRagSearchActivityLimit(" 12 ")).toBe(12);
+    expect(boundedRagSearchActivityLimit(Number.NaN)).toBe(
+      RAG_SEARCH_ACTIVITY_LIMIT_DEFAULT,
+    );
+    expect(boundedRagSearchActivityLimit(RAG_SEARCH_ACTIVITY_LIMIT_CAP + 50)).toBe(
+      RAG_SEARCH_ACTIVITY_LIMIT_CAP,
+    );
+  });
+
+  it("normalizes a served-search record, dropping malformed rows and bounding text", () => {
+    expect(normalizeRagSearchActivityRecord(null)).toBeNull();
+    expect(normalizeRagSearchActivityRecord({ state: "terminal" })).toBeNull();
+    const record = normalizeRagSearchActivityRecord({
+      request_id: " r-1 ",
+      state: "terminal",
+      type: "code",
+      root: "Y:/repo",
+      query: `q${"x".repeat(RAG_SEARCH_QUERY_MAX_CHARS + 100)}`,
+      outcome: "success",
+      result_count: 10,
+      total_seconds: 0.9,
+      started_at: 100,
+      finished_at: 101,
+      error_message: 42,
+    });
+    expect(record).toMatchObject({
+      request_id: "r-1",
+      state: "terminal",
+      type: "code",
+      outcome: "success",
+      result_count: 10,
+    });
+    expect(record?.query?.length).toBe(RAG_SEARCH_QUERY_MAX_CHARS);
+    expect(record?.error_message).toBeUndefined();
+  });
+
+  it("interprets the ledger with backend-served counts, never re-counted", () => {
+    const envelope: RagSearchActivityEnvelope = {
+      active: [{ request_id: "a-1", state: "active" }],
+      recent: [
+        { request_id: "r-1", state: "terminal", outcome: "success" },
+        { bad: true },
+      ],
+      counts: { active: 3, recent: 500, total: 503 },
+      returned: 2,
+    };
+    const view = interpretRagSearchActivity({ envelope, tiers: AVAILABLE_TIERS });
+    expect(view.active.map((r) => r.request_id)).toEqual(["a-1"]);
+    expect(view.recent.map((r) => r.request_id)).toEqual(["r-1"]);
+    // The ledger-side counts pass through verbatim (the full retained set).
+    expect(view.activeCount).toBe(3);
+    expect(view.totalCount).toBe(503);
+    expect(view.semanticOffline).toBe(false);
+  });
+
+  it("caps rendered rows per lane and holds an empty offline view", () => {
+    const overflow = Array.from(
+      { length: RAG_SEARCH_ACTIVITY_ROWS_CAP + 25 },
+      (_, index) => ({ request_id: `r-${index}` }),
+    );
+    const view = interpretRagSearchActivity({
+      envelope: { recent: overflow },
+      tiers: AVAILABLE_TIERS,
+    });
+    expect(view.recent.length).toBe(RAG_SEARCH_ACTIVITY_ROWS_CAP);
+
+    const offline = interpretRagSearchActivity({
+      envelope: { recent: overflow },
+      tiers: DEGRADED_TIERS,
+    });
+    expect(offline.semanticOffline).toBe(true);
+    expect(offline.recent).toEqual([]);
+    expect(offline.totalCount).toBe(0);
+  });
+});
+
 // --- live broker reads (real engine) ----------------------------------------------
 
 function wrapper({ children }: { children: React.ReactNode }) {
@@ -960,6 +1114,61 @@ describe("rag control plane (real engine broker)", () => {
       if (line.level !== undefined) {
         expect(["debug", "info", "warning", "error", "critical"]).toContain(line.level);
       }
+    }
+  });
+
+  it("reads the served-search ledger through the broker into the two-lane view", async () => {
+    const { result } = renderHook(
+      () => useRagSearchActivity(scope, { limit: 10, enabled: true }),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current.pending).toBe(false), ENGINE_WAIT);
+    // The broker contract holds: a settled view either carries bounded lanes
+    // (rag up) or reports offline (rag down) — never a throw.
+    expect(Array.isArray(result.current.active)).toBe(true);
+    expect(Array.isArray(result.current.recent)).toBe(true);
+    expect(result.current.recent.length).toBeLessThanOrEqual(
+      RAG_SEARCH_ACTIVITY_ROWS_CAP,
+    );
+    if (!result.current.semanticOffline) {
+      // Ledger counts are served numbers over the full retained set.
+      expect(result.current.totalCount).toBeGreaterThanOrEqual(
+        result.current.recent.length,
+      );
+      for (const row of result.current.recent) {
+        expect(row.request_id.length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("reaches the machine service through the brokered resume verb without a hold", async () => {
+    // The quiesce WIRE proof that is safe to automate. A pause opens a hold
+    // window on the ONE shared machine service, and during that window any
+    // concurrent CLI search can bind a borrower GPU lease — after which a
+    // capability-less resume is refused (`borrower_lease_required`) until the
+    // borrower finishes. Observed live: an automated pause round-trip races
+    // that lease and can leave the shared service held. So the suite proves
+    // the verb PATH with the idempotent no-op — `resume` on a running service
+    // answers `already_running` and transitions nothing — while the full
+    // pause→resume round-trip stays a supervised demonstration.
+    const before = interpretRagQuiesce(
+      await engineClient.opsRagGet<RagJobsSnapshot>("jobs", { limit: 1 }),
+    );
+    const released = await dispatchOps({ target: "rag", verb: "resume" });
+    if (before.semanticOffline) {
+      // rag down: the verb resolves through the broker's degradation contract
+      // (null envelope + degraded tiers), never a throw.
+      expect(released.envelope ?? null).toBeNull();
+      return;
+    }
+    // rag answered the quiesce verb itself: a status word and a snapshot,
+    // proving the brokered route reaches the daemon's own control plane.
+    expect(released.envelope).not.toBeNull();
+    const envelope = released.envelope as Record<string, unknown>;
+    expect(typeof envelope.status).toBe("string");
+    if (before.word === "running") {
+      // rag's transition vocabulary for the no-op release, observed live.
+      expect(["running", "already_running"]).toContain(envelope.status);
     }
   });
 });

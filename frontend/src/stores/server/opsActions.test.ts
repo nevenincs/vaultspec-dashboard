@@ -110,6 +110,19 @@ describe("ops dispatch adoption (B-1)", () => {
       }),
     ).toBe(true);
     expect(isOpsDispatchIntent({ target: "rag", verb: "server-start" })).toBe(true);
+    // The quiesce pair is argument-free: an empty body dispatches, any body refuses.
+    expect(isOpsDispatchIntent({ target: "rag", verb: "pause" })).toBe(true);
+    expect(isOpsDispatchIntent({ target: "rag", verb: "resume", body: {} })).toBe(true);
+    expect(
+      isOpsDispatchIntent({ target: "rag", verb: "pause", body: { force: true } }),
+    ).toBe(false);
+    expect(
+      isOpsDispatchIntent({
+        target: "rag",
+        verb: "resume",
+        body: { borrower_capability: "x" },
+      }),
+    ).toBe(false);
     // server-start carries an optional bounded start-flag body (D5 arg pass-through).
     expect(
       isOpsDispatchIntent({

@@ -117,6 +117,10 @@ const OPS_RAG_CONTROL_VERBS = new Set([
   "watcher-stop",
   "watcher-reconfigure",
   "project-evict",
+  // Service quiesce: hold the running daemon at safe checkpoints / release the
+  // hold. Argument-free and idempotent on the service side.
+  "pause",
+  "resume",
 ]);
 
 const OPS_CORE_ARCHIVE_VERB = "feature-archive";
@@ -239,7 +243,9 @@ function isOpsRagControlBodyForVerb(verb: string, body: unknown): boolean {
     verb === "server-doctor" ||
     verb === "server-install" ||
     verb === "watcher-start" ||
-    verb === "watcher-stop"
+    verb === "watcher-stop" ||
+    verb === "pause" ||
+    verb === "resume"
   ) {
     return isEmptyOpsBody(body);
   }

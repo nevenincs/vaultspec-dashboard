@@ -79,6 +79,20 @@ export interface RagJobsSnapshot {
   total?: number;
   returned?: number;
   summary?: { running?: number; phases?: Record<string, number> };
+  /** The service-quiesce (pause) block rag stamps on every jobs snapshot. */
+  quiesce?: RagQuiesceBlock;
+}
+
+/** rag's service-quiesce block, forwarded verbatim on the `/jobs` snapshot: the
+ *  pause lifecycle (`running` | `pausing` | `quiesced` | `warming`) plus its
+ *  transition timestamps. Tolerant — every field optional. */
+export interface RagQuiesceBlock {
+  state?: string;
+  admissions_open?: boolean;
+  pause_requested_at?: number | null;
+  quiesced_at?: number | null;
+  warming_started_at?: number | null;
+  failure_reason?: string | null;
 }
 
 export interface RagWatcherState {
@@ -184,6 +198,42 @@ export interface RagCollectionHealthEnvelope {
   };
 }
 
+// --- served-search activity (the query half of the one activity surface) -------
+//
+// rag's `/search-activity` ledger reports the searches the service has SERVED —
+// active and recent, each with state/type/root/query/outcome/timing. Together
+// with `/jobs` (the index half) it makes the one activity panel: rag's own watch
+// interface presents exactly these two lanes. The ledger is bounded on rag's
+// side and the broker bounds the request besides; the reader below re-bounds
+// rows and text so a shape drift can never grow the view unboundedly.
+
+/** One served-search record (tolerant: only `request_id` is required). */
+export interface RagSearchActivityRecord {
+  request_id: string;
+  /** `active` | `terminal` (rag's ledger state). */
+  state?: string;
+  /** The searched index: `vault` | `code` | ... (rag's vocabulary). */
+  type?: string;
+  root?: string;
+  query?: string;
+  /** `success` | an error word, present once terminal. */
+  outcome?: string;
+  result_count?: number;
+  total_seconds?: number;
+  started_at?: number;
+  finished_at?: number;
+  error_message?: string;
+}
+
+/** rag's `/search-activity` envelope, forwarded verbatim by the broker. */
+export interface RagSearchActivityEnvelope {
+  active?: unknown[];
+  recent?: unknown[];
+  /** Ledger-side counts over the FULL retained set (never re-counted here). */
+  counts?: { active?: number; recent?: number; total?: number };
+  returned?: number;
+}
+
 /** The unwrapped brokered result: rag's value (or null when degraded) + tiers. */
 export interface BrokeredResult<T> {
   envelope: T | null;
@@ -285,6 +335,13 @@ export const ragControlKeys = {
     [...ragControlKeys.all, "readiness", normalizeRagControlKeyPart(scope)] as const,
   opsState: (scope: unknown) =>
     [...ragControlKeys.all, "ops-state", normalizeRagControlKeyPart(scope)] as const,
+  searchActivity: (scope: unknown, limit: unknown) =>
+    [
+      ...ragControlKeys.all,
+      "search-activity",
+      normalizeRagControlKeyPart(scope),
+      String(boundedRagSearchActivityLimit(limit)),
+    ] as const,
   collectionHealth: (scope: unknown, collection: unknown) =>
     [
       ...ragControlKeys.all,
@@ -672,6 +729,155 @@ export function interpretJobProgress(
   };
 }
 
+// --- service quiesce (pause / resume) ------------------------------------------
+//
+// rag's pause is a QUIESCE HOLD, never a stop: admissions close and in-flight
+// work drains to a safe checkpoint while the daemon stays alive and reachable;
+// resume releases the hold. The hold's lifecycle rides the `/jobs` snapshot's
+// `quiesce` block, so the pause STATE costs no dedicated read. Both verbs are
+// idempotent on the service side and MACHINE-GLOBAL — a hold affects every
+// consumer of the one machine service, which the control's copy must say.
+
+/** The interpreted hold state. rag's `quiesced` renders as paused and its
+ *  `warming` as resuming; an absent/unrecognized block yields `unknown`. */
+export type RagQuiesceWord = "running" | "pausing" | "paused" | "resuming" | "unknown";
+
+export interface RagQuiesceView {
+  word: RagQuiesceWord;
+  paused: boolean;
+  /** A hold transition is in flight (pausing or resuming) — poll stays warm. */
+  transitional: boolean;
+  /** rag reported the transition failed (verbatim reason withheld from screen). */
+  failed: boolean;
+  semanticOffline: boolean;
+}
+
+const QUIESCE_WORDS: Record<string, RagQuiesceWord> = {
+  running: "running",
+  pausing: "pausing",
+  quiesced: "paused",
+  warming: "resuming",
+};
+
+export function interpretRagQuiesce(
+  data: BrokeredResult<RagJobsSnapshot> | undefined,
+): RagQuiesceView {
+  const semanticOffline = ragSemanticOffline(data);
+  const block = semanticOffline ? undefined : data?.envelope?.quiesce;
+  const raw = typeof block?.state === "string" ? block.state.toLowerCase() : "";
+  const word = QUIESCE_WORDS[raw] ?? "unknown";
+  return {
+    word,
+    paused: word === "paused",
+    transitional: word === "pausing" || word === "resuming",
+    failed:
+      typeof block?.failure_reason === "string" && block.failure_reason.length > 0,
+    semanticOffline,
+  };
+}
+
+// --- served-search activity interpreters ---------------------------------------
+
+export const RAG_SEARCH_ACTIVITY_LIMIT_CAP = 100;
+export const RAG_SEARCH_ACTIVITY_LIMIT_DEFAULT = 25;
+/** Hard ceiling on rendered rows per lane regardless of the served count, and on
+ *  each row's query text (defence in depth over the server clamp). */
+export const RAG_SEARCH_ACTIVITY_ROWS_CAP = RAG_SEARCH_ACTIVITY_LIMIT_CAP;
+export const RAG_SEARCH_QUERY_MAX_CHARS = 512;
+
+export function boundedRagSearchActivityLimit(limit: unknown): number {
+  const parsed =
+    typeof limit === "number"
+      ? limit
+      : typeof limit === "string" && limit.trim() !== ""
+        ? Number(limit)
+        : Number.NaN;
+  if (!Number.isFinite(parsed)) return RAG_SEARCH_ACTIVITY_LIMIT_DEFAULT;
+  return Math.max(1, Math.min(RAG_SEARCH_ACTIVITY_LIMIT_CAP, Math.floor(parsed)));
+}
+
+function normalizeRagSearchQueryText(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim();
+  if (normalized.length === 0) return undefined;
+  return normalized.length > RAG_SEARCH_QUERY_MAX_CHARS
+    ? normalized.slice(0, RAG_SEARCH_QUERY_MAX_CHARS)
+    : normalized;
+}
+
+export function normalizeRagSearchActivityRecord(
+  record: unknown,
+): RagSearchActivityRecord | null {
+  if (record === null || typeof record !== "object") return null;
+  const candidate = record as Record<string, unknown>;
+  const request_id = normalizeRagJobText(candidate.request_id);
+  if (request_id === undefined) return null;
+  const text = (value: unknown) => normalizeRagJobText(value);
+  const num = (value: unknown) => normalizeRagJobNumber(value);
+  const state = text(candidate.state);
+  const type = text(candidate.type);
+  const root = text(candidate.root);
+  const query = normalizeRagSearchQueryText(candidate.query);
+  const outcome = text(candidate.outcome);
+  const error_message = normalizeRagSearchQueryText(candidate.error_message);
+  const result_count = num(candidate.result_count);
+  const total_seconds = num(candidate.total_seconds);
+  const started_at = num(candidate.started_at);
+  const finished_at = num(candidate.finished_at);
+  return {
+    request_id,
+    ...(state !== undefined ? { state } : {}),
+    ...(type !== undefined ? { type } : {}),
+    ...(root !== undefined ? { root } : {}),
+    ...(query !== undefined ? { query } : {}),
+    ...(outcome !== undefined ? { outcome } : {}),
+    ...(result_count !== undefined ? { result_count } : {}),
+    ...(total_seconds !== undefined ? { total_seconds } : {}),
+    ...(started_at !== undefined ? { started_at } : {}),
+    ...(finished_at !== undefined ? { finished_at } : {}),
+    ...(error_message !== undefined ? { error_message } : {}),
+  };
+}
+
+function normalizeRagSearchActivityLane(lane: unknown): RagSearchActivityRecord[] {
+  if (!Array.isArray(lane)) return [];
+  const rows: RagSearchActivityRecord[] = [];
+  for (const entry of lane) {
+    const normalized = normalizeRagSearchActivityRecord(entry);
+    if (normalized !== null) rows.push(normalized);
+    if (rows.length >= RAG_SEARCH_ACTIVITY_ROWS_CAP) break;
+  }
+  return rows;
+}
+
+/** The interpreted served-search view. Counts come from rag's ledger-side
+ *  `counts` block over the FULL retained set — never re-counted over the
+ *  returned slice (displayed state is backend-served). */
+export interface RagSearchActivityView {
+  active: RagSearchActivityRecord[];
+  recent: RagSearchActivityRecord[];
+  activeCount: number;
+  totalCount: number;
+  semanticOffline: boolean;
+}
+
+export function interpretRagSearchActivity(
+  data: BrokeredResult<RagSearchActivityEnvelope> | undefined,
+): RagSearchActivityView {
+  const semanticOffline = ragSemanticOffline(data);
+  const envelope = semanticOffline ? null : data?.envelope;
+  const active = normalizeRagSearchActivityLane(envelope?.active);
+  const recent = normalizeRagSearchActivityLane(envelope?.recent);
+  return {
+    active,
+    recent,
+    activeCount: normalizeRagJobNumber(envelope?.counts?.active) ?? active.length,
+    totalCount:
+      normalizeRagJobNumber(envelope?.counts?.total) ?? active.length + recent.length,
+    semanticOffline,
+  };
+}
+
 export function shouldAcceptRagJobReceipt({
   currentScope,
   requestScope,
@@ -812,6 +1018,7 @@ export function invalidateRagControlQueries(queryClient: QueryClient): void {
     "jobs",
     "projects",
     "watcher",
+    "search-activity",
   ] as const) {
     void queryClient.invalidateQueries({
       queryKey: [...ragControlKeys.all, family],
@@ -1012,6 +1219,92 @@ export function useRagJobProgress(scope: unknown, jobId: unknown): RagJobProgres
     enabled ? (query.data as BrokeredResult<RagJobsSnapshot> | undefined) : undefined,
     enabled ? normalizedJobId : null,
   );
+}
+
+/** The quiesce poll cadence while a hold transition (pausing/resuming) is in
+ *  flight — the drain settles in seconds, so a short bounded poll is honest;
+ *  a settled state stops the poll entirely. */
+export const RAG_QUIESCE_TRANSITION_POLL_MS = 2000;
+
+/**
+ * The service-hold state hook: a bounded `jobs` read (limit 1 — the quiesce
+ * block rides every jobs snapshot) interpreted into the pause lifecycle. Polls
+ * ONLY while a transition is in flight and rag is up (tiers-gated, never a
+ * transport guess); a settled running/paused state holds without polling.
+ */
+export function useRagQuiesce(scope: unknown): RagQuiesceView {
+  const normalizedScope = normalizeRagControlScope(scope);
+  const enabled = normalizedScope !== null;
+  const query = useQuery({
+    queryKey: ragControlKeys.jobs(normalizedScope ?? "", "quiesce"),
+    queryFn: ({ signal }) =>
+      engineClient.opsRagGet<RagJobsSnapshot>("jobs", { limit: 1 }, signal),
+    enabled,
+    gcTime: READ_GC_MS,
+    refetchInterval: (q) => {
+      const data = q.state.data as BrokeredResult<RagJobsSnapshot> | undefined;
+      if (ragSemanticOffline(data)) return false;
+      return interpretRagQuiesce(data).transitional
+        ? RAG_QUIESCE_TRANSITION_POLL_MS
+        : false;
+    },
+    refetchIntervalInBackground: false,
+  });
+  return interpretRagQuiesce(
+    enabled ? (query.data as BrokeredResult<RagJobsSnapshot> | undefined) : undefined,
+  );
+}
+
+/** The served-search poll cadence while the activity panel is open — the same
+ *  bounded steady interval as the log tail (a ledger never reaches a terminal
+ *  phase, so there is no backoff-to-done). */
+export const RAG_SEARCH_ACTIVITY_POLL_MS = 5000;
+
+export interface UseRagSearchActivityOptions {
+  /** The requested row window; clamped to `[1, CAP]`, defaulting to 25. */
+  limit?: unknown;
+  /** The panel-open gate: poll only while the activity panel consumes it. */
+  enabled?: boolean;
+}
+
+/**
+ * The bounded served-search activity hook: a mount-gated read of the brokered
+ * `/ops/rag/search-activity` ledger, polled on a steady bounded cadence ONLY
+ * while `enabled` and rag is up (tiers-gated stop, mirroring the log tail).
+ * No client accumulation — each render reflects the last served window.
+ */
+export function useRagSearchActivity(
+  scope: unknown,
+  options: UseRagSearchActivityOptions = {},
+): RagSearchActivityView & { pending: boolean } {
+  const normalizedScope = normalizeRagControlScope(scope);
+  const limit = boundedRagSearchActivityLimit(options.limit);
+  const active = normalizedScope !== null && options.enabled !== false;
+  const query = useQuery({
+    queryKey: ragControlKeys.searchActivity(normalizedScope ?? "", limit),
+    queryFn: ({ signal }) =>
+      engineClient.opsRagGet<RagSearchActivityEnvelope>(
+        "search-activity",
+        { limit },
+        signal,
+      ),
+    enabled: active,
+    gcTime: READ_GC_MS,
+    refetchInterval: (q) => {
+      const data = q.state.data as
+        | BrokeredResult<RagSearchActivityEnvelope>
+        | undefined;
+      if (ragSemanticOffline(data)) return false;
+      return RAG_SEARCH_ACTIVITY_POLL_MS;
+    },
+    refetchIntervalInBackground: false,
+  });
+  const data = active
+    ? (query.data as BrokeredResult<RagSearchActivityEnvelope> | undefined)
+    : undefined;
+  const view = useMemo(() => interpretRagSearchActivity(data), [data]);
+  const pending = active && query.isPending;
+  return useMemo(() => ({ ...view, pending }), [view, pending]);
 }
 
 /** A non-polling read of the recent jobs (for the activity list). */
@@ -1216,6 +1509,30 @@ export function useRagServiceStop(scope: unknown) {
   return useMutation({
     mutationFn: () => dispatchOps({ target: "rag", verb: "server-stop" }),
     onSuccess: () => invalidate("server-stop"),
+  });
+}
+
+/**
+ * Hold the ONE machine service at safe checkpoints (rag's quiesce). A hold,
+ * never a stop: the daemon stays alive and reachable, but admissions close for
+ * EVERY consumer on the machine until resume — the UI copy must say so. The
+ * settled state is read back through `useRagQuiesce` (the jobs snapshot's
+ * quiesce block), which the invalidation refreshes.
+ */
+export function useRagServicePause(scope: unknown) {
+  const invalidate = useInvalidateAfterRagOpsRun(scope);
+  return useMutation({
+    mutationFn: () => dispatchOps({ target: "rag", verb: "pause" }),
+    onSuccess: () => invalidate("pause"),
+  });
+}
+
+/** Release a held (paused) machine service. Idempotent like the hold. */
+export function useRagServiceResume(scope: unknown) {
+  const invalidate = useInvalidateAfterRagOpsRun(scope);
+  return useMutation({
+    mutationFn: () => dispatchOps({ target: "rag", verb: "resume" }),
+    onSuccess: () => invalidate("resume"),
   });
 }
 
