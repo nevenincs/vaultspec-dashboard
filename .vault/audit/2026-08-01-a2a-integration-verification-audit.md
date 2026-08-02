@@ -24,6 +24,25 @@ source code, and it does not assess the unstarted `W01.P01.S03` regression lock.
 
 ## Findings
 
+### deterministic-terminal-reconciliation | high | The S05 completion bundle is not approvable
+
+Manual inspection of the terminal bundle
+`w01-p02-s05-deterministic-research-adr:deterministic-completion-86bb85a9391b4eb5b911df58eda83d18`
+confirmed matching run identity, five manifest-backed artifacts, and materialized
+research and ADR outputs. Its terminal snapshot nevertheless reports
+`execution_readiness: needs_reconciliation`, `repair_status: needs_reconciliation`,
+`snapshot_complete: false`, and the degraded reason
+`terminal_thread_pending_permission_residue`.
+
+The approved integration ADR makes a fully reconciled, manually approved artifact
+a completion condition. A terminal `completed` status alone is therefore
+insufficient. This finding rejects the proposed `W01.P02.S31` approval and blocks
+downstream completion claims until the production terminal snapshot is reconciled,
+the deterministic scenario is rerun, and a fresh bundle receives a manual approving
+sign-off.
+
+Status: open as of 2026-08-02. No S31 approval has been recorded.
+
 ### body-attestation | medium | The S02 execution record carries a stale body hash
 
 `vaultspec-core vault check all` reports that the body of the uncommitted
