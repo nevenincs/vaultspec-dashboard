@@ -4,7 +4,7 @@
 
 import { expect, test } from "@playwright/test";
 
-import { startAgentHarness, type AgentHarness } from "./harness";
+import { startAgentHarness, stopA2a, type AgentHarness } from "./harness";
 
 let harness: AgentHarness;
 
@@ -86,4 +86,31 @@ test("S10: engine-origin attach serves presets, an available tier, and a run ide
   });
   const runEnvelope = runResponse.data?.envelope as { run_id?: unknown } | undefined;
   expect(runEnvelope?.run_id).toMatch(/^e2e-attach-[a-f0-9]+$/);
+});
+
+test("S11: engine-origin presets read degrades with a served reason after A2A stops", async () => {
+  await stopA2a(harness.a2a);
+
+  const response = await fetch(`${harness.engine.baseUrl}/ops/a2a/presets-list`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${harness.engine.token}`,
+      "content-type": "application/json",
+    },
+    body: "{}",
+  });
+  const raw = await response.text();
+  expect(
+    response.status,
+    `presets-list must report degraded HTTP 200 through the engine: ${raw}`,
+  ).toBe(200);
+
+  const degraded = JSON.parse(raw) as {
+    data?: { envelope?: unknown };
+    tiers?: { agent?: { available?: unknown; reason?: unknown } };
+  };
+  expect(degraded.data?.envelope).toBeNull();
+  expect(degraded.tiers?.agent?.available).toBe(false);
+  expect(typeof degraded.tiers?.agent?.reason).toBe("string");
+  expect((degraded.tiers?.agent?.reason as string).trim().length).toBeGreaterThan(0);
 });
