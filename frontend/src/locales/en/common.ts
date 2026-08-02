@@ -7,7 +7,7 @@ export const common = {
       data: "Available data",
     },
     labels: {
-      application: "Application",
+      application: "Vaultspec",
       documents: "Documents",
       history: "History",
       links: "Links",
@@ -16,7 +16,7 @@ export const common = {
     },
     programs: {
       app: {
-        name: "Application",
+        name: "Vaultspec",
         summary:
           "Reads your project and answers everything this window shows. Runs on your machine.",
       },
@@ -26,12 +26,12 @@ export const common = {
           "Run whenever the app needs to read or write the documents in your project.",
       },
       index: {
-        name: "Index",
+        name: "Search service",
         summary:
           "Keeps the search index up to date and answers lookups by meaning. Runs on its own.",
       },
       agents: {
-        name: "Agents",
+        name: "Agent service",
         summary: "Runs the writing agents. Installed and updated separately.",
       },
     },
@@ -300,7 +300,7 @@ export const common = {
       "Status and controls for the tools this app runs on. Everything here is for troubleshooting.",
     labels: {
       projectHealth: "Project health",
-      systemStatus: "System status",
+      systemStatus: "Services",
     },
     accessibility: {
       group: "Pending work",
@@ -458,6 +458,16 @@ export const common = {
       selectorDisabled: "{{selector}}: {{value}}. {{reason}}",
       model: "Model",
       modelUnavailable: "Using the default model.",
+      advancedSelection: "Advanced team model selection",
+      advancedSelectionDescription:
+        "Set optional per-role overrides and ordered fallbacks from this team’s current provider catalog.",
+      roleOverrides: "Role overrides",
+      roleOverride: "Override for {{role}}",
+      noRoleOverrides: "This team has no served roles to override.",
+      fallbacks: "Fallbacks",
+      addFallback: "Add fallback",
+      removeFallback: "Remove fallback {{index, number}}",
+      fallbackOrdinal: "Fallback {{index, number}}",
       team: "Team",
       teamDefault: "Single agent",
       teamUnset: "Select team",

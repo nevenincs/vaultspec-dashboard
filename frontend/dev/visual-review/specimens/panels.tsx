@@ -27,6 +27,8 @@ import {
 import { RagJobsTableBody } from "@app/app/panels/RagJobsTable";
 import { IndexConsoleHeader } from "@app/app/panels/IndexConsole";
 import { IndexLogTailBody } from "@app/app/panels/IndexLogTail";
+import { SearchActivityLaneBody } from "@app/app/panels/SearchActivityLane";
+import type { RagSearchActivityView } from "@app/stores/server/ragControl";
 import type { RagServiceIdentityView } from "@app/stores/server/ragServiceIdentity";
 import { BackendHealthPanelBody } from "@app/app/panels/BackendHealthPanel";
 import {
@@ -492,6 +494,68 @@ export const panelsSpecimens: Readonly<Record<string, SpecimenDef>> = {
           onDoctor={() => {}}
           onPause={() => {}}
           onResume={() => {}}
+        />
+      );
+    },
+  },
+
+  "panels-searchactivitylane": {
+    note: "Mounts the exported wire-free SearchActivityLaneBody directly — the QUERY half of the one activity panel, mirroring the service's own watch interface: state dot, the searched kind (Documents / Code), the verbatim query, the SERVED result count, and timing. The count chip is the ledger's own total over the full retained set (503 with two rows shown), never a re-count of the slice. States are authored views: loading is the read in flight, degraded is the tiers-read offline flag, empty is a reachable service that has served no searches.",
+    render: (state) => {
+      const base: RagSearchActivityView & { pending: boolean } = {
+        active: [],
+        recent: [],
+        activeCount: 0,
+        totalCount: 0,
+        semanticOffline: false,
+        pending: false,
+      };
+      if (state === "loading") {
+        return <SearchActivityLaneBody view={{ ...base, pending: true }} />;
+      }
+      if (state === "degraded") {
+        return <SearchActivityLaneBody view={{ ...base, semanticOffline: true }} />;
+      }
+      if (state === "empty") {
+        return <SearchActivityLaneBody view={base} />;
+      }
+      return (
+        <SearchActivityLaneBody
+          view={{
+            ...base,
+            active: [
+              {
+                request_id: "a-1",
+                state: "active",
+                type: "code",
+                query: "retry backoff around failed webhook delivery",
+              },
+            ],
+            recent: [
+              {
+                request_id: "r-1",
+                state: "terminal",
+                outcome: "success",
+                type: "vault",
+                query: "decision on gpu lock scope around the forward pass",
+                result_count: 10,
+                total_seconds: 0.99,
+                finished_at: Date.now() / 1000 - 22,
+              },
+              {
+                request_id: "r-2",
+                state: "terminal",
+                outcome: "unavailable",
+                type: "code",
+                query: "fixture setup helpers exclude:tests",
+                result_count: 0,
+                total_seconds: 4.2,
+                finished_at: Date.now() / 1000 - 95,
+              },
+            ],
+            activeCount: 1,
+            totalCount: 503,
+          }}
         />
       );
     },

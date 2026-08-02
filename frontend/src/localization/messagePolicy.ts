@@ -26,6 +26,8 @@ export type MessageRole =
 
 export const APPROVED_UI_TERMS = [
   "GitHub",
+  "Vaultspec",
+  "Qdrant",
   "Markdown",
   "JSON",
   "YAML",
