@@ -1150,6 +1150,30 @@ export const PROHIBITED_UI_TERMS: readonly ProhibitedUiTerm[] = Object.freeze([
   { id: "internal-package", pattern: /\bvaultspec-(?:core|rag)\b/iu },
 ]);
 
+/**
+ * Scoped NARROWINGS of the prohibited-term list — never deletions. Settings ▸
+ * Advanced is the troubleshooting home for the people operating the programs
+ * behind the app, and the owner asked for the running programs to be named
+ * what they are there ("Search Service"), so the word "service" is correct
+ * operator vocabulary WITHIN those catalog namespaces while remaining jargon
+ * in every user-facing surface. The term stays banned everywhere else, and no
+ * exemption exists for the package names or the other bounded internal terms —
+ * "Search Service" is the on-screen name, never the package.
+ */
+export const PROHIBITED_TERM_EXEMPTIONS: Readonly<Record<string, readonly string[]>> =
+  Object.freeze({
+    service: Object.freeze([
+      "operations:searchMaintenance.",
+      "common:systemStatus.",
+      "common:advanced.",
+    ]),
+  });
+
+function isProhibitedTermExempt(key: MessageKey, termId: string): boolean {
+  const prefixes = PROHIBITED_TERM_EXEMPTIONS[termId];
+  return prefixes !== undefined && prefixes.some((prefix) => key.startsWith(prefix));
+}
+
 export type MessagePolicyIssueCode =
   | "empty"
   | "too-long"
@@ -1426,7 +1450,9 @@ export function validateEnglishMessage(
   }
 
   for (const term of PROHIBITED_UI_TERMS) {
-    if (term.pattern.test(literalText)) issue(issues, "prohibited-term", term.id);
+    if (!term.pattern.test(literalText)) continue;
+    if (isProhibitedTermExempt(key, term.id)) continue;
+    issue(issues, "prohibited-term", term.id);
   }
 
   const approvedTerms = policy.allowedTerms ?? APPROVED_UI_TERMS;
