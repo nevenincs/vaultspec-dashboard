@@ -219,6 +219,19 @@ describe("IndexConsoleHeader", () => {
     expect(state.resumes()).toBe(1);
   });
 
+  it("keeps the resume verb while the status probe reports the held service down", () => {
+    // A quiesced daemon closes admissions, which degrades the status read —
+    // `running` flips false while the service is alive and HELD (observed
+    // live). The hold verbs key on the quiesce word: resume stays offered,
+    // start is not, and stop remains reachable.
+    const state = setup({ running: false, quiesceWord: "paused" });
+    expect(screen.queryByRole("button", { name: SM.actions.start })).toBeNull();
+    expect(screen.queryByRole("button", { name: SM.actions.pause })).toBeNull();
+    expect(screen.getByRole("button", { name: SM.actions.stop })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: SM.actions.resume }));
+    expect(state.resumes()).toBe(1);
+  });
+
   it("renders the authored held sentence when a resume was refused", () => {
     setup({ quiesceWord: "paused", resumeHeld: true });
     expect(document.body.textContent).toContain(SM.service.resumeHeld);

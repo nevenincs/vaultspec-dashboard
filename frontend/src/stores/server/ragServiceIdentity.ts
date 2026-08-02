@@ -88,6 +88,20 @@ function identityNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+/** A bare dotted version somewhere in a served version string. */
+const VERSION_TOKEN = /\d+(?:\.\d+){1,3}(?:[-+.][0-9A-Za-z.-]+)?/u;
+
+/** Reduce a served VERSION string to its version token. Provisioning serves the
+ *  installed version as "<package> v<semver>" — a literal that would put the
+ *  internal package identifier on screen (the labels law keeps it in source
+ *  only), so a version fact renders the VERSION and nothing else. A string with
+ *  no recognizable version token yields no fact rather than a leaked literal. */
+function identityVersion(value: unknown): string | null {
+  const text = identityText(value);
+  if (text === null) return null;
+  return VERSION_TOKEN.exec(text)?.[0] ?? null;
+}
+
 function block(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null
     ? (value as Record<string, unknown>)
@@ -111,13 +125,13 @@ export function deriveRagServiceIdentity(
   const view: RagServiceIdentityView = {
     port: identityNumber(ragBackend?.port),
     processId: identityNumber(ragBackend?.pid),
-    version: identityText(component?.version),
-    installedVersion: identityText(installedVersion),
-    requiredVersion: identityText(component?.floor),
+    version: identityVersion(component?.version),
+    installedVersion: identityVersion(installedVersion),
+    requiredVersion: identityVersion(component?.floor),
     storageMode: identityText(qdrant?.mode),
     storageEndpoint: identityText(qdrant?.url),
     storageProcessId: identityNumber(qdrant?.pid),
-    storageVersion: identityText(qdrant?.version),
+    storageVersion: identityVersion(qdrant?.version),
     storagePath: identityText(index?.storage_path),
     documents: identityNumber(index?.vault_count),
     code: identityNumber(index?.code_count),

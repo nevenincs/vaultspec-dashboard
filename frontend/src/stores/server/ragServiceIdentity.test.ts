@@ -37,6 +37,19 @@ describe("deriveRagServiceIdentity", () => {
     expect(JSON.stringify(view)).not.toContain("vaultspec-rag");
   });
 
+  it("reduces a served version literal to its version token, never the package name", () => {
+    // Provisioning serves "vaultspec-rag v0.4.1" — the internal package
+    // identifier must never reach a screen through a served literal
+    // (observed live, 2026-08-02). A version fact is the version alone; an
+    // unparseable literal is an absent fact, not a leaked one.
+    const view = deriveRagServiceIdentity(undefined, undefined, "vaultspec-rag v0.4.1");
+    expect(view.installedVersion).toBe("0.4.1");
+    expect(JSON.stringify(view)).not.toContain("vaultspec-rag");
+    expect(
+      deriveRagServiceIdentity(undefined, undefined, "not a version").installedVersion,
+    ).toBeNull();
+  });
+
   it("maps every served field from the handshake, the ops-state blocks, and provisioning", () => {
     const view = deriveRagServiceIdentity(
       { ...COMPONENT, version: "0.2.25" },
@@ -120,15 +133,18 @@ describe("deriveRagServiceIdentity", () => {
   });
 
   it("drops a served string that breaches the length bound", () => {
-    const overlong = "x".repeat(RAG_IDENTITY_TEXT_MAX_CHARS + 1);
-    const atBound = "y".repeat(RAG_IDENTITY_TEXT_MAX_CHARS);
+    // An overlong served literal is dropped BEFORE version-token extraction —
+    // the length bound guards the parse itself, so a pathological string never
+    // reaches the regex. A bounded version-bearing literal still yields its
+    // token.
+    const overlong = `0.2.25-${"x".repeat(RAG_IDENTITY_TEXT_MAX_CHARS)}`;
     const view = deriveRagServiceIdentity(
-      { name: "vaultspec-rag", floor: atBound, version: overlong },
+      { name: "vaultspec-rag", floor: "0.2.20", version: overlong },
       undefined,
       undefined,
     );
     expect(view.version).toBeNull();
-    expect(view.requiredVersion).toBe(atBound);
+    expect(view.requiredVersion).toBe("0.2.20");
   });
 
   it("keeps a served zero count as a fact, not as an absence", () => {

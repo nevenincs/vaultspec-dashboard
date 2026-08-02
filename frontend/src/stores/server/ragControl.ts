@@ -1221,16 +1221,20 @@ export function useRagJobProgress(scope: unknown, jobId: unknown): RagJobProgres
   );
 }
 
-/** The quiesce poll cadence while a hold transition (pausing/resuming) is in
- *  flight — the drain settles in seconds, so a short bounded poll is honest;
- *  a settled state stops the poll entirely. */
+/** The quiesce poll cadences: fast while a hold transition (pausing/resuming)
+ *  is in flight — the drain settles in seconds — and a steady bounded monitor
+ *  cadence otherwise. A settled-word-only poll was tried first and proved
+ *  blind live: a pause requested while the last read said `running` stopped
+ *  the poll, so the console never saw the hold it had just asked for. */
 export const RAG_QUIESCE_TRANSITION_POLL_MS = 2000;
+export const RAG_QUIESCE_POLL_MS = 5000;
 
 /**
  * The service-hold state hook: a bounded `jobs` read (limit 1 — the quiesce
- * block rides every jobs snapshot) interpreted into the pause lifecycle. Polls
- * ONLY while a transition is in flight and rag is up (tiers-gated, never a
- * transport guess); a settled running/paused state holds without polling.
+ * block rides every jobs snapshot) interpreted into the pause lifecycle.
+ * Mount-gated with the console that consumes it, polling on the steady monitor
+ * cadence (fast during transitions) while rag is up; a degraded read stops the
+ * poll and the view holds honestly (tiers-gated, never a transport guess).
  */
 export function useRagQuiesce(scope: unknown): RagQuiesceView {
   const normalizedScope = normalizeRagControlScope(scope);
@@ -1246,7 +1250,7 @@ export function useRagQuiesce(scope: unknown): RagQuiesceView {
       if (ragSemanticOffline(data)) return false;
       return interpretRagQuiesce(data).transitional
         ? RAG_QUIESCE_TRANSITION_POLL_MS
-        : false;
+        : RAG_QUIESCE_POLL_MS;
     },
     refetchIntervalInBackground: false,
   });

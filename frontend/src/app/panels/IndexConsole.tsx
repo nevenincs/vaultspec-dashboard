@@ -261,12 +261,15 @@ export function IndexConsoleHeader({
           <span className="flex-1" />
           {/* The lifecycle cluster: compact icon controls, one per SERVICE verb.
               The verb set follows the state — start when stopped; pause / stop /
-              restart while running; resume / stop while held. */}
+              restart while running; resume / stop while HELD. A held daemon is
+              alive even when the status probe reports requests unavailable
+              (observed live: a quiesced service degrades the status read), so
+              the hold verbs key on the quiesce word, never on `running`. */}
           <div
             className="flex shrink-0 items-center gap-fg-1"
             data-index-lifecycle-controls
           >
-            {!running && (
+            {!running && !held && (
               <IconButton
                 label={startLabel}
                 title={startLabel}
@@ -286,7 +289,7 @@ export function IndexConsoleHeader({
                 <Pause size={GLYPH} aria-hidden />
               </IconButton>
             )}
-            {running && held && (
+            {held && (
               <IconButton
                 label={resumeLabel}
                 title={resumeLabel}
@@ -296,7 +299,7 @@ export function IndexConsoleHeader({
                 <Play size={GLYPH} aria-hidden />
               </IconButton>
             )}
-            {running && (
+            {(running || held) && (
               <IconButton
                 label={stopLabel}
                 title={stopLabel}
@@ -484,8 +487,10 @@ export function IndexConsole() {
   // update in the monitor scopes its log — one selection, two views of it.
   const selectedJobId = useRagDashboardSelectedJob();
   const startOutcome = start.data ? interpretRagStartEnvelope(start.data) : undefined;
-  // Health first: the hold lifecycle outranks the generic running word — a held
-  // service is not simply "Running", and the word says which way it is moving.
+  // Health first: the hold lifecycle outranks the status presentation outright —
+  // a held service is not "Running", and it is not "Status unavailable" either
+  // (a quiesced daemon closes admissions, which degrades the status probe; that
+  // degradation is the hold's EXPECTED shape, so the word stays Paused).
   const quiesceStateMessage =
     quiesce.word === "paused"
       ? M.statePaused
@@ -495,11 +500,11 @@ export function IndexConsole() {
           ? M.stateResuming
           : null;
   const healthWord =
-    status.running && quiesceStateMessage !== null
+    quiesceStateMessage !== null
       ? resolve(quiesceStateMessage).message
       : resolve(status.presentation).message;
   const tone: IndexHealthTone =
-    status.running && quiesceStateMessage !== null
+    quiesceStateMessage !== null
       ? "stale"
       : status.running
         ? "active"
@@ -525,7 +530,7 @@ export function IndexConsole() {
         running={status.running}
         healthWord={healthWord}
         healthTone={tone}
-        errored={status.errored}
+        errored={status.errored && quiesceStateMessage === null}
         startOutcome={startOutcome}
         actionsPending={start.isPending || stop.isPending}
         doctorPending={doctor.isPending}

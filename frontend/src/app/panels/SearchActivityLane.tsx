@@ -67,7 +67,7 @@ export function searchGroup(record: RagSearchActivityRecord): SearchGroup {
 }
 
 const GRID =
-  "grid grid-cols-[6rem_5rem_minmax(8rem,3fr)_5rem_5rem] items-center gap-fg-2";
+  "grid grid-cols-[6rem_5rem_minmax(8rem,3fr)_4.5rem_7rem] items-center gap-fg-2";
 
 function SearchRow({ record }: { record: RagSearchActivityRecord }) {
   const resolve = useLocalizedMessageResolver();
