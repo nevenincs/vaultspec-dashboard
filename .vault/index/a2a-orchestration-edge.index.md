@@ -3,10 +3,10 @@ generated: true
 tags:
   - '#index'
   - '#a2a-orchestration-edge'
-date: '2026-08-01'
-modified: '2026-08-01'
+date: '2026-08-02'
+modified: '2026-08-02'
 body_schema: 'body-v1'
-body_hash: 'sha256:b5347fe5d835ba1049d20b2351771e94f7b7500700e0435a7ee1161cede6d5e4'
+body_hash: 'sha256:8671cd62a83e8329e98a87f0f67626774b781a2c5a011f1777b0e79e09e52562'
 related:
   - '[[2026-07-14-a2a-orchestration-edge-adr]]'
   - '[[2026-07-14-a2a-orchestration-edge-reference]]'
@@ -39,6 +39,7 @@ related:
   - '[[2026-07-17-a2a-orchestration-edge-plan]]'
   - '[[2026-07-19-a2a-orchestration-edge-active-run-recovery-audit]]'
   - '[[2026-07-19-a2a-orchestration-edge-adversarial-performance-security-audit]]'
+  - '[[2026-08-02-a2a-orchestration-edge-provider-catalog-inversion-audit]]'
 ---
 
 # `a2a-orchestration-edge` feature index
@@ -56,6 +57,7 @@ Auto-generated index of all documents tagged with `#a2a-orchestration-edge`.
 - `2026-07-17-a2a-orchestration-edge-audit` - `a2a-orchestration-edge` audit: `reconciliation`
 - `2026-07-19-a2a-orchestration-edge-active-run-recovery-audit` - `a2a-orchestration-edge` audit: `active-run reload recovery`
 - `2026-07-19-a2a-orchestration-edge-adversarial-performance-security-audit` - `a2a-orchestration-edge` audit: `adversarial performance, conformance, and security review`
+- `2026-08-02-a2a-orchestration-edge-provider-catalog-inversion-audit` - `a2a-orchestration-edge` audit: `provider catalog consumer shipped ahead of its producer`
 
 ### exec
 
