@@ -187,13 +187,28 @@ pub(super) fn validate_run_catalog_selection(
     state: &AppState,
     body: &A2aVerbBody,
 ) -> Result<(), (StatusCode, Json<Value>)> {
-    let selection = body.selection.as_ref().ok_or_else(|| {
-        crate::routes::api_error(
-            state,
-            StatusCode::BAD_REQUEST,
-            "run-start requires an A2A-served `selection`".to_string(),
-        )
-    })?;
+    // TRANSITIONAL, optional-until-served (edge-record amendment, 2026-08-02):
+    // the sibling does not yet serve `/v1/provider-catalog` or admit
+    // `selection` on run-start (its schema is extra-forbid), so a start
+    // WITHOUT a selection is the only start the deployed sibling accepts.
+    // Absent means absent — the forwarded body carries no selection-shaped
+    // key at all, which the sibling's current schema admits unchanged. When
+    // the catalog producer lands both halves, requiring the selection again
+    // is the recorded SUNSET: a one-line reversal here plus moving the three
+    // selection keys into the admitted-keys pin together. Overrides and
+    // fallbacks without a selection are refused: they modify a whole-team
+    // selection that is not there, and the sibling would refuse the
+    // forwarded keys anyway.
+    let Some(selection) = body.selection.as_ref() else {
+        if body.overrides.is_some() || body.fallbacks.is_some() {
+            return Err(crate::routes::api_error(
+                state,
+                StatusCode::BAD_REQUEST,
+                "run-start `overrides`/`fallbacks` require a `selection`".to_string(),
+            ));
+        }
+        return Ok(());
+    };
     validate_catalog_selection_reference(state, "selection", selection)?;
 
     if let Some(overrides) = body.overrides.as_ref() {
