@@ -20,5 +20,5 @@ test("agent lane reports missing A2A source as skipped, never passed", () => {
   // than a fabricated pass. With it present, validate the same source contract
   // the real harness requires before later agent specs are allowed to run.
   expect(configured, `${A2A_ROOT_ENV} must be non-empty`).toBeTruthy();
-  expect(existsSync(join(resolve(configured), "pyproject.toml"))).toBe(true);
+  expect(existsSync(join(resolve(configured!), "pyproject.toml"))).toBe(true);
 });

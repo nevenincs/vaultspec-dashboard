@@ -4,7 +4,7 @@ tags:
   - '#a2a-integration-verification'
 date: '2026-07-31'
 modified: '2026-08-02'
-body_hash: 'sha256:ef8f4e76e56a2bdd6324977bc995c94f279c9d6d78fb54eb8a519cc1dc389c4a'
+body_hash: 'sha256:ba4f8840fb6514b86fa42efe95646408fbf6ea8991ae4fd8734ce42f2c5f6db1'
 tier: L3
 related:
   - '[[2026-07-31-a2a-integration-verification-adr]]'
@@ -68,7 +68,7 @@ Reproduce the manual cold-run recipe mechanically, owning both process lifetimes
 
 Prove the up-path pass-through through the engine origin only, and prove the same reads flip to degraded-with-reason when a2a stops. A tier read that cannot flip proves nothing.
 
-- [ ] `W02.P05.S10` - Assert the up-path pass-through with non-empty presets, an available agent tier and a run identity returned through the engine origin only; `frontend/e2e/agent/attach.spec.ts`.
+- [x] `W02.P05.S10` - Assert the up-path pass-through with non-empty presets, an available agent tier and a run identity returned through the engine origin only; `frontend/e2e/agent/attach.spec.ts`.
 - [ ] `W02.P05.S11` - Assert the degraded flip by stopping a2a mid-suite and re-reading the same verbs for degraded-with-reason tiers, red if a tier read cannot flip; `frontend/e2e/agent/attach.spec.ts`.
 
 ### Phase `W02.P06` - streaming through the relay

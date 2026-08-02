@@ -6,7 +6,7 @@ tags:
 date: '2026-08-02'
 modified: '2026-08-02'
 body_schema: 'body-v1'
-body_hash: 'sha256:2b0212b3003d0c0a7ba7186c4b8577940e1d33dccbb1d1809462e6bbe320b9c8'
+body_hash: 'sha256:3e9b12b923bcc551a5674c41915e2340840d610dd82e0e66d4381ab778e8e135'
 related:
   - '[[2026-07-31-a2a-integration-verification-W01-P01-S01]]'
   - '[[2026-07-31-a2a-integration-verification-W01-P01-S02]]'
@@ -22,6 +22,7 @@ related:
   - '[[2026-07-31-a2a-integration-verification-W02-P04-S08]]'
   - '[[2026-07-31-a2a-integration-verification-W02-P04-S09]]'
   - '[[2026-07-31-a2a-integration-verification-W02-P04-summary]]'
+  - '[[2026-07-31-a2a-integration-verification-W02-P05-S10]]'
   - '[[2026-07-31-a2a-integration-verification-adr]]'
   - '[[2026-07-31-a2a-integration-verification-plan]]'
   - '[[2026-07-31-a2a-integration-verification-verification-surface-inventory-reference]]'
@@ -59,6 +60,7 @@ Auto-generated index of all documents tagged with `#a2a-integration-verification
 - `2026-07-31-a2a-integration-verification-W02-P04-S08` - Author the real two-process dashboard and A2A harness
 - `2026-07-31-a2a-integration-verification-W02-P04-S09` - Wire the environment-gated agent lane into a distinct Playwright configuration
 - `2026-07-31-a2a-integration-verification-W02-P04-summary` - `W02.P04` two-process harness summary
+- `2026-07-31-a2a-integration-verification-W02-P05-S10` - Assert the up-path pass-through with non-empty presets, an available agent tier and a run identity returned through the engine origin only
 
 ### plan
 

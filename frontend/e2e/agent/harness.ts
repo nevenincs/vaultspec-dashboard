@@ -6,9 +6,9 @@
 // replaces either transport.
 //
 // The source checkout is explicit because this is a staged, environment-gated
-// lane (W02.P04.S09 owns the skip/reporting contract). `UV_PROJECT_ENVIRONMENT`
-// deliberately points into this harness's scratch home so `uv run` cannot
-// create or mutate `.venv` in the shared a2a worktree.
+// lane (W02.P04.S09 owns the skip/reporting contract). `uv run --no-sync` uses
+// the pinned checkout's already-provisioned environment without creating or
+// mutating an environment in either source or scratch space.
 
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
@@ -38,6 +38,7 @@ export interface A2aHandle {
   readonly proc: ChildProcess;
   readonly baseUrl: string;
   readonly serviceJson: string;
+  readonly diagnostics: () => string;
 }
 
 /** The complete, scratch-scoped two-process lane. Call `stop()` exactly once in
@@ -141,15 +142,13 @@ async function spawnA2a(
     VAULTSPEC_CHECKPOINT_BACKEND: "sqlite",
     VAULTSPEC_DATABASE_URL: sqliteUrl(join(appHome, "gateway.sqlite3")),
     VAULTSPEC_CHECKPOINT_DATABASE_URL: sqliteUrl(join(appHome, "checkpoints.sqlite3")),
-    // Keep the source check-out read-only even when uv must construct a project
-    // environment for this environment-gated lane.
-    UV_PROJECT_ENVIRONMENT: join(appHome, "uv-environment"),
   });
 
   const proc = spawn(
     "uv",
     [
       "run",
+      "--no-sync",
       "--project",
       root,
       "--locked",
@@ -188,7 +187,8 @@ async function spawnA2a(
           const response = await fetch(`${baseUrl}/health`, {
             signal: AbortSignal.timeout(2_000),
           });
-          if (response.ok) return { proc, baseUrl, serviceJson };
+          if (response.ok)
+            return { proc, baseUrl, serviceJson, diagnostics: () => log };
         }
       } catch {
         // Discovery has not been atomically published yet, or the listener is
@@ -199,11 +199,17 @@ async function spawnA2a(
     throw new Error(`a2a did not become discoverably healthy within 60s:\n${log}`);
   } catch (startupError) {
     try {
-      await stopA2a({ proc, baseUrl: `http://127.0.0.1:${gatewayPort}`, serviceJson });
+      await stopA2a({
+        proc,
+        baseUrl: `http://127.0.0.1:${gatewayPort}`,
+        serviceJson,
+        diagnostics: () => log,
+      });
     } catch (cleanupError) {
       throw new AggregateError(
         [startupError, cleanupError],
         "a2a startup and cleanup both failed",
+        { cause: cleanupError },
       );
     }
     throw startupError;
@@ -332,7 +338,9 @@ export async function startAgentHarness(): Promise<AgentHarness> {
     }
     failures.push(...removeOwnedRoots(a2aHome, fixture));
     if (failures.length > 1) {
-      throw new AggregateError(failures, "agent harness startup and cleanup failed");
+      throw new AggregateError(failures, "agent harness startup and cleanup failed", {
+        cause: startupError,
+      });
     }
     throw startupError;
   }
