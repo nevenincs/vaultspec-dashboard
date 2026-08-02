@@ -176,6 +176,10 @@ fn lock_run_start(run_id: &str) -> MutexGuard<'static, ()> {
 #[derive(serde::Deserialize, serde::Serialize, Clone, Debug, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct CatalogSelectionReference {
+    /// The exact A2A-issued selection-reference schema. No serde default: a
+    /// browser must send the version it received, and the edge rejects future
+    /// versions before they can reach a different producer contract.
+    pub schema_version: u8,
     /// Opaque A2A-served provider identity. It is deliberately not an enum: a
     /// provider can appear only after its active lane advertises it.
     pub provider_id: String,
