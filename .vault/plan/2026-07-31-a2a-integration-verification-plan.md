@@ -4,7 +4,7 @@ tags:
   - '#a2a-integration-verification'
 date: '2026-07-31'
 modified: '2026-08-02'
-body_hash: 'sha256:851a61cb3270066cb4385b50bda6a78db0f91918c567f91d9cae475d15f04325'
+body_hash: 'sha256:e7b713480aec9569b0f1575fef50ab58daa72f19e2b0b9827d0d16864e50009c'
 tier: L3
 related:
   - '[[2026-07-31-a2a-integration-verification-adr]]'
@@ -43,7 +43,7 @@ Because the defect is already gone, this phase can no longer demonstrate its own
 Land the always-executed completion floor through the in-process deterministic model resolved by the production provider factory, then keep completion open until its exact-script, run-bound artifact bundle receives a separate approving manual sign-off; automated success, a skip, missing evidence, or an unreviewed bundle is not completion.
 
 - [x] `W01.P02.S04` - Settle where the completion proof runs by checking whether the deterministic service-test stack is container-gated on the current fleet and whether its tests are among the capsule-gated set that passes without executing, delivering a written verdict; `src/vaultspec_a2a/service_tests/`.
-- [ ] `W01.P02.S05` - Land the permanent completion proof by driving an in-process deterministic-model run resolved through the production provider factory to a completed terminal state through the real gateway and real worker, asserting exact scripted content and emitting a durable review bundle containing the authored output plus transcript or execution evidence bound to the exact scenario and run, failing rather than skipping when the substrate or any required artifact is absent; `src/vaultspec_a2a/acceptance/tests/`.
+- [x] `W01.P02.S05` - Land the permanent completion proof by driving an in-process deterministic-model run resolved through the production provider factory to a completed terminal state through the real gateway and real worker, asserting exact scripted content and emitting a durable review bundle containing the authored output plus transcript or execution evidence bound to the exact scenario and run, failing rather than skipping when the substrate or any required artifact is absent; `src/vaultspec_a2a/acceptance/tests/`.
 - [ ] `W01.P02.S31` - Manually inspect the S05 run-bound artifact review bundle and record an approving sign-off containing the reviewer, artifact identity, scenario identity, run identity, disposition, and reason, leaving the completion gate open when the run was skipped, a required artifact is missing, the bundle is unreviewed, the sign-off is absent, or the disposition is not approval; `.vault/audit/`.
 
 ### Phase `W01.P03` - the deterministic scenario substrate
