@@ -137,10 +137,27 @@ fn run_start_call(state: &AppState, run_id: &str) -> ForwardedCall {
             team_preset: Some("vaultspec-adr-research".to_string()),
             message: Some("Research the bounded broker".to_string()),
             feature_tag: Some("a2a-orchestration-edge".to_string()),
+            selection: Some(served_catalog_selection()),
             ..Default::default()
         },
     )
     .unwrap()
+}
+
+/// An opaque reference that stands in for an entry actually served by A2A. The
+/// engine has no provider/model knowledge: these values prove only that it
+/// preserves provider-issued strings and provider-native controls unchanged.
+fn served_catalog_selection() -> CatalogSelectionReference {
+    CatalogSelectionReference {
+        provider_id: "provider-issued-id".to_string(),
+        execution_mode: "execution-lane-issued-id".to_string(),
+        catalog_revision: "catalog-revision-issued-id".to_string(),
+        entry_id: "catalog-entry-issued-id".to_string(),
+        controls: BTreeMap::from([(
+            "provider-native-control-id".to_string(),
+            "provider-native-control-value".to_string(),
+        )]),
+    }
 }
 
 fn unresolved_lease_count(state: &AppState) -> usize {
@@ -278,6 +295,24 @@ fn build_forwarded_call_maps_read_verbs_to_the_right_paths() {
         presets.path
     );
 
+    // provider-catalog uses the same engine-owned workspace context and the
+    // bounded read budget. Its response includes A2A-owned catalog and health
+    // records and therefore is not parsed or reclassified at this edge.
+    let catalog =
+        build_forwarded_call(&state, "provider-catalog", &cell, &A2aVerbBody::default()).unwrap();
+    assert!(
+        catalog
+            .path
+            .starts_with("/v1/provider-catalog?workspace_root=")
+    );
+    assert!(catalog.body.is_none());
+    assert_eq!(catalog.budget, A2A_READ_BUDGET);
+    assert!(
+        !catalog.path.contains('\\') && !catalog.path.contains(' '),
+        "the workspace_root path is percent-encoded: {}",
+        catalog.path
+    );
+
     // active-runs pins state=active and carries the engine-controlled
     // workspace_root (percent-encoded); it is a bounded read, never a client
     // field. It requires no run_id.
@@ -377,7 +412,12 @@ fn build_run_start_validates_and_omits_actor_tokens() {
             team_preset: Some("vaultspec-authoring".to_string()),
             message: Some("Research the edge".to_string()),
             feature_tag: Some("a2a-orchestration-edge".to_string()),
-            profile_id: Some("team-defaults".to_string()),
+            selection: Some(served_catalog_selection()),
+            overrides: Some(BTreeMap::from([(
+                "role-issued-id".to_string(),
+                served_catalog_selection(),
+            )])),
+            fallbacks: Some(vec![served_catalog_selection()]),
             autonomous: Some(true),
             ..Default::default()
         },
@@ -391,8 +431,32 @@ fn build_run_start_validates_and_omits_actor_tokens() {
     assert_eq!(body["message"], "Research the edge");
     assert_eq!(body["feature_tag"], "a2a-orchestration-edge");
     assert_eq!(body["autonomous"], true);
+    assert_eq!(
+        body["selection"]["provider_id"], "provider-issued-id",
+        "the engine forwards the opaque provider-issued reference exactly"
+    );
+    assert_eq!(
+        body["selection"]["entry_id"], "catalog-entry-issued-id",
+        "the engine never substitutes a repository model name"
+    );
+    assert_eq!(
+        body["selection"]["controls"]["provider-native-control-id"],
+        "provider-native-control-value"
+    );
+    assert_eq!(
+        body["overrides"]["role-issued-id"]["catalog_revision"],
+        "catalog-revision-issued-id"
+    );
+    assert_eq!(
+        body["fallbacks"][0]["execution_mode"],
+        "execution-lane-issued-id"
+    );
     assert_eq!(body["metadata"]["workspace_root"], expected_scope);
     assert!(body.get("expected_scope").is_none());
+    assert!(
+        body.get("profile_id").is_none(),
+        "new starts cannot use the retired profile selection wire"
+    );
     assert!(
         body.get("actor_tokens").is_none(),
         "the pure build step never carries actor tokens"
@@ -452,12 +516,112 @@ fn build_run_start_validates_and_omits_actor_tokens() {
                 expected_scope: Some(crate::routes::scope_token(&cell.root)),
                 team_preset: Some("p".to_string()),
                 message: Some("x".to_string()),
+                selection: Some(served_catalog_selection()),
                 ..Default::default()
             }
         )
         .unwrap_err()
         .0,
         StatusCode::BAD_REQUEST
+    );
+
+    // A required selection is the replacement for the retired profile id. The
+    // Rust edge verifies only bounded shape; A2A verifies that this reference
+    // was actually served by the selected provider lane and remains current.
+    assert_eq!(
+        build_forwarded_call(
+            &state,
+            "run-start",
+            &cell,
+            &A2aVerbBody {
+                expected_scope: Some(crate::routes::scope_token(&cell.root)),
+                run_id: Some("run-missing-selection".to_string()),
+                team_preset: Some("p".to_string()),
+                message: Some("x".to_string()),
+                ..Default::default()
+            }
+        )
+        .unwrap_err()
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+}
+
+#[test]
+fn run_start_catalog_selection_is_opaque_but_resource_bounded() {
+    let (_dir, state) = test_state();
+    let cell = state.active_cell();
+    let expected_scope = crate::routes::scope_token(&cell.root);
+    let start = |selection: CatalogSelectionReference,
+                 overrides: Option<BTreeMap<String, CatalogSelectionReference>>,
+                 fallbacks: Option<Vec<CatalogSelectionReference>>| {
+        build_forwarded_call(
+            &state,
+            "run-start",
+            &cell,
+            &A2aVerbBody {
+                expected_scope: Some(expected_scope.clone()),
+                run_id: Some("run-catalog-bounds".to_string()),
+                team_preset: Some("team-issued-id".to_string()),
+                message: Some("Use the selected catalog entry".to_string()),
+                selection: Some(selection),
+                overrides,
+                fallbacks,
+                ..Default::default()
+            },
+        )
+    };
+
+    // These unfamiliar values must pass unchanged: only A2A can decide whether
+    // they came from the provider's current catalog. The engine has no provider
+    // or model enum to keep in sync with that catalog.
+    let mut opaque = served_catalog_selection();
+    opaque.provider_id = "provider-issued:future-lane".to_string();
+    opaque.execution_mode = "transport/issued-by-provider".to_string();
+    opaque.entry_id = "entry issued by the provider".to_string();
+    assert!(start(opaque, None, None).is_ok());
+
+    let mut too_many_controls = served_catalog_selection();
+    too_many_controls.controls = (0..=MAX_A2A_CONTROLS_PER_SELECTION)
+        .map(|index| (format!("control-{index}"), "served-value".to_string()))
+        .collect();
+    assert_eq!(
+        start(too_many_controls, None, None).unwrap_err().0,
+        StatusCode::BAD_REQUEST
+    );
+
+    let mut blank_entry = served_catalog_selection();
+    blank_entry.entry_id = "   ".to_string();
+    assert_eq!(
+        start(blank_entry, None, None).unwrap_err().0,
+        StatusCode::BAD_REQUEST
+    );
+
+    let overrides = (0..=MAX_A2A_ROLE_OVERRIDES)
+        .map(|index| (format!("role-{index}"), served_catalog_selection()))
+        .collect();
+    assert_eq!(
+        start(served_catalog_selection(), Some(overrides), None)
+            .unwrap_err()
+            .0,
+        StatusCode::BAD_REQUEST
+    );
+
+    let fallbacks = vec![served_catalog_selection(); MAX_A2A_FALLBACKS + 1];
+    assert_eq!(
+        start(served_catalog_selection(), None, Some(fallbacks))
+            .unwrap_err()
+            .0,
+        StatusCode::BAD_REQUEST
+    );
+}
+
+#[test]
+fn the_retired_profile_wire_is_not_deserializable_at_the_engine_boundary() {
+    let legacy = json!({ "profile_id": "legacy-profile" });
+    assert!(
+        serde_json::from_value::<A2aVerbBody>(legacy).is_err(),
+        "new run starts must use an A2A-served catalog selection, not profile_id"
     );
 }
 
@@ -772,6 +936,110 @@ fn live_loopback_discovers_health_then_round_trips_active_runs() {
     assert!(request_line.contains("&feature_tag=a2a-orchestration-edge"));
     assert!(request_line.contains("&limit=2 HTTP/1.1"));
 
+    server.join().unwrap();
+}
+
+#[tokio::test]
+async fn provider_catalog_round_trips_opaque_catalog_and_health_through_the_handler() {
+    // The loopback gateway is a real TCP listener reached through the production
+    // discovery, health probe, blocking broker, and response envelope path. It
+    // is deliberately an opaque provider catalog: this test proves that the
+    // engine relays A2A-issued model/control and health facts unchanged rather
+    // than maintaining its own provider or tier vocabulary.
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let (request_tx, request_rx) = std::sync::mpsc::channel();
+    let server = std::thread::spawn(move || {
+        let health = r#"{"status":"ok","checks":{}}"#;
+        let catalog = r#"{
+            "providers":[{
+                "provider_id":"provider-issued-id",
+                "execution_mode":"execution-lane-issued-id",
+                "health":{
+                    "configured":true,
+                    "transport":"available",
+                    "authenticated":"unknown",
+                    "catalog_available":true,
+                    "admitted":true,
+                    "selectable":true
+                },
+                "catalog":{"revision":"catalog-revision-issued-id","fresh":true},
+                "entries":[{
+                    "entry_id":"catalog-entry-issued-id",
+                    "controls":[{
+                        "control_id":"provider-native-control-id",
+                        "options":[{"option_id":"provider-native-control-value"}]
+                    }]
+                }]
+            }]
+        }"#;
+        for (index, body) in [health, catalog].into_iter().enumerate() {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 4096];
+            let read = stream.read(&mut buf).unwrap();
+            if index == 1 {
+                let request = String::from_utf8_lossy(&buf[..read]);
+                request_tx
+                    .send(request.lines().next().unwrap_or_default().to_string())
+                    .unwrap();
+            }
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            )
+            .unwrap();
+        }
+    });
+
+    let discovery = tempfile::tempdir().unwrap();
+    let service_json = discovery.path().join("service.json");
+    std::fs::write(
+        &service_json,
+        format!(
+            r#"{{"port": {port}, "last_heartbeat": {}, "pid": 4242}}"#,
+            now_ms()
+        ),
+    )
+    .unwrap();
+
+    let (_state_dir, state) = test_state();
+    let Json(response) = ops_a2a_with_candidates(
+        state,
+        "provider-catalog".to_string(),
+        A2aVerbBody::default(),
+        vec![service_json],
+    )
+    .await
+    .expect("the live catalog reply is wrapped by the public handler");
+
+    let catalog = &response["data"]["envelope"];
+    assert_eq!(catalog["providers"][0]["provider_id"], "provider-issued-id");
+    assert_eq!(
+        catalog["providers"][0]["entries"][0]["entry_id"],
+        "catalog-entry-issued-id"
+    );
+    assert_eq!(
+        catalog["providers"][0]["entries"][0]["controls"][0]["options"][0]["option_id"],
+        "provider-native-control-value"
+    );
+    assert_eq!(
+        catalog["providers"][0]["health"]["authenticated"], "unknown",
+        "authentication remains an A2A-owned state rather than an engine boolean"
+    );
+    assert_eq!(catalog["providers"][0]["health"]["selectable"], true);
+    assert!(
+        response["tiers"]["agent"]["available"].is_boolean(),
+        "the handler retains the shared tier envelope"
+    );
+
+    let request_line = request_rx.recv().unwrap();
+    assert!(request_line.starts_with("GET /v1/provider-catalog?workspace_root="));
+    assert!(request_line.ends_with(" HTTP/1.1"));
     server.join().unwrap();
 }
 
@@ -1135,9 +1403,10 @@ fn invalid_prepare_role_sets_fail_closed_and_mint_nothing() {
 #[test]
 fn the_verb_whitelist_is_exactly_the_reviewed_contract_surface() {
     // The whitelist's force is its exact membership: four orchestration control
-    // verbs, ONE bounded active-run recovery read, and ONE typed interrupt-resume
-    // (agent-flow D5(c)), and nothing else. Any addition, removal, or rename is a
-    // contract change and must fail here.
+    // verbs, two bounded reads (active-run recovery plus A2A-owned provider
+    // catalog/health), and one typed interrupt-resume (agent-flow D5(c)), and
+    // nothing else. Any addition, removal, or rename is a contract change and
+    // must fail here.
     //
     // It was five control verbs until `service-state` was removed. That entry
     // bought the engine a discovery and `/health` round-trip for a verb no
@@ -1147,12 +1416,12 @@ fn the_verb_whitelist_is_exactly_the_reviewed_contract_surface() {
     // worked and said nothing about the product needing it. Brokered authority
     // is granted for a consumer, so an entry with no consumer is revoked.
     const CONTROL_VERBS: &[&str] = &["run-start", "run-status", "run-cancel", "presets-list"];
-    const BOUNDED_READS: &[&str] = &["active-runs"];
+    const BOUNDED_READS: &[&str] = &["active-runs", "provider-catalog"];
     const RESUME_VERBS: &[&str] = &["clarification-respond"];
     assert_eq!(
         A2A_WHITELIST.len(),
         CONTROL_VERBS.len() + BOUNDED_READS.len() + RESUME_VERBS.len(),
-        "the whitelist holds exactly the four control verbs, the one bounded read, \
+        "the whitelist holds exactly the four control verbs, the two bounded reads, \
          and the one typed resume"
     );
     assert_eq!(

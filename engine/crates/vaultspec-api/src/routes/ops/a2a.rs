@@ -1,5 +1,5 @@
 //! The `/ops/a2a/{verb}` orchestration control pass-through: the engine forwards
-//! a FIXED seven-verb whitelist to the
+//! a FIXED eight-verb whitelist to the
 //! resident vaultspec-a2a gateway and nothing else, wrapping the sibling's
 //! response VERBATIM inside the shared tiers envelope. It is the rag ops
 //! template retargeted at an HTTP sibling — one namespace, tiers-honest, the
@@ -28,6 +28,7 @@
 //! attach-never-own: the engine reaches whatever a2a service is resident, never
 //! starts or owns one.
 
+use std::collections::BTreeMap;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::PathBuf;
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
@@ -47,17 +48,17 @@ use crate::authoring::model::{ActorId, ActorKind, ActorRef, CommandKind};
 
 use super::ApiResult;
 
-/// The FIXED seven-verb whitelist: orchestration
-/// control, one bounded active-run recovery read, and one typed interrupt-resume
-/// only, with no mutating vault semantics. A verb outside this set is a 403
-/// BEFORE any discovery or round-trip — the whitelist miss never reaches the
-/// sibling.
+/// The FIXED eight-verb whitelist: orchestration control, bounded recovery and
+/// provider-catalog reads, and one typed interrupt-resume only, with no
+/// mutating vault semantics. A verb outside this set is a 403 BEFORE any
+/// discovery or round-trip — the whitelist miss never reaches the sibling.
 const A2A_WHITELIST: &[&str] = &[
     "run-start",
     "run-status",
     "run-cancel",
     "presets-list",
     "active-runs",
+    "provider-catalog",
     "clarification-respond",
 ];
 
@@ -109,11 +110,26 @@ const A2A_RUN_TOKEN_LIFETIME_MS: i64 = 24 * 3_600 * 1_000;
 const MAX_A2A_MESSAGE_BYTES: usize = 65_536;
 
 const MAX_A2A_PRESET_CHARS: usize = 64;
-const MAX_A2A_PROFILE_CHARS: usize = 64;
 const MAX_A2A_FEATURE_CHARS: usize = 128;
 const MAX_A2A_TITLE_CHARS: usize = 200;
 const MAX_A2A_RUN_ID_CHARS: usize = 128;
 const MAX_A2A_SCOPE_CHARS: usize = 4096;
+
+/// A provider-issued identifier is opaque to Dashboard and the engine. It may
+/// not be used as a URL path, shell argument, or provider/model enum, so the
+/// edge preserves its exact printable value while bounding its resource cost.
+const MAX_A2A_CATALOG_REFERENCE_CHARS: usize = 512;
+const MAX_A2A_CONTROL_ID_CHARS: usize = 128;
+const MAX_A2A_CONTROL_VALUE_CHARS: usize = 512;
+const MAX_A2A_CONTROLS_PER_SELECTION: usize = 32;
+const MAX_A2A_ROLE_OVERRIDES: usize = MAX_A2A_REQUIRED_ROLES;
+const MAX_A2A_ROLE_ID_CHARS: usize = 128;
+const MAX_A2A_FALLBACKS: usize = 8;
+
+/// The current A2A gateway route for the account- and execution-lane-specific
+/// catalog. The response is forwarded verbatim: catalog entries and health are
+/// A2A-owned facts, never reclassified or reconstructed at the Rust boundary.
+const A2A_PROVIDER_CATALOG_PATH: &str = "/v1/provider-catalog";
 
 /// The `clarification-respond` boundary: the D5 caps, the sibling route, and the
 /// answer validation, held apart from the control verbs because it is the one
@@ -155,11 +171,32 @@ fn lock_run_start(run_id: &str) -> MutexGuard<'static, ()> {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
+/// A bounded opaque reference into one A2A-served provider catalog revision.
+#[derive(serde::Deserialize, serde::Serialize, Clone, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct CatalogSelectionReference {
+    /// Opaque A2A-served provider identity. It is deliberately not an enum: a
+    /// provider can appear only after its active lane advertises it.
+    pub provider_id: String,
+    /// Opaque execution lane identity. A model listed for one lane cannot be
+    /// selected through another lane with the same provider label.
+    pub execution_mode: String,
+    /// The served catalog revision that A2A revalidates before freezing a run.
+    pub catalog_revision: String,
+    /// Opaque provider-issued entry identity, not a repository model name.
+    pub entry_id: String,
+    /// Provider-native option ids and values, such as an ACP thought-level or
+    /// a Codex reasoning effort. Their vocabulary remains provider-owned.
+    #[serde(default)]
+    pub controls: BTreeMap<String, String>,
+}
+
 /// The typed request body for `POST /ops/a2a/{verb}`. Every field is optional at
 /// the type level and validated/bounded per verb before anything reaches the
 /// sibling; `actor_tokens` is deliberately ABSENT — the engine mints and injects
 /// them, a client can never supply an identity.
 #[derive(serde::Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct A2aVerbBody {
     /// Client-observed active scope used only as a generation fence for
     /// run-start and active-runs. The engine compares it with the SAME ScopeCell
@@ -181,9 +218,20 @@ pub struct A2aVerbBody {
     /// run-start: the target feature tag for a document-authoring run.
     #[serde(default)]
     pub feature_tag: Option<String>,
-    /// run-start: the selected model profile id.
+    /// run-start: the required whole-team selection A2A served from the active
+    /// provider catalog. The engine bounds its shape; A2A validates current
+    /// membership and freezes the exact provider-issued values.
     #[serde(default)]
-    pub profile_id: Option<String>,
+    pub selection: Option<CatalogSelectionReference>,
+    /// run-start: expert, per-role replacements for the whole-team selection.
+    /// Role keys are only bounded here; A2A verifies that each belongs to the
+    /// selected preset before accepting it.
+    #[serde(default)]
+    pub overrides: Option<BTreeMap<String, CatalogSelectionReference>>,
+    /// run-start: explicit served fallback choices. The edge keeps fallback
+    /// order; A2A validates each current catalog reference and freezes it.
+    #[serde(default)]
+    pub fallbacks: Option<Vec<CatalogSelectionReference>>,
     /// run-start: an optional human title.
     #[serde(default)]
     pub title: Option<String>,
@@ -255,7 +303,7 @@ fn validate_bounded_text(
     Ok(value.to_string())
 }
 
-/// Validate a bounded token field (`team_preset`, `profile_id`, `feature_tag`):
+/// Validate a bounded token field (`team_preset`, `feature_tag`):
 /// non-empty, capped, restricted to the kebab/word/dot/colon grammar the sibling
 /// accepts, with no leading `-` (the flag-injection guard).
 fn validate_bounded_token(
@@ -285,6 +333,143 @@ fn bounded_token_is_valid(value: &str, max: usize) -> bool {
         && value
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.' | b':'))
+}
+
+/// Validate a provider-issued opaque value without turning it into an engine
+/// enum. Catalog entry, revision, provider, execution-mode, and native-control
+/// values are not interpolated into a URL or command here, so their provider
+/// spelling is retained; only emptiness, control characters, and resource
+/// bounds are refused.
+fn validate_opaque_catalog_value(
+    state: &AppState,
+    field: &str,
+    value: &str,
+    max: usize,
+) -> Result<(), (StatusCode, Json<Value>)> {
+    if value.trim().is_empty() || value.chars().count() > max || value.chars().any(char::is_control)
+    {
+        return Err(super::super::api_error(
+            state,
+            StatusCode::BAD_REQUEST,
+            format!(
+                "`{field}` must be a non-empty printable provider-issued value no longer than {max} chars"
+            ),
+        ));
+    }
+    Ok(())
+}
+
+/// Validate only the transport-safe shape of a served selection. This boundary
+/// cannot and must not decide whether a provider, model entry, control, or role
+/// is currently valid: A2A owns catalog membership, provider health, preset
+/// role membership, and the durable freeze. The engine independently bounds
+/// every map and opaque string before forwarding it.
+fn validate_catalog_selection_reference(
+    state: &AppState,
+    field: &str,
+    selection: &CatalogSelectionReference,
+) -> Result<(), (StatusCode, Json<Value>)> {
+    validate_opaque_catalog_value(
+        state,
+        &format!("{field}.provider_id"),
+        &selection.provider_id,
+        MAX_A2A_CATALOG_REFERENCE_CHARS,
+    )?;
+    validate_opaque_catalog_value(
+        state,
+        &format!("{field}.execution_mode"),
+        &selection.execution_mode,
+        MAX_A2A_CATALOG_REFERENCE_CHARS,
+    )?;
+    validate_opaque_catalog_value(
+        state,
+        &format!("{field}.catalog_revision"),
+        &selection.catalog_revision,
+        MAX_A2A_CATALOG_REFERENCE_CHARS,
+    )?;
+    validate_opaque_catalog_value(
+        state,
+        &format!("{field}.entry_id"),
+        &selection.entry_id,
+        MAX_A2A_CATALOG_REFERENCE_CHARS,
+    )?;
+    if selection.controls.len() > MAX_A2A_CONTROLS_PER_SELECTION {
+        return Err(super::super::api_error(
+            state,
+            StatusCode::BAD_REQUEST,
+            format!(
+                "`{field}.controls` has {} entries; at most {MAX_A2A_CONTROLS_PER_SELECTION} are allowed",
+                selection.controls.len()
+            ),
+        ));
+    }
+    for (control_id, value) in &selection.controls {
+        validate_opaque_catalog_value(
+            state,
+            &format!("{field}.controls key"),
+            control_id,
+            MAX_A2A_CONTROL_ID_CHARS,
+        )?;
+        validate_opaque_catalog_value(
+            state,
+            &format!("{field}.controls[{control_id}]"),
+            value,
+            MAX_A2A_CONTROL_VALUE_CHARS,
+        )?;
+    }
+    Ok(())
+}
+
+fn validate_run_catalog_selection(
+    state: &AppState,
+    body: &A2aVerbBody,
+) -> Result<(), (StatusCode, Json<Value>)> {
+    let selection = body.selection.as_ref().ok_or_else(|| {
+        super::super::api_error(
+            state,
+            StatusCode::BAD_REQUEST,
+            "run-start requires an A2A-served `selection`".to_string(),
+        )
+    })?;
+    validate_catalog_selection_reference(state, "selection", selection)?;
+
+    if let Some(overrides) = body.overrides.as_ref() {
+        if overrides.len() > MAX_A2A_ROLE_OVERRIDES {
+            return Err(super::super::api_error(
+                state,
+                StatusCode::BAD_REQUEST,
+                format!(
+                    "`overrides` has {} roles; at most {MAX_A2A_ROLE_OVERRIDES} are allowed",
+                    overrides.len()
+                ),
+            ));
+        }
+        for (role_id, override_selection) in overrides {
+            validate_bounded_token(state, "overrides role id", role_id, MAX_A2A_ROLE_ID_CHARS)?;
+            validate_catalog_selection_reference(
+                state,
+                &format!("overrides[{role_id}]"),
+                override_selection,
+            )?;
+        }
+    }
+
+    if let Some(fallbacks) = body.fallbacks.as_ref() {
+        if fallbacks.len() > MAX_A2A_FALLBACKS {
+            return Err(super::super::api_error(
+                state,
+                StatusCode::BAD_REQUEST,
+                format!(
+                    "`fallbacks` has {} entries; at most {MAX_A2A_FALLBACKS} are allowed",
+                    fallbacks.len()
+                ),
+            ));
+        }
+        for (index, fallback) in fallbacks.iter().enumerate() {
+            validate_catalog_selection_reference(state, &format!("fallbacks[{index}]"), fallback)?;
+        }
+    }
+    Ok(())
 }
 
 /// Fence a scope-sensitive operation against a concurrent workspace switch.
@@ -372,6 +557,22 @@ fn build_forwarded_call(
             Ok(ForwardedCall {
                 method: Method::Get,
                 path: format!("/v1/presets?workspace_root={}", percent_encode(&root)),
+                body: None,
+                budget: A2A_READ_BUDGET,
+            })
+        }
+        "provider-catalog" => {
+            // Catalog enumeration can depend on the active workspace (for ACP
+            // project setup) but that root remains engine-owned. A2A owns the
+            // returned provider records, health evidence, freshness, and opaque
+            // entry/control values; the edge forwards that response verbatim.
+            let root = crate::routes::scope_token(&cell.root);
+            Ok(ForwardedCall {
+                method: Method::Get,
+                path: format!(
+                    "{A2A_PROVIDER_CATALOG_PATH}?workspace_root={}",
+                    percent_encode(&root)
+                ),
                 body: None,
                 budget: A2A_READ_BUDGET,
             })
@@ -475,6 +676,8 @@ fn build_forwarded_call(
                 ));
             }
 
+            validate_run_catalog_selection(state, body)?;
+
             let mut forwarded = json!({
                 "team_preset": team_preset,
                 "message": message,
@@ -497,16 +700,14 @@ fn build_forwarded_call(
                     )?),
                 );
             }
-            if let Some(profile_id) = body.profile_id.as_deref() {
-                obj.insert(
-                    "profile_id".to_string(),
-                    json!(validate_bounded_token(
-                        state,
-                        "profile_id",
-                        profile_id,
-                        MAX_A2A_PROFILE_CHARS
-                    )?),
-                );
+            if let Some(selection) = body.selection.as_ref() {
+                obj.insert("selection".to_string(), json!(selection));
+            }
+            if let Some(overrides) = body.overrides.as_ref() {
+                obj.insert("overrides".to_string(), json!(overrides));
+            }
+            if let Some(fallbacks) = body.fallbacks.as_ref() {
+                obj.insert("fallbacks".to_string(), json!(fallbacks));
             }
             if let Some(title) = body.title.as_deref() {
                 obj.insert(
@@ -1202,7 +1403,7 @@ fn map_transport_error(
 }
 
 /// `POST /ops/a2a/{verb}` — the whitelisted a2a orchestration control pass-through.
-/// A verb outside the seven-verb whitelist is a 403 before any
+/// A verb outside the eight-verb whitelist is a 403 before any
 /// discovery. A known-down sibling degrades the `agent` tier at 200; a genuine
 /// proxy crash/timeout is 502/504; a sibling answer (2xx or a business refusal)
 /// forwards VERBATIM under `data.envelope`. run-start provisions per-role actor
@@ -1213,6 +1414,25 @@ pub async fn ops_a2a(
     Path(verb): Path<String>,
     body: Option<Json<A2aVerbBody>>,
 ) -> ApiResult {
+    ops_a2a_with_candidates(
+        state,
+        verb,
+        body.map(|Json(body)| body).unwrap_or_default(),
+        a2a_service_json_candidates(),
+    )
+    .await
+}
+
+/// Execute the public handler with an explicit discovery list. Production passes
+/// the machine-global candidates; direct loopback tests supply a private
+/// discovery record so they exercise the full handler without mutating process
+/// environment variables shared by parallel tests.
+async fn ops_a2a_with_candidates(
+    state: Arc<AppState>,
+    verb: String,
+    body: A2aVerbBody,
+    candidates: Vec<PathBuf>,
+) -> ApiResult {
     // Whitelist miss: 403 with the tiers block BEFORE any discovery or round-trip.
     if !A2A_WHITELIST.contains(&verb.as_str()) {
         return Err(super::super::api_error(
@@ -1222,7 +1442,6 @@ pub async fn ops_a2a(
         ));
     }
     let cell = state.active_cell();
-    let body = body.map(|Json(b)| b).unwrap_or_default();
 
     // Validate + build the forwarded call at the engine boundary (a bad arg is a
     // tiers-carrying 400 that never reaches the sibling).
@@ -1239,7 +1458,6 @@ pub async fn ops_a2a(
     // value it needs; the body is never logged or formatted outside the socket
     // call because run-start may carry raw actor tokens after provisioning.
     let execution_state = Arc::clone(&state);
-    let candidates = a2a_service_json_candidates();
     let outcome = super::rag_offload(&state, move || {
         execute_broker_call(&execution_state, call, run_start_id.as_deref(), &candidates)
     })
