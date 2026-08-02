@@ -1,5 +1,5 @@
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
-# The WinGet en-US locale manifest (a2a-product-provisioning W04.P10.S84).
+# The WinGet en-US locale manifest.
 PackageIdentifier: vaultspec.vaultspec
 PackageVersion: 0.1.2
 PackageLocale: en-US

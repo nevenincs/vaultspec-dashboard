@@ -2,14 +2,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://vaultspec.dev/schemas/release-set-manifest.json",
   "title": "ReleaseSetManifest",
-  "description": "The dashboard-owned complete release-set member manifest (a2a-product-provisioning W01.P01.S04). Each target manifest binds one member of an exact four-target cohort to the trusted dashboard component lock, the A2A-emitted capsule manifest, capsule archive and installed-tree evidence, the dashboard and updater binaries, runtime inputs, installed-file digests, license evidence, and a software bill of materials. A candidate manifest never authorizes its own component lock: consumers compare the declared component-lock digest with independently trusted lock bytes and verify all four cohort members together. The cohort digest is intentionally external to every member manifest so hashing the four raw member documents is non-circular.",
+  "description": "The dashboard-owned complete release-set member manifest. Each target manifest binds one member of an exact four-target cohort to the trusted dashboard component lock, the A2A-emitted capsule manifest, capsule archive and installed-tree evidence, the dashboard and updater binaries, runtime inputs, installed-file digests, license evidence, and a software bill of materials. A candidate manifest never authorizes its own component lock: consumers compare the declared component-lock digest with independently trusted lock bytes and verify all four cohort members together. The cohort digest is intentionally external to every member manifest so hashing the four raw member documents is non-circular.",
   "x-vaultspec-invariants": [
-    "W04.P08.S166 emits a separate descriptor validated by $defs/CohortDescriptor only after the raw-byte SHA-256 digest of each of the four member manifests exists.",
+    "Cohort aggregation emits a separate descriptor validated by $defs/CohortDescriptor only after the raw-byte SHA-256 digest of each of the four member manifests exists.",
     "The cohort-digest preimage is exactly the RFC 8785 JSON Canonicalization Scheme serialization of the validated CohortDescriptor, encoded as UTF-8 with no byte-order mark and no trailing bytes. SHA-256 of exactly those bytes is the cohort digest.",
     "CohortDescriptor.members maps each TargetTriple to its member-manifest raw-byte SHA-256 digest in canonical TargetTriple enum order. The descriptor's own JCS-byte digest is bound by candidate authority and the active receipt and is never embedded back into a member manifest.",
-    "Every member cohort.id must equal the validated external CohortDescriptor.id; W04.P08.S166 enforces this across publication inputs and S06 enforces it for candidate verification.",
-    "file_digests covers every immutable installed regular file except exactly release_manifest.path. S06 rejects release_manifest.path in file_digests, permits no other exclusion, and requires the manifest raw bytes to match the independently supplied member digest from cohort or candidate authority and later the receipt.",
-    "The component_lock digest is only a join claim. Candidate bytes cannot authorize their own lock; S06 compares it with independently trusted component-lock bytes."
+    "Every member cohort.id must equal the validated external CohortDescriptor.id; Cohort aggregation enforces this across publication inputs, and candidate verification enforces it for a candidate.",
+    "file_digests covers every immutable installed regular file except exactly release_manifest.path. Candidate verification rejects release_manifest.path in file_digests, permits no other exclusion, and requires the manifest raw bytes to match the independently supplied member digest from cohort or candidate authority and later the receipt.",
+    "The component_lock digest is only a join claim. Candidate bytes cannot authorize their own lock; candidate verification compares it with independently trusted component-lock bytes."
   ],
   "type": "object",
   "additionalProperties": false,
@@ -39,7 +39,7 @@
       "$ref": "#/$defs/DigestAlgorithm"
     },
     "cohort": {
-      "description": "The immutable member-visible identity shared by all four target manifests. Consumers verify four manifests with one common id and the closed target roster below. After all four raw member digests exist, S166 emits the external $defs/CohortDescriptor; every member cohort.id must equal descriptor.id. SHA-256 of the descriptor's RFC 8785 JCS UTF-8 bytes is the receipt-bound cohort digest and is never embedded in a member.",
+      "description": "The immutable member-visible identity shared by all four target manifests. Consumers verify four manifests with one common id and the closed target roster below. After all four raw member digests exist, cohort aggregation emits the external $defs/CohortDescriptor; every member cohort.id must equal descriptor.id. SHA-256 of the descriptor's RFC 8785 JCS UTF-8 bytes is the receipt-bound cohort digest and is never embedded in a member.",
       "type": "object",
       "additionalProperties": false,
       "required": [

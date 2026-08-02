@@ -1,5 +1,5 @@
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
-# The WinGet installer manifest (a2a-product-provisioning W04.P10.S83): points ONLY
+# The WinGet installer manifest: points ONLY
 # at the complete product MSI (the whole offline tree + product receipt + clean
 # uninstall), with per-user product scope, manager-owned upgrade, and the
 # manager-owned rollback WinGet provides. The InstallerSha256 + ProductCode are

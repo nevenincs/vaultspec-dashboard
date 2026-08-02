@@ -132,14 +132,14 @@ enum Command {
     Update,
     /// The dashboard-owned A2A companion lifecycle: bounded status and
     /// mutation subcommands over the typed product authority — no free-form
-    /// executable or path operands (a2a-product-provisioning W02.P04.S47).
+    /// executable or path operands.
     A2a {
         #[command(subcommand)]
         action: A2aAction,
     },
     /// Verify an installed product tree matches its own `release.json` under the
     /// embedded trusted component lock — the product-owned installers' placement
-    /// integrity check (a2a-product-provisioning W04.P09). No corpus is consulted.
+    /// integrity check. No corpus is consulted.
     VerifyRelease {
         /// The installed product-tree root (the generation directory).
         root: std::path::PathBuf,

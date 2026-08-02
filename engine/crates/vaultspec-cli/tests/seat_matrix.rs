@@ -1,4 +1,4 @@
-//! The single-app-runtime boot matrix (plan W02.P04.S15), driven over the
+//! The single-app-runtime boot matrix, driven over the
 //! REAL binary (`CARGO_BIN_EXE_vaultspec`) because the seat is an OS-level
 //! per-process lock: in-process tests share one pid and cannot exercise
 //! conflict or takeover. Every test isolates its own machine app home via

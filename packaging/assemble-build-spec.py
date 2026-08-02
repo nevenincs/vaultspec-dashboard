@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Assemble the per-target product-build spec (a2a-product-provisioning W04.P09).
+"""Assemble the per-target product-build spec.
 
 Emits the `BuildSources`-shaped JSON that `vaultspec-product-build` consumes, from
 the pre-built inputs a release job has on disk: the dashboard and updater binaries,
