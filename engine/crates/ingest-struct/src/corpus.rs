@@ -43,6 +43,11 @@ fn enumerate_worktree_vault_documents(root: &Path, report_errors: bool) -> Resul
     while let Some(directory) = stack.pop() {
         let entries = match std::fs::read_dir(&directory) {
             Ok(entries) => entries,
+            // An ABSENT directory is empty membership, never a fault — a worktree
+            // with no `.vault/` simply has no corpus, and a subdirectory that
+            // vanished mid-walk is a benign race. Reporting either as an I/O error
+            // turns "no such document" into "the disk failed" at every caller.
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
             Err(error) if report_errors => return Err(CorpusError::Io(error)),
             Err(_) => continue,
         };
@@ -175,6 +180,22 @@ mod tests {
                 ".vault/plan/z-plan.md",
             ],
             "resolved tree reports exactly the committed .vault markdown membership"
+        );
+    }
+
+    /// A worktree with no `.vault/` at all has an EMPTY corpus, not a traversal
+    /// fault — including on the strict variant. Callers resolve a document by
+    /// searching this membership, so reporting absence as an I/O error turns
+    /// every "no such document" into "the disk failed" one layer up.
+    #[test]
+    fn an_absent_vault_directory_is_empty_membership_on_both_variants() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path();
+
+        assert!(worktree_vault_documents(root).is_empty());
+        assert_eq!(
+            try_worktree_vault_documents(root).expect("absence is not an error"),
+            Vec::<String>::new()
         );
     }
 }
