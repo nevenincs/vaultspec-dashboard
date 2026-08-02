@@ -90,6 +90,69 @@ fn clarification_respond_carries_the_continuation_prompt_alternative() {
 }
 
 #[test]
+fn clarification_continuation_takes_the_run_message_posture() {
+    // A continuation is a NEW HUMAN TURN, not an answer: the sibling types it
+    // against the run-message ceiling with no line-safety rule. Bounding it
+    // like an answer (single-line, answer-sized) refused prompts the sibling
+    // accepts and stranded the user on a parked run.
+    let (_dir, state) = test_state();
+    let cell = state.active_cell();
+    let continuation = |prompt: String| A2aVerbBody {
+        run_id: Some("run-7".to_string()),
+        request_id: Some("clr-1".to_string()),
+        prompt: Some(prompt),
+        ..Default::default()
+    };
+
+    let multiline = "Compare both surfaces first.\n\nThen pick one and say why.";
+    let call = build_forwarded_call(
+        &state,
+        "clarification-respond",
+        &cell,
+        &continuation(multiline.to_string()),
+    )
+    .unwrap();
+    assert_eq!(
+        call.body.expect("forwards the prompt")["prompt"],
+        multiline,
+        "a multiline composer turn rides verbatim — the answer posture's \
+         single-line rule does not apply to a continuation"
+    );
+
+    // Both sides of the run-message ceiling, one byte apart, sized from the
+    // run-start constant the continuation shares (the sibling gives both
+    // prompts one character budget).
+    let at_ceiling = build_forwarded_call(
+        &state,
+        "clarification-respond",
+        &cell,
+        &continuation("x".repeat(MAX_A2A_MESSAGE_BYTES)),
+    );
+    assert!(at_ceiling.is_ok(), "the ceiling itself passes");
+    let over_ceiling = build_forwarded_call(
+        &state,
+        "clarification-respond",
+        &cell,
+        &continuation("x".repeat(MAX_A2A_MESSAGE_BYTES + 1)),
+    );
+    assert!(
+        over_ceiling.is_err(),
+        "one byte past the ceiling is refused"
+    );
+
+    let blank = build_forwarded_call(
+        &state,
+        "clarification-respond",
+        &cell,
+        &continuation("  \n\t ".to_string()),
+    );
+    assert!(
+        blank.is_err(),
+        "a blank prompt is a local composer transition, never a resume"
+    );
+}
+
+#[test]
 fn clarification_respond_carries_the_decline_alternative() {
     // The third outcome: a payload-free refusal that resumes the parked run
     // with no answer given, distinct from a cancel. The sibling appends its own

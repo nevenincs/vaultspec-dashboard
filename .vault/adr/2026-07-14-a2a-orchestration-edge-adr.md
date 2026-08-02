@@ -230,7 +230,13 @@ namespace — it is orchestration control only.
 > (sibling served an outcome the broker could not reach). Stores seam:
 > `useRespondToClarification` takes the exactly-one-of union
 > (`answers | prompt | decline`), making an ambiguous two-outcome
-> submission unrepresentable in the client.
+> submission unrepresentable in the client. Bound correction folded into
+> this event: the continuation `prompt` takes the RUN-MESSAGE posture
+> (trim-non-empty, the run-start 64 KiB ceiling, multiline legal), not
+> the answer posture (single-line, answer-sized) it first shipped with —
+> the sibling types `ContinuationPrompt` against its run-message ceiling
+> with no line-safety rule, so the answer posture refused prompts the
+> sibling accepts and stranded the user on a parked run.
 
 **D2 — Actors and tokens are provisioned by the engine at run start.** The
 brokered `run-start` verb is the provisioning moment: the engine registers (or

@@ -128,12 +128,35 @@ pub(super) fn build_call(
     }
 
     if let Some(prompt) = body.prompt.as_deref() {
-        let prompt =
-            validate_bounded_text(state, "clarification prompt", prompt, MAX_A2A_ANSWER_CHARS)?;
+        // A continuation is a NEW HUMAN TURN in the existing run, so it takes
+        // the run-start message posture, not the answer posture: the sibling
+        // types `ContinuationPrompt` against its run-message ceiling with NO
+        // line-safety rule (a composer turn is legitimately multiline), and its
+        // schema refuses only a blank prompt. Bounding it like an answer
+        // (single-line, answer-sized) refused prompts the sibling accepts and
+        // stranded the user on a parked run — the exact failure the header
+        // comment above warns against.
+        if prompt.trim().is_empty() {
+            return Err(super::super::super::api_error(
+                state,
+                StatusCode::BAD_REQUEST,
+                "clarification-respond requires a non-empty `prompt`".to_string(),
+            ));
+        }
+        if prompt.len() > super::MAX_A2A_MESSAGE_BYTES {
+            return Err(super::super::super::api_error(
+                state,
+                StatusCode::BAD_REQUEST,
+                format!(
+                    "clarification-respond `prompt` exceeds the {}-byte ceiling",
+                    super::MAX_A2A_MESSAGE_BYTES
+                ),
+            ));
+        }
         return Ok(ForwardedCall {
             method: Method::Post,
             path: respond_path(&run_id, &request_id),
-            body: Some(json!({ "prompt": Value::String(prompt) })),
+            body: Some(json!({ "prompt": Value::String(prompt.to_string()) })),
             budget: A2A_CONTROL_BUDGET,
         });
     }
