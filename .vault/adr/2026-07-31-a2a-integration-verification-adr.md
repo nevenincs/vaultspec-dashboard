@@ -3,12 +3,13 @@ tags:
   - '#adr'
   - '#a2a-integration-verification'
 date: '2026-07-31'
-modified: '2026-07-31'
+modified: '2026-08-02'
 body_schema: 'body-v1'
-body_hash: 'sha256:d87bd2249fe65bc4529a50b911c137d497ebd9628ab1a6468b46979eb38f4927'
+body_hash: 'sha256:297fc4476e1d252dbd2d4d58b36b329d3ffa4c847cb2ebf905381eac2b4a8cfe'
 related:
   - '[[2026-07-31-a2a-integration-verification-verification-surface-inventory-reference]]'
   - '[[2026-07-24-a2a-product-provisioning-adr]]'
+  - '[[2026-08-01-a2a-integration-verification-deterministic-completion-review-research]]'
 ---
 
 # `a2a-integration-verification` adr: `prove the agentic loop against a real a2a: harness placement, a model-only double, and a staged substrate` | (**status:** `accepted`)
@@ -79,12 +80,18 @@ check that passes while structurally unable to observe the thing it names.
   own documentation contrasts it with the tape-proxying mock: it runs entirely
   in-process, needs no container and no provider credential, and returns
   role-keyed content that the writers can propose and the reviewer can pass.
-  Scripted determinism therefore has two candidate substrates, and the choice
-  between them is a portability decision rather than a capability one.
+  `2026-08-01-a2a-integration-verification-deterministic-completion-review-research`
+  establishes it as the only substrate that can supply an always-executed
+  permanent completion floor without the tape backend's container and skip
+  paths.
 - Scripted scenario content largely exists already as tapes covering tool
   failure, a human-in-the-loop pause, a loop case, an invalid case and the happy
-  path. The scenario work is substrate selection and wiring rather than authoring
-  behaviour from nothing.
+  path. Those tapes remain useful as optional provider-specific scenario
+  coverage, but they do not decide completion.
+- Exact scripted output proves the chain produced what the scenario required;
+  it does not prove that the resulting authored artifact is acceptable. The
+  latter requires a separately recorded manual review and sign-off, as grounded
+  by `2026-08-01-a2a-integration-verification-deterministic-completion-review-research`.
 - The owner has directed that a2a publish a consumable per-target binary and that
   the dashboard consume it. That producer does not yet publish, and one of its
   four targets currently builds and cannot start.
@@ -111,6 +118,15 @@ check that passes while structurally unable to observe the thing it names.
 - **Inject a fake model through the provider protocol for determinism -
   rejected.** That is precisely the substitution that hid the live defect. The
   double boundary must sit at the model, never at the factory or the transport.
+- **Use the in-process deterministic model through the production provider
+  factory as the permanent completion substrate - chosen.** It preserves the
+  accepted model-only boundary while supplying the credential-free,
+  container-free completion floor grounded by
+  `2026-08-01-a2a-integration-verification-deterministic-completion-review-research`.
+- **Use the tape-backed model as the permanent completion substrate -
+  rejected.** Its scenarios may extend provider coverage, but its external
+  prerequisite and pass-without-execution path make it incapable of deciding
+  completion.
 
 ## Constraints
 
@@ -120,11 +136,22 @@ check that passes while structurally unable to observe the thing it names.
 - Assertions are content equality against the script. A frame count, a connection
   success, or a non-empty transcript are transport proofs and are forbidden as
   the sole evidence for any capability.
+- Completion requires both the exact scripted automated proof and an artifact
+  review bundle that has been manually inspected and signed off. Neither gate
+  substitutes for the other.
+- The minimum review bundle contains the authored output needed to inspect the
+  intended scripted result and the transcript or execution evidence that binds
+  that output to the exact scenario and run. Its sign-off records the reviewer,
+  artifact identity, scenario and run identity, disposition, and reason.
 - Every capability names the input that would turn it red BEFORE it is authored,
   and each lane demonstrates at least one real red at review time.
 - Absence must be loud. The lane is environment-gated on an a2a substrate and
   reports a distinct skipped status; a vanished substrate must never be
-  indistinguishable from a pass.
+  indistinguishable from a pass, and a skipped completion gate is
+  non-completion.
+- A missing bundle, missing required artifact, unreviewed bundle, absent
+  sign-off, or disposition other than approval is non-completion even when the
+  run reached a terminal state and every automated assertion passed.
 - The managed-path discovery record is out of scope until a producer exists. It
   is read by the dashboard and written by nobody on either side, so a test over it
   could not go red for the right reason.
@@ -147,30 +174,39 @@ HTTP test is slower and flakier for no gain, and the transcript reducers are pur
 by design precisely so they can be driven directly.
 
 **D2: The test double is the model and only the model.** Determinism comes from
-scripted models resolved through a2a's real provider factory. No lane may inject
-the provider protocol, stub the worker, or fake the transport. A tape server
-reached over loopback is still a model double and remains admissible, but the
-in-process deterministic provider is preferred where it covers the scenario,
-because a container dependency silently narrows the lane on the hosts least able
-to run one. That preference is a portability judgement to be settled against the
-actual fleet, not a correctness claim.
+the in-process deterministic model resolved through a2a's production provider
+factory. It is the only permanent completion substrate. No lane may inject the
+provider protocol, stub the worker, or fake the transport. A tape-backed model
+reached over loopback remains admissible only as optional provider-specific
+scenario coverage; its execution or result is never a prerequisite for, or
+evidence of, completion.
 
 **D3: The a2a substrate is staged.** Stage one spawns a2a from pinned source
 behind an environment gate. Stage two consumes the published per-target binary
 once that producer exists, per the accepted consumption decision. Stage two is
-blocked on one target by a startup defect and must not block stage one.
+blocked on one target by a startup defect and must not block stage one. Both
+stages use the same in-process deterministic model through the production
+provider factory for permanent completion; binary consumption does not reopen
+the provider-substrate decision.
 
-**D4: a2a owns proving its own runtime.** A real-worker run to a terminal state,
-driven by a bundled mock preset through the production chain, lands as a
-permanent live test in a2a. The dashboard end-to-end must never be the only test
-capable of catching a regression that is purely a2a's.
+**D4: a2a owns proving its own runtime and the permanent completion floor.** A
+real-worker run driven by the in-process deterministic model through the
+production provider factory lands as a permanent live test in a2a. Reaching a
+terminal state is insufficient: the proof asserts exact scripted content and
+emits the review bundle defined above. Completion is recorded only after manual
+inspection and an approving sign-off. The dashboard end-to-end must never be the
+only test capable of catching a regression that is purely a2a's.
 
 **D5: Capabilities are sequenced by dependency and each carries its red-turning
 input.** A run must execute before streaming can be asserted, streaming before
 tool calls, tool calls before the approval round trip, and the approval loop
 before the ledgered authoring loop that proves a product rather than a transport.
-The sequence and its evidence obligations are the subject of the implementing
-plan.
+For every completion-reviewed scenario, the automated lane first proves the
+exact script and emits the authored output plus binding transcript or execution
+evidence; a reviewer then records identity, disposition, and reason against that
+bundle. A skip, missing artifact, unreviewed bundle, missing sign-off, or
+non-approval leaves the scenario incomplete. The sequence and these evidence
+obligations are the subject of the implementing plan.
 
 ## Rationale
 
@@ -183,7 +219,14 @@ that are right to avoid it, or leaves the dashboard's own surface untested.
 The decisive argument for the double boundary is empirical rather than
 principled: the one seam every existing suite substituted is exactly where the
 live defect sits. A model-only double is the narrowest substitution that still
-yields determinism, and it keeps the entire production chain under test.
+yields determinism, and resolving the in-process deterministic model through
+the production factory keeps the entire production chain under test without
+making completion depend on an optional external tape service.
+
+The decisive argument for the two-part completion gate is that chain correctness
+and artifact acceptability answer different questions. Exact scripted assertions
+make the run falsifiable; the bound artifact bundle and recorded manual sign-off
+make the authored result reviewable. Completion needs both.
 
 Sequencing by dependency is what makes the pathway falsifiable rather than
 aspirational. The first capability is one that would be RED today, which is the
@@ -195,7 +238,13 @@ strongest available evidence that the sequence tests something real.
   effective model to a tuple, becomes the first thing the pathway proves fixed.
 - The dashboard gains a lane requiring a Python runtime and an a2a checkout. It is
   environment-gated and loudly skipped rather than silently green, which makes its
-  absence visible in the way a swallowed error was not.
+  absence visible in the way a swallowed error was not. A skip remains an explicit
+  non-completion state.
+- The in-process deterministic provider is a permanent completion dependency and
+  must remain reachable only through the production provider factory. Tape-backed
+  scenarios may add coverage but can neither block nor satisfy completion.
+- Completion now produces a durable artifact-review bundle and approving manual
+  sign-off. Automated success without that evidence remains incomplete.
 - Six coordination asks fall to a2a: fix the model-resolution defect and land the
   real-worker run as a permanent test; add scripted scenario presets for tool
   calls, permission pauses, failure and cancellation; add a mock
