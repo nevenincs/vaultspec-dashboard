@@ -22,6 +22,7 @@
     "typecheck": "tsc -b",
     "test": "vitest run",
     "e2e": "playwright test --config dev/playwright.config.ts",
+    "e2e:agent": "playwright test --config dev/playwright.agent.config.ts",
     "e2e:editor": "playwright test --config dev/playwright.editor.config.ts",
     "tokens:build": "node style-dictionary.config.ts && prettier --write src/styles.css",
     "tokens:check": "node dev/tooling/token-drift-check.ts",
