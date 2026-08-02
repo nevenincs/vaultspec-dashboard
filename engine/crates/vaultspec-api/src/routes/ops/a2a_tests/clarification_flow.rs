@@ -50,6 +50,86 @@ fn clarification_respond_maps_to_the_typed_resume_route_with_bounded_answers() {
 }
 
 #[test]
+fn clarification_respond_carries_the_continuation_prompt_alternative() {
+    // The sibling resolves a parked node with EXACTLY ONE of two alternatives:
+    // the questionnaire, or a CONTINUATION that resumes the run with new
+    // instruction instead of answering. The continuation shipped sibling-side and
+    // the broker forwarded only `answers`, so the alternative was unreachable from
+    // the product — this pins the carry-through.
+    let (_dir, state) = test_state();
+    let cell = state.active_cell();
+
+    let call = build_forwarded_call(
+        &state,
+        "clarification-respond",
+        &cell,
+        &A2aVerbBody {
+            run_id: Some("run-7".to_string()),
+            request_id: Some("clr-1".to_string()),
+            prompt: Some("Skip the questionnaire and start with the rail rows.".to_string()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(call.method, Method::Post);
+    assert_eq!(call.path, "/v1/runs/run-7/clarifications/clr-1/respond");
+    assert_eq!(
+        call.budget, A2A_CONTROL_BUDGET,
+        "a continuation dispatches the parked graph exactly as an answer does"
+    );
+    let body = call.body.expect("the resume forwards the prompt");
+    assert_eq!(
+        body["prompt"], "Skip the questionnaire and start with the rail rows.",
+        "the continuation text rides verbatim; the parked node judges it"
+    );
+    assert_eq!(
+        body.as_object().unwrap().len(),
+        1,
+        "a continuation forwards the prompt alone — never an empty answers map beside it"
+    );
+}
+
+#[test]
+fn clarification_respond_refuses_both_alternatives_and_neither() {
+    // Exactly-one-of is enforced at the boundary, BEFORE any round-trip, so a
+    // malformed resume never reaches the parked graph and never spends a budget.
+    let (_dir, state) = test_state();
+    let cell = state.active_cell();
+
+    let both = build_forwarded_call(
+        &state,
+        "clarification-respond",
+        &cell,
+        &A2aVerbBody {
+            run_id: Some("run-7".to_string()),
+            request_id: Some("clr-1".to_string()),
+            answers: json!({ "q1": "option-b" }).as_object().cloned(),
+            prompt: Some("and also do this".to_string()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        both.is_err(),
+        "answers AND prompt is two resolutions of one transition — refused"
+    );
+
+    let neither = build_forwarded_call(
+        &state,
+        "clarification-respond",
+        &cell,
+        &A2aVerbBody {
+            run_id: Some("run-7".to_string()),
+            request_id: Some("clr-1".to_string()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        neither.is_err(),
+        "a resume that resolves nothing would park the graph on an answered request"
+    );
+}
+
+#[test]
 fn clarification_respond_refuses_every_unbounded_or_unsafe_argument() {
     let (_dir, state) = test_state();
     let cell = state.active_cell();

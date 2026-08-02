@@ -250,6 +250,14 @@ pub struct A2aVerbBody {
     /// every required question was answered, and whether an option id exists.
     #[serde(default)]
     pub answers: Option<serde_json::Map<String, Value>>,
+    /// clarification-respond: the CONTINUATION alternative — a new prompt that
+    /// resumes the parked run instead of answering its questions. The sibling's
+    /// respond route accepts exactly one of `answers` or `prompt`; the engine
+    /// forwards whichever the client sent and refuses both or neither, so the
+    /// exactly-one-of rule is enforced before any round-trip rather than being
+    /// discovered as a sibling refusal.
+    #[serde(default)]
+    pub prompt: Option<String>,
 }
 
 /// The forwarded HTTP call an engine verb resolves to: the method, the sibling

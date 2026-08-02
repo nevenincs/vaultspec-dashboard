@@ -55,9 +55,9 @@ pub(super) const MAX_A2A_QUESTION_ID_CHARS: usize = A2A_MAX_CLARIFICATION_IDENTI
 pub(super) const MAX_A2A_ANSWER_CHARS: usize = A2A_MAX_CLARIFICATION_ANSWER_CHARS;
 
 /// The sibling route this verb forwards to, named ONCE: this spelling and the
-/// `{"answers": {question_id: answer}}` body key below are the whole
-/// reconciliation surface with the a2a gateway's clarification route, and the
-/// only lines that change if the landed sibling route differs.
+/// `{"answers": {question_id: answer}}` / `{"prompt": text}` body keys below are
+/// the whole reconciliation surface with the a2a gateway's clarification route,
+/// and the only lines that change if the landed sibling route differs.
 fn respond_path(run_id: &str, request_id: &str) -> String {
     format!("/v1/runs/{run_id}/clarifications/{request_id}/respond")
 }
@@ -88,13 +88,41 @@ pub(super) fn build_call(
     let request_id =
         validate_path_safe_id(state, "request_id", request_id, MAX_A2A_REQUEST_ID_CHARS)?;
 
-    let answers = body.answers.as_ref().ok_or_else(|| {
-        super::super::super::api_error(
-            state,
-            StatusCode::BAD_REQUEST,
-            "clarification-respond requires an `answers` object keyed by question id".to_string(),
-        )
-    })?;
+    // The sibling resolves a parked node with EXACTLY ONE of two alternatives:
+    // `answers` (the questionnaire) or `prompt` (a continuation that resumes the
+    // run with new instruction instead of answering). Refuse both-or-neither here,
+    // before any round-trip, so a malformed resume never reaches the parked graph.
+    match (body.answers.as_ref(), body.prompt.as_deref()) {
+        (Some(_), Some(_)) => {
+            return Err(super::super::super::api_error(
+                state,
+                StatusCode::BAD_REQUEST,
+                "clarification-respond takes either `answers` or `prompt`, never both".to_string(),
+            ));
+        }
+        (None, None) => {
+            return Err(super::super::super::api_error(
+                state,
+                StatusCode::BAD_REQUEST,
+                "clarification-respond requires an `answers` object keyed by question id, \
+                 or a `prompt` continuing the run"
+                    .to_string(),
+            ));
+        }
+        (None, Some(prompt)) => {
+            let prompt =
+                validate_bounded_text(state, "clarification prompt", prompt, MAX_A2A_ANSWER_CHARS)?;
+            return Ok(ForwardedCall {
+                method: Method::Post,
+                path: respond_path(&run_id, &request_id),
+                body: Some(json!({ "prompt": Value::String(prompt) })),
+                budget: A2A_CONTROL_BUDGET,
+            });
+        }
+        (Some(_), None) => {}
+    }
+
+    let answers = body.answers.as_ref().expect("answers present in this arm");
     // A fifth answer cannot correspond to any question a bounded request asked.
     if answers.is_empty() || answers.len() > MAX_A2A_CLARIFICATION_ANSWERS {
         return Err(super::super::super::api_error(
