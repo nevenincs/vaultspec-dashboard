@@ -474,7 +474,7 @@ fn clarification_respond_refuses_every_unbounded_or_unsafe_argument() {
 /// here. It is deliberately an identity check, not a value check - restating a
 /// number the engine does not own is the mistake, not the fix.
 #[test]
-fn the_clarification_caps_are_the_contract_values_not_the_boundarys_own() {
+fn the_clarification_caps_are_the_contract_values_not_the_boundaries_own() {
     assert_eq!(
         MAX_A2A_ANSWER_CHARS, A2A_MAX_CLARIFICATION_ANSWER_CHARS,
         "the answer cap is a2a's MAX_ANSWER_CHARS; a wider one forwards an \

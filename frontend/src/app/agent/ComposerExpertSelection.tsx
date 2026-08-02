@@ -162,9 +162,10 @@ export function ComposerExpertSelection({
       onToggle={() => setOpen((current) => !current)}
       label={advancedLabel.message}
       headerProps={{
-        "aria-describedby": !open || description.usedFallback
-          ? undefined
-          : "composer-expert-selection-description",
+        "aria-describedby":
+          !open || description.usedFallback
+            ? undefined
+            : "composer-expert-selection-description",
       }}
       data-composer-expert-selection
       bodyId="composer-expert-selection-body"
