@@ -4,7 +4,7 @@ tags:
   - '#a2a-integration-verification'
 date: '2026-07-31'
 modified: '2026-08-02'
-body_hash: 'sha256:d3f119ed2c7bea46ecc434db872dd03df8db2a4581dbaa25719a397547e28069'
+body_hash: 'sha256:0e01245651385cada2a58ed31e772608bfbecbca67d19acae05bcb3cab399f8f'
 tier: L3
 related:
   - '[[2026-07-31-a2a-integration-verification-adr]]'
@@ -50,7 +50,7 @@ Land the always-executed completion floor through the in-process deterministic m
 
 Keep the in-process deterministic provider resolved through the production factory as the permanent completion floor and deliver the scripted scenarios the wire and product ladders consume; tape-backed cases may add optional provider-specific breadth but can neither block nor satisfy completion.
 
-- [ ] `W01.P03.S06` - Configure the scenario substrate so the in-process deterministic model resolved through the production provider factory remains the permanent completion floor on every target, while tape-backed cases are classified as optional supplemental coverage that can neither block nor satisfy completion; `src/vaultspec_a2a/providers/`.
+- [x] `W01.P03.S06` - Configure the scenario substrate so the in-process deterministic model resolved through the production provider factory remains the permanent completion floor on every target, while tape-backed cases are classified as optional supplemental coverage that can neither block nor satisfy completion; `src/vaultspec_a2a/providers/`.
 - [ ] `W01.P03.S07` - Deliver the four deterministic scripted scenarios covering a tool call, a permission pause, a failure, and a cancel window through the production provider factory, reusing tape content only as optional supplemental provider coverage where it already covers the behavior; `src/vaultspec_a2a/team/presets/`.
 
 ## Wave `W02` - dashboard harness and the wire ladder: attach, streaming, tool calls

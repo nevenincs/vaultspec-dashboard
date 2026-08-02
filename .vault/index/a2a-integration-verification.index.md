@@ -6,7 +6,7 @@ tags:
 date: '2026-08-02'
 modified: '2026-08-02'
 body_schema: 'body-v1'
-body_hash: 'sha256:33f0fe7e91873d452753d01d86f1fb8d07d721fe5f57b5fbe77c9bc74ae1d46e'
+body_hash: 'sha256:0802691fe375af027e171952ac244e45b338c9dd18fd9788eb65a86c572b4cd5'
 related:
   - '[[2026-07-31-a2a-integration-verification-W01-P01-S01]]'
   - '[[2026-07-31-a2a-integration-verification-W01-P01-S02]]'
@@ -16,6 +16,7 @@ related:
   - '[[2026-07-31-a2a-integration-verification-W01-P02-S05]]'
   - '[[2026-07-31-a2a-integration-verification-W01-P02-S31]]'
   - '[[2026-07-31-a2a-integration-verification-W01-P02-summary]]'
+  - '[[2026-07-31-a2a-integration-verification-W01-P03-S06]]'
   - '[[2026-07-31-a2a-integration-verification-adr]]'
   - '[[2026-07-31-a2a-integration-verification-plan]]'
   - '[[2026-07-31-a2a-integration-verification-verification-surface-inventory-reference]]'
@@ -47,6 +48,7 @@ Auto-generated index of all documents tagged with `#a2a-integration-verification
 - `2026-07-31-a2a-integration-verification-W01-P02-S05` - Land the permanent completion proof by driving an in-process deterministic-model run resolved through the production provider factory to a completed terminal state through the real gateway and real worker, asserting exact scripted content and emitting a durable review bundle containing the authored output plus transcript or execution evidence bound to the exact scenario and run, failing rather than skipping when the substrate or any required artifact is absent
 - `2026-07-31-a2a-integration-verification-W01-P02-S31` - Manually inspect the S05 run-bound artifact review bundle and record an approving sign-off
 - `2026-07-31-a2a-integration-verification-W01-P02-summary` - `W01.P02` completion-proof summary
+- `2026-07-31-a2a-integration-verification-W01-P03-S06` - Configure the deterministic scenario substrate as the permanent completion floor
 
 ### plan
 
