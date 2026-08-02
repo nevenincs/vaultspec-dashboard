@@ -1,7 +1,6 @@
 // Auto-split from queries.ts.
 // Domain submodule of the queries barrel; see ./index.ts.
 
-import { StreamLostError } from "../../../platform/policy/failurePolicy";
 import { debounce } from "../../../platform/timing";
 import { engineClient } from "../engine";
 import {
@@ -18,146 +17,17 @@ import {
   stableKey,
 } from "./internal";
 import { invalidateGitRecoveryReads } from "./mutations";
+import { sseChunks, type StreamChunk } from "./sse";
+
+export {
+  MAX_SSE_FRAME_BYTES,
+  MAX_SSE_INCOMPLETE_BYTES,
+  parseSseFrames,
+  sseChunks,
+} from "./sse";
+export type { StreamChunk } from "./sse";
 
 // --- SSE consumption (§7) -------------------------------------------------------------
-
-export interface StreamChunk {
-  channel: string;
-  data: unknown;
-}
-
-/**
- * Incremental text/event-stream parser: returns completed frames and the
- * unconsumed remainder (pure; transport-independent).
- */
-/** Per-SSE-frame byte ceiling (bounded-by-default, hardening G5): real delta/event
- *  frames are small; a frame whose accumulated `data:` exceeds this is a runaway or
- *  hostile payload — stop accumulating and DROP it rather than buffer + `JSON.parse`
- *  a multi-megabyte string (a client memory-exhaustion path). Generous vs any real
- *  frame so it only fires on a runaway. */
-export const MAX_SSE_FRAME_BYTES = 2 * 1024 * 1024;
-/** The undelimited remainder is held between network reads. Keep it under the
- * same wire-byte ceiling as a completed frame; crossing it means the peer has
- * supplied a delimiter-free runaway frame and the stream must reconnect. */
-export const MAX_SSE_INCOMPLETE_BYTES = MAX_SSE_FRAME_BYTES;
-const SSE_DECODE_SLICE_BYTES = 64 * 1024;
-
-/** UTF-8 length without allocating a second encoded copy of a potentially large
- * remainder. Network limits are byte limits, not JavaScript UTF-16 code units. */
-function utf8ByteLength(value: string): number {
-  let bytes = 0;
-  for (let index = 0; index < value.length; index++) {
-    const code = value.charCodeAt(index);
-    if (code < 0x80) bytes += 1;
-    else if (code < 0x800) bytes += 2;
-    else if (code >= 0xd800 && code <= 0xdbff && index + 1 < value.length) {
-      const low = value.charCodeAt(index + 1);
-      if (low >= 0xdc00 && low <= 0xdfff) {
-        bytes += 4;
-        index += 1;
-      } else {
-        bytes += 3;
-      }
-    } else bytes += 3;
-  }
-  return bytes;
-}
-
-export function parseSseFrames(buffer: string): {
-  frames: StreamChunk[];
-  rest: string;
-} {
-  const frames: StreamChunk[] = [];
-  const parts = buffer.split("\n\n");
-  const rest = parts.pop() ?? "";
-  for (const part of parts) {
-    let channel = "message";
-    let data = "";
-    let dataBytes = 0;
-    for (const line of part.split("\n")) {
-      if (line.startsWith("event:")) channel = line.slice(6).trim();
-      else if (line.startsWith("data:")) {
-        const value = line.slice(5).trim();
-        dataBytes += utf8ByteLength(value);
-        if (dataBytes > MAX_SSE_FRAME_BYTES) break;
-        data += value;
-      }
-    }
-    // Drop an empty frame, or a runaway one over the byte ceiling (never parse it).
-    if (data.length === 0 || dataBytes > MAX_SSE_FRAME_BYTES) continue;
-    try {
-      frames.push({ channel, data: JSON.parse(data) });
-    } catch {
-      frames.push({ channel, data });
-    }
-  }
-  return { frames, rest };
-}
-
-/** True when an error is an intentional cancel (abort), not a lost stream. */
-function isAbort(cause: unknown): boolean {
-  return cause instanceof Error && cause.name === "AbortError";
-}
-
-/**
- * Consume a long-lived SSE Response body as an async iterable of chunks. Any
- * transport end, including a clean EOF, throws `StreamLostError` so
- * the query retry policy reconnects instead of leaving a mounted consumer
- * permanently detached from a still-running producer.
- * An intentional abort (unmount / scope change) is re-thrown untouched - it is
- * not a lost stream.
- */
-export async function* sseChunks(
-  response: Response,
-): AsyncGenerator<StreamChunk, void, unknown> {
-  if (!response.ok || !response.body) {
-    throw new StreamLostError(`graph stream responded ${response.status}`);
-  }
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let bufferedWireBytes = 0;
-  let delimiterSearchFrom = 0;
-  try {
-    for (;;) {
-      let chunk: ReadableStreamReadResult<Uint8Array>;
-      try {
-        chunk = await reader.read();
-      } catch (cause) {
-        if (isAbort(cause)) throw cause;
-        throw new StreamLostError("graph stream dropped");
-      }
-      if (chunk.done) throw new StreamLostError("graph stream ended");
-      // Decode bounded slices so a single hostile transport chunk cannot create a
-      // giant concatenation before completed frames are removed.
-      for (let offset = 0; offset < chunk.value.byteLength; ) {
-        const end = Math.min(chunk.value.byteLength, offset + SSE_DECODE_SLICE_BYTES);
-        buffer += decoder.decode(chunk.value.subarray(offset, end), { stream: true });
-        bufferedWireBytes += end - offset;
-        offset = end;
-        if (bufferedWireBytes > MAX_SSE_INCOMPLETE_BYTES) {
-          throw new StreamLostError("graph stream frame exceeds byte ceiling");
-        }
-        // Do not split/re-scan a delimiter-free multi-slice frame on every
-        // 64-KiB append. Resume the delimiter search at the prior tail; the
-        // one-character overlap catches a delimiter split across slices.
-        if (buffer.indexOf("\n\n", delimiterSearchFrom) < 0) {
-          delimiterSearchFrom = Math.max(0, buffer.length - 1);
-          continue;
-        }
-        const { frames, rest } = parseSseFrames(buffer);
-        buffer = rest;
-        bufferedWireBytes = utf8ByteLength(rest);
-        delimiterSearchFrom = 0;
-        for (const frame of frames) {
-          yield frame;
-        }
-      }
-    }
-  } finally {
-    await reader.cancel().catch(() => undefined);
-  }
-}
 
 /**
  * Cap the live accumulator (dashboard-optimization P-HIGH-6): the stream never

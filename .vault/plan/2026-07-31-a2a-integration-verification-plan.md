@@ -4,7 +4,7 @@ tags:
   - '#a2a-integration-verification'
 date: '2026-07-31'
 modified: '2026-08-02'
-body_hash: 'sha256:1585287979b63588466ce9d8a63550050708aae384b75a803bd01cfdbf21d7e0'
+body_hash: 'sha256:d3ff24a14f32003026b232bb9b1c9f683e7f55437c68df0d0621713516bca56c'
 tier: L3
 related:
   - '[[2026-07-31-a2a-integration-verification-adr]]'
@@ -75,7 +75,7 @@ Prove the up-path pass-through through the engine origin only, and prove the sam
 
 Assert relayed frame content equals the script with a monotonic sequence, that a stale cursor yields an explicit gap, and that the pure reducers reduce captured frames to the scripted transcript.
 
-- [ ] `W02.P06.S12` - Assert relay streaming content equality where the relayed frames of one completed mock run equal the scripted text under a monotonic engine sequence, red if the relay opens and serves zero frames while the run completes; `frontend/e2e/agent/stream.spec.ts`.
+- [x] `W02.P06.S12` - Assert relay streaming content equality where the relayed frames of one completed mock run equal the scripted text under a monotonic engine sequence, red if the relay opens and serves zero frames while the run completes; `frontend/e2e/agent/stream.spec.ts`.
 - [ ] `W02.P06.S13` - Assert that a reconnect with a stale cursor yields an explicit gap frame and that killing a2a mid-stream yields a degraded relay rather than silence; `frontend/e2e/agent/stream.spec.ts`.
 - [ ] `W02.P06.S14` - Feed the captured live frames through the pure relay adapter and transcript reducer asserting the reduced transcript equals the script, red if a frame class is silently dropped by the classifier; `frontend/e2e/agent/stream.spec.ts`.
 

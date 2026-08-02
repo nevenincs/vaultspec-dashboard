@@ -6,7 +6,7 @@ tags:
 date: '2026-08-02'
 modified: '2026-08-02'
 body_schema: 'body-v1'
-body_hash: 'sha256:715afd2fb1cf6f6e5cf83fd86edbe0c2efbb87d69e0eacc310e1bbddec37572b'
+body_hash: 'sha256:f188fa4062fc9ed6413f2c61978afc6624386f77f36de4aef8b4d88684b658f1'
 related:
   - '[[2026-07-31-a2a-integration-verification-W01-P01-S01]]'
   - '[[2026-07-31-a2a-integration-verification-W01-P01-S02]]'
@@ -25,6 +25,7 @@ related:
   - '[[2026-07-31-a2a-integration-verification-W02-P05-S10]]'
   - '[[2026-07-31-a2a-integration-verification-W02-P05-S11]]'
   - '[[2026-07-31-a2a-integration-verification-W02-P05-summary]]'
+  - '[[2026-07-31-a2a-integration-verification-W02-P06-S12]]'
   - '[[2026-07-31-a2a-integration-verification-adr]]'
   - '[[2026-07-31-a2a-integration-verification-plan]]'
   - '[[2026-07-31-a2a-integration-verification-verification-surface-inventory-reference]]'
@@ -65,6 +66,7 @@ Auto-generated index of all documents tagged with `#a2a-integration-verification
 - `2026-07-31-a2a-integration-verification-W02-P05-S10` - Assert the up-path pass-through with non-empty presets, an available agent tier and a run identity returned through the engine origin only
 - `2026-07-31-a2a-integration-verification-W02-P05-S11` - Assert the degraded flip by stopping a2a mid-suite and re-reading the same verbs for degraded-with-reason tiers, red if a tier read cannot flip
 - `2026-07-31-a2a-integration-verification-W02-P05-summary` - `a2a-integration-verification` `P05` summary
+- `2026-07-31-a2a-integration-verification-W02-P06-S12` - Assert relay streaming content equality where the relayed frames of one completed mock run equal the scripted text under a monotonic engine sequence, red if the relay opens and serves zero frames while the run completes
 
 ### plan
 
