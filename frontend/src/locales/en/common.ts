@@ -11,7 +11,7 @@ export const common = {
       documents: "Documents",
       history: "History",
       links: "Links",
-      projectTools: "Project tools",
+      projectTools: "Vaultspec tools",
       search: "Search",
     },
     programs: {
@@ -21,7 +21,7 @@ export const common = {
           "Reads your project and answers everything this window shows. Runs on your machine.",
       },
       projectTools: {
-        name: "Project tools",
+        name: "Vaultspec tools",
         summary:
           "Run whenever the app needs to read or write the documents in your project.",
       },
@@ -31,7 +31,7 @@ export const common = {
           "Keeps the search index up to date and answers lookups by meaning. Runs on its own.",
       },
       agents: {
-        name: "Agent service",
+        name: "A2A",
         summary: "Runs the writing agents. Installed and updated separately.",
       },
     },

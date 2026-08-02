@@ -28,6 +28,7 @@ export const APPROVED_UI_TERMS = [
   "GitHub",
   "Vaultspec",
   "Qdrant",
+  "A2A",
   "Markdown",
   "JSON",
   "YAML",
