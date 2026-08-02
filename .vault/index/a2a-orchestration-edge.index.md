@@ -6,7 +6,7 @@ tags:
 date: '2026-08-02'
 modified: '2026-08-02'
 body_schema: 'body-v1'
-body_hash: 'sha256:8671cd62a83e8329e98a87f0f67626774b781a2c5a011f1777b0e79e09e52562'
+body_hash: 'sha256:e75b25997d33b18d4f8c03445efac14639220b779f74d3e834dcef496d50bebf'
 related:
   - '[[2026-07-14-a2a-orchestration-edge-adr]]'
   - '[[2026-07-14-a2a-orchestration-edge-reference]]'
@@ -39,6 +39,7 @@ related:
   - '[[2026-07-17-a2a-orchestration-edge-plan]]'
   - '[[2026-07-19-a2a-orchestration-edge-active-run-recovery-audit]]'
   - '[[2026-07-19-a2a-orchestration-edge-adversarial-performance-security-audit]]'
+  - '[[2026-08-02-a2a-orchestration-edge-edge-verification-gaps-audit]]'
   - '[[2026-08-02-a2a-orchestration-edge-provider-catalog-inversion-audit]]'
 ---
 
@@ -57,6 +58,7 @@ Auto-generated index of all documents tagged with `#a2a-orchestration-edge`.
 - `2026-07-17-a2a-orchestration-edge-audit` - `a2a-orchestration-edge` audit: `reconciliation`
 - `2026-07-19-a2a-orchestration-edge-active-run-recovery-audit` - `a2a-orchestration-edge` audit: `active-run reload recovery`
 - `2026-07-19-a2a-orchestration-edge-adversarial-performance-security-audit` - `a2a-orchestration-edge` audit: `adversarial performance, conformance, and security review`
+- `2026-08-02-a2a-orchestration-edge-edge-verification-gaps-audit` - `a2a-orchestration-edge` audit: `how a total run-start outage sat green`
 - `2026-08-02-a2a-orchestration-edge-provider-catalog-inversion-audit` - `a2a-orchestration-edge` audit: `provider catalog consumer shipped ahead of its producer`
 
 ### exec
