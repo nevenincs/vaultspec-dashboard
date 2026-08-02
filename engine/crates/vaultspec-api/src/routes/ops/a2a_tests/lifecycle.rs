@@ -334,25 +334,38 @@ async fn provider_catalog_round_trips_opaque_catalog_and_health_through_the_hand
     let server = std::thread::spawn(move || {
         let health = r#"{"status":"ok","checks":{}}"#;
         let catalog = r#"{
+            "api_version":"v1",
             "providers":[{
                 "provider_id":"provider-issued-id",
                 "execution_mode":"execution-lane-issued-id",
                 "health":{
-                    "configured":true,
+                    "configured":"available",
                     "transport":"available",
-                    "authenticated":"unknown",
-                    "catalog_available":true,
-                    "admitted":true,
-                    "selectable":true
+                    "authentication":"authenticated",
+                    "catalog":"available",
+                    "admission":"admitted",
+                    "selectable":true,
+                    "reasons":[],
+                    "checked_at":"2031-01-01T00:00:00.000Z"
                 },
-                "catalog":{"revision":"catalog-revision-issued-id","fresh":true},
-                "entries":[{
-                    "entry_id":"catalog-entry-issued-id",
-                    "controls":[{
+                "catalog":{
+                    "schema_version":1,
+                    "state":{
+                        "status":"available",
+                        "revision":"catalog-revision-issued-id",
+                        "checked_at":"2031-01-01T00:00:00.000Z",
+                        "expires_at":"2031-01-01T00:05:00.000Z"
+                    },
+                    "models":[{
+                        "entry_id":"catalog-entry-issued-id",
+                        "native_control_ids":["provider-native-control-id"],
+                        "capabilities":[]
+                    }],
+                    "native_controls":[{
                         "control_id":"provider-native-control-id",
                         "options":[{"option_id":"provider-native-control-value"}]
                     }]
-                }]
+                }
             }]
         }"#;
         for (index, body) in [health, catalog].into_iter().enumerate() {
@@ -387,28 +400,37 @@ async fn provider_catalog_round_trips_opaque_catalog_and_health_through_the_hand
     .unwrap();
 
     let (_state_dir, state) = test_state();
+    let expected_scope = crate::routes::scope_token(&state.active_cell().root);
     let Json(response) = ops_a2a_with_candidates(
         state,
         "provider-catalog".to_string(),
-        A2aVerbBody::default(),
+        A2aVerbBody {
+            expected_scope: Some(expected_scope),
+            ..Default::default()
+        },
         vec![service_json],
     )
     .await
     .expect("the live catalog reply is wrapped by the public handler");
 
     let catalog = &response["data"]["envelope"];
+    assert_eq!(catalog["api_version"], "v1");
     assert_eq!(catalog["providers"][0]["provider_id"], "provider-issued-id");
     assert_eq!(
-        catalog["providers"][0]["entries"][0]["entry_id"],
+        catalog["providers"][0]["catalog"]["schema_version"], 1,
+        "the public broker preserves the A2A lane schema version verbatim"
+    );
+    assert_eq!(
+        catalog["providers"][0]["catalog"]["models"][0]["entry_id"],
         "catalog-entry-issued-id"
     );
     assert_eq!(
-        catalog["providers"][0]["entries"][0]["controls"][0]["options"][0]["option_id"],
+        catalog["providers"][0]["catalog"]["native_controls"][0]["options"][0]["option_id"],
         "provider-native-control-value"
     );
     assert_eq!(
-        catalog["providers"][0]["health"]["authenticated"], "unknown",
-        "authentication remains an A2A-owned state rather than an engine boolean"
+        catalog["providers"][0]["health"]["authentication"], "authenticated",
+        "authentication remains an A2A-owned enum rather than an engine boolean"
     );
     assert_eq!(catalog["providers"][0]["health"]["selectable"], true);
     assert!(
@@ -418,7 +440,104 @@ async fn provider_catalog_round_trips_opaque_catalog_and_health_through_the_hand
 
     let request_line = request_rx.recv().unwrap();
     assert!(request_line.starts_with("GET /v1/provider-catalog?workspace_root="));
+    assert!(
+        !request_line.contains("expected_scope"),
+        "the browser's generation fence is consumed by Rust and never reaches A2A"
+    );
     assert!(request_line.ends_with(" HTTP/1.1"));
+    server.join().unwrap();
+}
+
+#[tokio::test]
+async fn run_status_round_trips_frozen_assignment_without_reclassification() {
+    // This uses the production discovery, health probe, blocking broker, and
+    // public handler over real loopback sockets. The served frozen snapshot is
+    // deliberately treated as an A2A-owned historical record: the Rust edge
+    // may wrap it, but may neither reinterpret it through a current catalog nor
+    // drop provider-native values on the way to the Dashboard.
+    use std::net::TcpListener;
+
+    let expected = json!({
+        "api_version": "v1",
+        "run_id": "run-frozen-evidence",
+        "status": "running",
+        "frozen_assignment": {
+            "schema_version": 1,
+            "digest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "assignments": [{
+                "role_id": "writer",
+                "provider_id": "provider-issued-id",
+                "provider_display_name": "Provider-issued display",
+                "execution_mode": "provider-issued-execution-mode",
+                "catalog_revision": "provider-issued-revision",
+                "entry_id": "provider-issued-entry",
+                "model_name": "provider-issued-model-value",
+                "model_display_name": "Provider-issued model display",
+                "controls": [{
+                    "control_id": "provider-issued-control",
+                    "option_id": "provider-issued-option",
+                    "provider_value": "provider-issued-value",
+                    "display_name": "Provider-issued control display",
+                    "option_display_name": "Provider-issued option display"
+                }],
+                "fallbacks": [{
+                    "provider_id": "provider-issued-fallback-id",
+                    "execution_mode": "provider-issued-fallback-mode",
+                    "catalog_revision": "provider-issued-fallback-revision",
+                    "entry_id": "provider-issued-fallback-entry",
+                    "model_name": "provider-issued-fallback-model",
+                    "controls": []
+                }],
+                "provenance": { "selection_source": "team_selection" }
+            }]
+        }
+    });
+    let response_body = expected.to_string();
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let (request_tx, request_rx) = std::sync::mpsc::channel();
+    let server = std::thread::spawn(move || {
+        let responses = [
+            (200, r#"{"status":"ok","checks":{}}"#.to_string()),
+            (200, response_body),
+        ];
+        for (index, (status, body)) in responses.into_iter().enumerate() {
+            let (mut stream, _) = listener.accept().unwrap();
+            let request = read_request(&stream);
+            if index == 1 {
+                request_tx.send(request.request_line).unwrap();
+            }
+            write_response(&mut stream, status, &body);
+        }
+    });
+
+    let discovery = tempfile::tempdir().unwrap();
+    let service_json = discovery.path().join("service.json");
+    write_service_record(&service_json, port);
+
+    let (_state_dir, state) = test_state();
+    let Json(response) = ops_a2a_with_candidates(
+        state,
+        "run-status".to_string(),
+        A2aVerbBody {
+            run_id: Some("run-frozen-evidence".to_string()),
+            ..Default::default()
+        },
+        vec![service_json],
+    )
+    .await
+    .expect("the public broker wraps the served frozen run status");
+
+    assert_eq!(response["data"]["envelope"], expected);
+    assert!(
+        response["tiers"]["agent"]["available"].is_boolean(),
+        "the opaque sibling envelope retains the shared tiers block"
+    );
+    assert_eq!(
+        request_rx.recv().unwrap(),
+        "GET /v1/runs/run-frozen-evidence HTTP/1.1"
+    );
     server.join().unwrap();
 }
 
@@ -485,9 +604,17 @@ fn accepted_run_start_replay_preflights_existing_and_does_not_mint_again() {
     let commit: Value = serde_json::from_str(&requests_rx.recv().unwrap().body).unwrap();
     assert_eq!(prepare["stage"], "prepare");
     assert!(prepare.get("actor_tokens").is_none());
+    assert_eq!(
+        prepare["selection"]["provider_id"], "provider-issued-id",
+        "the served selection reaches the reservation without engine remapping"
+    );
     assert_eq!(commit["stage"], "commit");
     assert_eq!(commit["reservation_id"], "resv-test-1");
     assert_eq!(commit["run_id"], "run-idem-1");
+    assert_eq!(
+        commit["selection"], prepare["selection"],
+        "the committed run receives the exact selection that reservation admitted"
+    );
     assert_eq!(
         commit["actor_tokens"]["tokens"].as_object().unwrap().len(),
         TEST_REQUIRED_ROLES.len()

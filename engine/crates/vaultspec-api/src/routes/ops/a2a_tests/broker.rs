@@ -127,11 +127,20 @@ fn build_forwarded_call_maps_read_verbs_to_the_right_paths() {
         presets.path
     );
 
-    // provider-catalog uses the same engine-owned workspace context and the
-    // bounded read budget. Its response includes A2A-owned catalog and health
-    // records and therefore is not parsed or reclassified at this edge.
-    let catalog =
-        build_forwarded_call(&state, "provider-catalog", &cell, &A2aVerbBody::default()).unwrap();
+    // provider-catalog requires the same served scope fence as a run-start,
+    // then uses the engine-owned workspace context and bounded read budget. Its
+    // response includes A2A-owned catalog and health records and therefore is
+    // not parsed or reclassified at this edge.
+    let catalog = build_forwarded_call(
+        &state,
+        "provider-catalog",
+        &cell,
+        &A2aVerbBody {
+            expected_scope: Some(expected_scope.clone()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
     assert!(
         catalog
             .path
@@ -144,6 +153,28 @@ fn build_forwarded_call_maps_read_verbs_to_the_right_paths() {
         "the workspace_root path is percent-encoded: {}",
         catalog.path
     );
+    for stale_scope in [None, Some("X:/a-different-workspace".to_string())] {
+        let expected_status = if stale_scope.is_some() {
+            StatusCode::CONFLICT
+        } else {
+            StatusCode::BAD_REQUEST
+        };
+        assert_eq!(
+            build_forwarded_call(
+                &state,
+                "provider-catalog",
+                &cell,
+                &A2aVerbBody {
+                    expected_scope: stale_scope,
+                    ..Default::default()
+                },
+            )
+            .unwrap_err()
+            .0,
+            expected_status,
+            "catalog reads are fenced against missing or changed active scopes"
+        );
+    }
 
     // active-runs pins state=active and carries the engine-controlled
     // workspace_root (percent-encoded); it is a bounded read, never a client
@@ -268,6 +299,10 @@ fn build_run_start_validates_and_omits_actor_tokens() {
         "the engine forwards the opaque provider-issued reference exactly"
     );
     assert_eq!(
+        body["selection"]["schema_version"], 1,
+        "the whole-team selection carries its explicit admitted schema"
+    );
+    assert_eq!(
         body["selection"]["entry_id"], "catalog-entry-issued-id",
         "the engine never substitutes a repository model name"
     );
@@ -280,8 +315,16 @@ fn build_run_start_validates_and_omits_actor_tokens() {
         "catalog-revision-issued-id"
     );
     assert_eq!(
+        body["overrides"]["role-issued-id"]["schema_version"], 1,
+        "role overrides carry the same explicit admitted schema"
+    );
+    assert_eq!(
         body["fallbacks"][0]["execution_mode"],
         "execution-lane-issued-id"
+    );
+    assert_eq!(
+        body["fallbacks"][0]["schema_version"], 1,
+        "ordered fallbacks carry the same explicit admitted schema"
     );
     assert_eq!(body["metadata"]["workspace_root"], expected_scope);
     assert!(body.get("expected_scope").is_none());
@@ -357,31 +400,26 @@ fn build_run_start_validates_and_omits_actor_tokens() {
         StatusCode::BAD_REQUEST
     );
 
-    // TRANSITIONAL, optional-until-served: a start WITHOUT a selection is
-    // admitted and forwards NO selection-shaped key at all — the only start
-    // the sibling's current extra-forbid schema accepts. Overrides or
-    // fallbacks without a selection stay refused: they modify a whole-team
-    // selection that is not there.
-    let bare = build_forwarded_call(
-        &state,
-        "run-start",
-        &cell,
-        &A2aVerbBody {
-            expected_scope: Some(crate::routes::scope_token(&cell.root)),
-            run_id: Some("run-missing-selection".to_string()),
-            team_preset: Some("p".to_string()),
-            message: Some("x".to_string()),
-            ..Default::default()
-        },
-    )
-    .expect("a selection-less start is the only start the sibling accepts today");
-    let bare_body = bare.body.expect("run-start builds a body");
-    for absent in ["selection", "overrides", "fallbacks"] {
-        assert!(
-            bare_body.get(absent).is_none(),
-            "an absent {absent} forwards no key — not a null and not an empty object"
-        );
-    }
+    // Every new run has one served whole-team reference. The edge refuses a
+    // selection-less request before transport rather than relying on any A2A
+    // default; overrides and fallbacks can only refine that reference.
+    assert_eq!(
+        build_forwarded_call(
+            &state,
+            "run-start",
+            &cell,
+            &A2aVerbBody {
+                expected_scope: Some(crate::routes::scope_token(&cell.root)),
+                run_id: Some("run-missing-selection".to_string()),
+                team_preset: Some("p".to_string()),
+                message: Some("x".to_string()),
+                ..Default::default()
+            },
+        )
+        .unwrap_err()
+        .0,
+        StatusCode::BAD_REQUEST
+    );
     assert_eq!(
         build_forwarded_call(
             &state,
@@ -405,6 +443,55 @@ fn build_run_start_validates_and_omits_actor_tokens() {
 }
 
 #[test]
+fn run_start_message_byte_bound_admits_the_full_unicode_character_contract() {
+    let (_dir, state) = test_state();
+    let cell = state.active_cell();
+    let expected_scope = crate::routes::scope_token(&cell.root);
+    let at_character_limit = "💡".repeat(65_536);
+    assert_eq!(at_character_limit.chars().count(), 65_536);
+    assert_eq!(at_character_limit.len(), MAX_A2A_MESSAGE_BYTES);
+    assert!(
+        build_forwarded_call(
+            &state,
+            "run-start",
+            &cell,
+            &A2aVerbBody {
+                expected_scope: Some(expected_scope.clone()),
+                run_id: Some("run-unicode-prompt-at-limit".to_string()),
+                team_preset: Some("team-issued-id".to_string()),
+                message: Some(at_character_limit),
+                selection: Some(served_catalog_selection()),
+                ..Default::default()
+            },
+        )
+        .is_ok(),
+        "65,536 four-byte Unicode characters stay within A2A's 262,144-byte budget"
+    );
+
+    let over_byte_limit = "💡".repeat(65_537);
+    assert!(over_byte_limit.len() > MAX_A2A_MESSAGE_BYTES);
+    assert_eq!(
+        build_forwarded_call(
+            &state,
+            "run-start",
+            &cell,
+            &A2aVerbBody {
+                expected_scope: Some(expected_scope),
+                run_id: Some("run-unicode-prompt-over-limit".to_string()),
+                team_preset: Some("team-issued-id".to_string()),
+                message: Some(over_byte_limit),
+                selection: Some(served_catalog_selection()),
+                ..Default::default()
+            },
+        )
+        .unwrap_err()
+        .0,
+        StatusCode::BAD_REQUEST,
+        "a message above the UTF-8 byte budget is refused before forwarding"
+    );
+}
+
+#[test]
 fn run_start_forwards_only_keys_the_sibling_schema_admits() {
     // The agreement pin whose absence let a mandatory field ship against an
     // extra-forbid consumer. The admitted set is the sibling's
@@ -412,10 +499,8 @@ fn run_start_forwards_only_keys_the_sibling_schema_admits() {
     // `model_config = ConfigDict(extra="forbid")`): a forwarded key outside it
     // is refused wholesale by the sibling, so run-start would be broken for
     // every caller — the failure must land here, in a test, first.
-    // `selection`/`overrides`/`fallbacks` are DELIBERATELY absent from this
-    // list until the sibling's provider-catalog producer serves them; adding
-    // a key here is a reviewed cross-repository contract event, not a local
-    // edit.
+    // Selection, overrides, and fallbacks are a reviewed contract event: each
+    // reference carries an explicit schema version and A2A admits all three.
     const SIBLING_ADMITTED_RUN_START_KEYS: &[&str] = &[
         "stage",
         "reservation_id",
@@ -429,6 +514,9 @@ fn run_start_forwards_only_keys_the_sibling_schema_admits() {
         "run_id",
         "profile_id",
         "feedback_batch_id",
+        "selection",
+        "overrides",
+        "fallbacks",
     ];
 
     let (_dir, state) = test_state();
@@ -445,10 +533,16 @@ fn run_start_forwards_only_keys_the_sibling_schema_admits() {
             feature_tag: Some("f".to_string()),
             title: Some("t".to_string()),
             autonomous: Some(true),
+            selection: Some(served_catalog_selection()),
+            overrides: Some(BTreeMap::from([(
+                "role-issued-id".to_string(),
+                served_catalog_selection(),
+            )])),
+            fallbacks: Some(vec![served_catalog_selection()]),
             ..Default::default()
         },
     )
-    .expect("a fully-populated selection-less start builds");
+    .expect("a fully-populated versioned selection start builds");
     let body = call.body.expect("run-start builds a body");
     for key in body.as_object().expect("object body").keys() {
         assert!(
@@ -493,6 +587,14 @@ fn run_start_catalog_selection_is_opaque_but_resource_bounded() {
     opaque.entry_id = "entry issued by the provider".to_string();
     assert!(start(opaque, None, None).is_ok());
 
+    let mut unknown_schema = served_catalog_selection();
+    unknown_schema.schema_version = 2;
+    assert_eq!(
+        start(unknown_schema, None, None).unwrap_err().0,
+        StatusCode::BAD_REQUEST,
+        "a future whole-team selection schema is refused before forwarding"
+    );
+
     let mut too_many_controls = served_catalog_selection();
     too_many_controls.controls = (0..=MAX_A2A_CONTROLS_PER_SELECTION)
         .map(|index| (format!("control-{index}"), "served-value".to_string()))
@@ -526,6 +628,85 @@ fn run_start_catalog_selection_is_opaque_but_resource_bounded() {
             .0,
         StatusCode::BAD_REQUEST
     );
+}
+
+#[test]
+fn every_run_start_selection_reference_requires_the_admitted_schema_version() {
+    // Build these raw wire values from the real Rust DTO, then remove or change
+    // only its explicit version. This proves the deserializer rejects omission
+    // in every reference position and the bounded edge rejects a future version
+    // before anything is forwarded to A2A.
+    let (_dir, state) = test_state();
+    let cell = state.active_cell();
+    let expected_scope = crate::routes::scope_token(&cell.root);
+    let versioned = serde_json::to_value(served_catalog_selection()).unwrap();
+    let mut missing = versioned.clone();
+    missing.as_object_mut().unwrap().remove("schema_version");
+    let mut future = versioned.clone();
+    future["schema_version"] = json!(2);
+    let request = |selection: Value, overrides: Option<Value>, fallbacks: Option<Value>| {
+        let mut body = json!({
+            "expected_scope": expected_scope,
+            "run_id": "run-selection-schema",
+            "team_preset": "team-issued-id",
+            "message": "Use the served selection",
+            "selection": selection,
+        });
+        if let Some(overrides) = overrides {
+            body["overrides"] = overrides;
+        }
+        if let Some(fallbacks) = fallbacks {
+            body["fallbacks"] = fallbacks;
+        }
+        body
+    };
+
+    for (position, malformed) in [
+        ("selection", request(missing.clone(), None, None)),
+        (
+            "overrides[role-issued-id]",
+            request(
+                versioned.clone(),
+                Some(json!({ "role-issued-id": missing.clone() })),
+                None,
+            ),
+        ),
+        (
+            "fallbacks[0]",
+            request(versioned.clone(), None, Some(json!([missing.clone()]))),
+        ),
+    ] {
+        assert!(
+            serde_json::from_value::<A2aVerbBody>(malformed).is_err(),
+            "a missing schema_version in {position} is not defaulted"
+        );
+    }
+
+    for (position, malformed) in [
+        ("selection", request(future.clone(), None, None)),
+        (
+            "overrides[role-issued-id]",
+            request(
+                versioned.clone(),
+                Some(json!({ "role-issued-id": future.clone() })),
+                None,
+            ),
+        ),
+        (
+            "fallbacks[0]",
+            request(versioned, None, Some(json!([future]))),
+        ),
+    ] {
+        let body = serde_json::from_value::<A2aVerbBody>(malformed)
+            .expect("a typed but future version reaches boundary validation");
+        assert_eq!(
+            build_forwarded_call(&state, "run-start", &cell, &body)
+                .unwrap_err()
+                .0,
+            StatusCode::BAD_REQUEST,
+            "a future schema_version in {position} is refused before forwarding"
+        );
+    }
 }
 
 #[test]

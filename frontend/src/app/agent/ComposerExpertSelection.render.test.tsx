@@ -36,6 +36,7 @@ const provider: ProviderCatalogRecord = {
 };
 
 const selection: ProviderCatalogSelection = {
+  schema_version: 1,
   provider_id: "provider-issued-id",
   execution_mode: "execution-lane-issued-id",
   catalog_revision: "catalog-revision-issued-id",

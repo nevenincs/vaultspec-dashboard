@@ -280,6 +280,7 @@ describe("what actually reaches the wire", () => {
     // The exact field the sibling refuses the run without.
     expect((runStart.body as Record<string, unknown>).feature_tag).toBe("agent-panel");
     expect((runStart.body as Record<string, unknown>).selection).toEqual({
+      schema_version: 1,
       provider_id: "provider-issued-id",
       execution_mode: "execution-lane-issued-id",
       catalog_revision: "catalog-revision-issued-id",

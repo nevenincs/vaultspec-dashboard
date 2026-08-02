@@ -25,6 +25,7 @@ describe("A2aTeamClient transport identity", () => {
             JSON.stringify({
               data: {
                 envelope: {
+                  api_version: "v1",
                   providers: [
                     {
                       provider_id: "provider-issued-id",
@@ -40,6 +41,7 @@ describe("A2aTeamClient transport identity", () => {
                         checked_at: "2026-08-02T08:30:00Z",
                       },
                       catalog: {
+                        schema_version: 1,
                         state: {
                           status: "available",
                           revision: "catalog-revision-issued-id",
@@ -190,6 +192,7 @@ describe("A2aTeamClient transport identity", () => {
         message: "Audit the edge",
         expected_scope: "scope-token",
         selection: {
+          schema_version: 1,
           provider_id: "provider-issued-id",
           execution_mode: "execution-lane-issued-id",
           catalog_revision: "catalog-revision-issued-id",
@@ -198,6 +201,7 @@ describe("A2aTeamClient transport identity", () => {
         },
         overrides: {
           "role-issued-id": {
+            schema_version: 1,
             provider_id: "provider-issued-id",
             execution_mode: "execution-lane-issued-id",
             catalog_revision: "catalog-revision-issued-id",
@@ -207,6 +211,7 @@ describe("A2aTeamClient transport identity", () => {
         },
         fallbacks: [
           {
+            schema_version: 1,
             provider_id: "provider-issued-id",
             execution_mode: "execution-lane-issued-id",
             catalog_revision: "catalog-revision-issued-id",
@@ -223,7 +228,7 @@ describe("A2aTeamClient transport identity", () => {
         selection: payload.selection,
       };
 
-      const catalog = await client.listProviderCatalog();
+      const catalog = await client.listProviderCatalog("scope-token");
       expect(catalog.providers[0]?.catalog.models[0]?.entry_id).toBe("entry-issued-id");
       expect(catalog.providers[0]?.catalog.models[0]?.native_control_ids).toEqual([
         "provider-native-control-issued-id",
@@ -268,7 +273,7 @@ describe("A2aTeamClient transport identity", () => {
         "must-never-reach-the-browser-view",
       );
       expect(requestBodies).toEqual([
-        "{}",
+        JSON.stringify({ expected_scope: "scope-token" }),
         JSON.stringify(payload),
         JSON.stringify(payload),
         JSON.stringify(emptyPayload),

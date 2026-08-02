@@ -7,6 +7,7 @@ import {
   adaptPresetsList,
   adaptRunStart,
   adaptRunStatus,
+  adaptSelection,
   createTeamRunId,
   isProviderCatalogSelectable,
   isTeamRunTerminalStatus,
@@ -17,6 +18,10 @@ import {
   relayStreamNeedsStatusPolling,
   resolveRunReconciliation,
   isCurrentCatalogSelection,
+  PROVIDER_CATALOG_STALE_REFETCH_BASE_MS,
+  PROVIDER_CATALOG_STALE_REFETCH_MAX_MS,
+  providerCatalogQueryOptions,
+  providerCatalogRefetchInterval,
   selectionFromCatalogEntry,
   selectionWithCatalogControl,
   scopedTeamRunStatus,
@@ -346,6 +351,7 @@ describe("adaptPresetsList", () => {
 describe("adaptProviderCatalog", () => {
   const providerCatalogPass: PassThrough = {
     envelope: {
+      api_version: "v1",
       providers: [
         {
           provider_id: "provider-issued-id",
@@ -362,6 +368,7 @@ describe("adaptProviderCatalog", () => {
             checked_at: "2026-08-02T09:00:00Z",
           },
           catalog: {
+            schema_version: 1,
             state: {
               status: "available",
               revision: "catalog-revision-issued-id",
@@ -424,9 +431,60 @@ describe("adaptProviderCatalog", () => {
     expect(provider.catalog.native_controls[0]?.options).toHaveLength(2);
   });
 
+  it("rejects absent or unknown API versions as one closed catalog snapshot", () => {
+    const known = providerCatalogPass.envelope as {
+      readonly api_version: string;
+      readonly providers: readonly unknown[];
+    };
+
+    expect(
+      adaptProviderCatalog({ envelope: { providers: known.providers } }).providers,
+    ).toEqual([]);
+    expect(
+      adaptProviderCatalog({ envelope: { ...known, api_version: "v2" } }).providers,
+    ).toEqual([]);
+  });
+
+  it("rejects a missing or unknown lane schema without retaining a sibling lane", () => {
+    const known = providerCatalogPass.envelope as {
+      readonly api_version: string;
+      readonly providers: readonly {
+        readonly provider_id: string;
+        readonly catalog: { readonly schema_version: number };
+      }[];
+    };
+    const valid = known.providers[0]!;
+    const withUnknownSchema = {
+      ...known,
+      providers: [
+        valid,
+        {
+          ...valid,
+          provider_id: "second-provider-issued-id",
+          catalog: { ...valid.catalog, schema_version: 2 },
+        },
+      ],
+    };
+    const withMissingSchema = {
+      ...known,
+      providers: [
+        valid,
+        {
+          ...valid,
+          provider_id: "second-provider-issued-id",
+          catalog: { ...valid.catalog, schema_version: undefined },
+        },
+      ],
+    };
+
+    expect(adaptProviderCatalog({ envelope: withUnknownSchema }).providers).toEqual([]);
+    expect(adaptProviderCatalog({ envelope: withMissingSchema }).providers).toEqual([]);
+  });
+
   it("fails closed when A2A omits selectability, even if a catalog entry is present", () => {
     const catalog = adaptProviderCatalog({
       envelope: {
+        api_version: "v1",
         providers: [
           {
             provider_id: "provider-issued-id",
@@ -437,6 +495,7 @@ describe("adaptProviderCatalog", () => {
               admission: "admitted",
             },
             catalog: {
+              schema_version: 1,
               state: { status: "available", revision: "catalog-revision-issued-id" },
               models: [{ entry_id: "entry-issued-id", capabilities: [] }],
               native_controls: [],
@@ -453,6 +512,7 @@ describe("adaptProviderCatalog", () => {
   it("rejects an inconsistent selectable flag when any health axis or catalog freshness is stale", () => {
     const stale = adaptProviderCatalog({
       envelope: {
+        api_version: "v1",
         providers: [
           {
             provider_id: "provider-issued-id",
@@ -466,6 +526,7 @@ describe("adaptProviderCatalog", () => {
               selectable: true,
             },
             catalog: {
+              schema_version: 1,
               state: { status: "stale", revision: "catalog-revision-issued-id" },
               models: [{ entry_id: "entry-issued-id", capabilities: [] }],
               native_controls: [],
@@ -481,6 +542,7 @@ describe("adaptProviderCatalog", () => {
   it("preserves a conflicting catalog health axis and freshness state while failing selection closed", () => {
     const provider = adaptProviderCatalog({
       envelope: {
+        api_version: "v1",
         providers: [
           {
             provider_id: "provider-issued-id",
@@ -494,6 +556,7 @@ describe("adaptProviderCatalog", () => {
               selectable: true,
             },
             catalog: {
+              schema_version: 1,
               state: {
                 status: "stale",
                 revision: "catalog-revision-issued-id",
@@ -588,6 +651,7 @@ describe("adaptProviderCatalog", () => {
     const provider = adaptProviderCatalog(providerCatalogPass).providers[0]!;
     const initial = selectionFromCatalogEntry(provider, "entry-issued-id");
     expect(initial).toEqual({
+      schema_version: 1,
       provider_id: "provider-issued-id",
       execution_mode: "execution-lane-issued-id",
       catalog_revision: "catalog-revision-issued-id",
@@ -632,6 +696,20 @@ describe("adaptProviderCatalog", () => {
         },
         initial,
       ),
+    ).toBe(false);
+  });
+
+  it("requires literal selection schema version one before adapting or revalidating", () => {
+    const provider = adaptProviderCatalog(providerCatalogPass).providers[0]!;
+    const selection = selectionFromCatalogEntry(provider, "entry-issued-id")!;
+    const { schema_version: _schemaVersion, ...missingSchema } = selection;
+    const unknownSchema = { ...selection, schema_version: 2 };
+
+    expect(adaptSelection(selection)).toEqual(selection);
+    expect(adaptSelection(missingSchema)).toBeNull();
+    expect(adaptSelection(unknownSchema)).toBeNull();
+    expect(
+      isCurrentCatalogSelection(provider, unknownSchema as unknown as typeof selection),
     ).toBe(false);
   });
 
@@ -998,5 +1076,112 @@ describe("readAgentTierAvailability (tolerant absent-tier handling)", () => {
     expect(readAgentTierAvailability({ agent: { available: true } })).toEqual({
       available: true,
     });
+  });
+});
+
+describe("provider catalog query authority and refresh cadence", () => {
+  const servedProvider = (
+    providerId: string,
+    expiresAt: string,
+    status = "available",
+  ) => ({
+    provider_id: providerId,
+    execution_mode: `${providerId}-execution-mode`,
+    health: {
+      configured: "available",
+      transport: "available",
+      authentication: "authenticated",
+      catalog: status,
+      admission: "admitted",
+      selectable: true,
+    },
+    catalog: {
+      schema_version: 1,
+      state: {
+        status,
+        revision: `${providerId}-revision`,
+        checked_at: "2031-01-01T00:00:00.000Z",
+        expires_at: expiresAt,
+      },
+      models: [{ entry_id: `${providerId}-entry`, capabilities: [] }],
+      native_controls: [],
+    },
+  });
+
+  it("never retains a catalog across an authority-scope key change", () => {
+    const first = providerCatalogQueryOptions("scope-a", true) as Record<
+      string,
+      unknown
+    >;
+    const second = providerCatalogQueryOptions("scope-b", true) as Record<
+      string,
+      unknown
+    >;
+
+    expect(first.queryKey).toEqual(["a2a", "provider-catalog", "scope-a"]);
+    expect(second.queryKey).toEqual(["a2a", "provider-catalog", "scope-b"]);
+    expect(first.placeholderData).toBeUndefined();
+    expect(second.placeholderData).toBeUndefined();
+  });
+
+  it("schedules the next GET at the earliest served selectable expiry", () => {
+    const catalog = adaptProviderCatalog({
+      envelope: {
+        api_version: "v1",
+        providers: [
+          servedProvider("later", "2031-01-01T00:00:09.000Z"),
+          servedProvider("earlier", "2031-01-01T00:00:03.000Z"),
+        ],
+      },
+    });
+    const now = Date.parse("2031-01-01T00:00:00.000Z");
+
+    expect(
+      providerCatalogRefetchInterval(
+        { state: { data: catalog, dataUpdateCount: 0 } },
+        now,
+      ),
+    ).toBe(3_000);
+  });
+
+  it("bounds a distant expiry and backs off while A2A serves stale evidence", () => {
+    const now = Date.parse("2031-01-01T00:00:00.000Z");
+    const farFuture = adaptProviderCatalog({
+      envelope: {
+        api_version: "v1",
+        providers: [servedProvider("future", "2031-01-01T02:00:00.000Z")],
+      },
+    });
+    const stale = adaptProviderCatalog({
+      envelope: {
+        api_version: "v1",
+        providers: [servedProvider("stale", "2031-01-01T00:00:01.000Z", "stale")],
+      },
+    });
+
+    expect(
+      providerCatalogRefetchInterval(
+        { state: { data: farFuture, dataUpdateCount: 0 } },
+        now,
+      ),
+    ).toBe(60 * 60_000);
+    expect(
+      providerCatalogRefetchInterval(
+        { state: { data: stale, dataUpdateCount: 0 } },
+        now,
+      ),
+    ).toBe(PROVIDER_CATALOG_STALE_REFETCH_BASE_MS);
+    expect(
+      providerCatalogRefetchInterval(
+        { state: { data: stale, dataUpdateCount: 1 } },
+        now,
+      ),
+    ).toBe(PROVIDER_CATALOG_STALE_REFETCH_BASE_MS * 2);
+    expect(
+      providerCatalogRefetchInterval(
+        { state: { data: stale, dataUpdateCount: 99 } },
+        now,
+      ),
+    ).toBe(PROVIDER_CATALOG_STALE_REFETCH_MAX_MS);
   });
 });

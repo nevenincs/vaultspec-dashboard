@@ -51,6 +51,7 @@ import { sseChunks } from "../queries/streams";
 import { asBool, asStr, asTiers, isRec, type Rec } from "../authoring";
 import {
   adaptProviderCatalog,
+  nextProviderCatalogExpiry,
   strArr,
   type PassThrough,
   type ProviderCatalogResult,
@@ -860,10 +861,17 @@ export class A2aTeamClient {
     return adaptPresetsList(await this.passThrough("presets-list", {}, signal));
   }
 
-  /** Read the active-workspace provider catalog through the bounded Rust edge.
-   * Provider health, entry ids, and control values remain entirely A2A-issued. */
-  async listProviderCatalog(signal?: AbortSignal): Promise<ProviderCatalogResult> {
-    return adaptProviderCatalog(await this.passThrough("provider-catalog", {}, signal));
+  /** Read one served-workspace provider catalog through the bounded Rust edge.
+   * The scope is a generation fence only: Rust validates it against its active
+   * cell, then derives the A2A workspace root itself. Provider health, entry
+   * ids, and control values remain entirely A2A-issued. */
+  async listProviderCatalog(
+    scope: string,
+    signal?: AbortSignal,
+  ): Promise<ProviderCatalogResult> {
+    return adaptProviderCatalog(
+      await this.passThrough("provider-catalog", { expected_scope: scope }, signal),
+    );
   }
 
   async startRun(payload: TeamRunStartPayload): Promise<TeamRunStartResult> {
@@ -966,6 +974,56 @@ export const a2aKeys = {
  *  gaps or degrades, run-status is the authoritative recovery read. */
 export const RUN_STATUS_POLL_MS = 5_000;
 
+/** Provider catalogs are current-selection authority. A scope change must show
+ * no catalog until that scope's own query answers; reusing another scope's
+ * placeholder would let the browser submit a selection A2A never served there. */
+export const PROVIDER_CATALOG_STALE_REFETCH_BASE_MS = 5_000;
+export const PROVIDER_CATALOG_STALE_REFETCH_MAX_MS = 60_000;
+const PROVIDER_CATALOG_MAX_FRESH_WAIT_MS = 60 * 60_000;
+
+type ProviderCatalogQueryState = {
+  readonly state: {
+    readonly data?: ProviderCatalogResult;
+    readonly dataUpdateCount: number;
+  };
+};
+
+/** Wake at the earliest still-selectable catalog expiry. A served stale,
+ * unavailable, or malformed catalog stays visible but retries with bounded
+ * exponential backoff so a normal provider-catalog GET can refresh it without
+ * turning one unavailable lane into a tight browser poll. */
+export function providerCatalogRefetchInterval(
+  query: ProviderCatalogQueryState,
+  now: number = Date.now(),
+): number {
+  const expiry = nextProviderCatalogExpiry(query.state.data?.providers ?? [], now);
+  if (expiry !== null) {
+    return Math.max(1, Math.min(expiry - now, PROVIDER_CATALOG_MAX_FRESH_WAIT_MS));
+  }
+  return Math.min(
+    PROVIDER_CATALOG_STALE_REFETCH_BASE_MS *
+      2 ** Math.min(query.state.dataUpdateCount, 4),
+    PROVIDER_CATALOG_STALE_REFETCH_MAX_MS,
+  );
+}
+
+/** Keep the catalog query configuration inspectable: unlike cursor-paginated
+ * lists, its key changes an authority scope, so it deliberately carries no
+ * cross-key placeholder data. */
+export function providerCatalogQueryOptions(scope: string, enabled: boolean) {
+  return {
+    queryKey: a2aKeys.providerCatalog(scope),
+    queryFn: ({ signal }: { signal: AbortSignal }) =>
+      a2aTeamClient.listProviderCatalog(scope, signal),
+    enabled,
+    staleTime: 10_000,
+    gcTime: 60_000,
+    refetchInterval: providerCatalogRefetchInterval,
+    refetchIntervalInBackground: false,
+    retry: false,
+  };
+}
+
 // --- reads + the Team selector state -------------------------------------------
 
 /** The presets listing (bounded staleTime/gcTime). */
@@ -986,20 +1044,17 @@ export function useTeamPresets(): UseQueryResult<
 }
 
 /** The active workspace's provider-issued choices. The scope participates in the
- * cache key because the engine injects it into the brokered catalog request. */
+ * cache key and is also a Rust-validated generation fence for the brokered read. */
 export function useProviderCatalog(
   scope: string | null,
   options: { enabled?: boolean } = {},
 ): UseQueryResult<ProviderCatalogResult, Error> {
-  return useQuery({
-    queryKey: a2aKeys.providerCatalog(scope ?? ""),
-    queryFn: ({ signal }) => a2aTeamClient.listProviderCatalog(signal),
-    enabled: scope !== null && (options.enabled ?? true),
-    placeholderData: keepPreviousData,
-    staleTime: 10_000,
-    gcTime: 60_000,
-    retry: false,
-  });
+  return useQuery(
+    providerCatalogQueryOptions(
+      scope ?? "",
+      scope !== null && (options.enabled ?? true),
+    ),
+  );
 }
 
 /** The interpreted Team selector state a consumer renders directly (deriving

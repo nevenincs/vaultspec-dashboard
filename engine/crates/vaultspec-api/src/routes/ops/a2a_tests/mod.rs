@@ -45,6 +45,7 @@ fn restrict_test_handoff(path: &std::path::Path) {
 }
 
 struct ObservedRequest {
+    request_line: String,
     body: String,
 }
 
@@ -72,6 +73,7 @@ fn read_request(stream: &std::net::TcpStream) -> ObservedRequest {
     let mut body = vec![0u8; content_length];
     reader.read_exact(&mut body).unwrap();
     ObservedRequest {
+        request_line: request_line.trim_end().to_string(),
         body: String::from_utf8(body).unwrap(),
     }
 }

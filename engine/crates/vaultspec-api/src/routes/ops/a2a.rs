@@ -1,5 +1,5 @@
 //! The `/ops/a2a/{verb}` orchestration control pass-through: the engine forwards
-//! a FIXED eight-verb whitelist to the
+//! a fixed reviewed verb whitelist to the
 //! resident vaultspec-a2a gateway and nothing else, wrapping the sibling's
 //! response VERBATIM inside the shared tiers envelope. It is the rag ops
 //! template retargeted at an HTTP sibling — one namespace, tiers-honest, the
@@ -48,7 +48,7 @@ use crate::authoring::model::{ActorId, ActorKind, ActorRef, CommandKind};
 
 use super::ApiResult;
 
-/// The FIXED eight-verb whitelist: orchestration control, bounded recovery and
+/// The fixed reviewed verb whitelist: orchestration control, bounded recovery and
 /// provider-catalog reads, and one typed interrupt-resume only, with no
 /// mutating vault semantics. A verb outside this set is a 403 BEFORE any
 /// discovery or round-trip — the whitelist miss never reaches the sibling.
@@ -104,10 +104,11 @@ const A2A_CONTROL_BUDGET: Duration = Duration::from_secs(60);
 /// regardless; a generous run window that still expires.
 const A2A_RUN_TOKEN_LIFETIME_MS: i64 = 24 * 3_600 * 1_000;
 
-/// The `run-start` message cap, matching the a2a gateway's own 64 KiB
-/// `RunStartRequest.message` bound so the engine rejects an oversized prompt at
-/// its boundary rather than forwarding a body the sibling will reject.
-const MAX_A2A_MESSAGE_BYTES: usize = 65_536;
+/// The `run-start` message cap matches the A2A gateway's 262,144-byte UTF-8
+/// consumer budget. Its 65,536-character source constraint permits four-byte
+/// Unicode text, so this edge must bound serialized bytes rather than reject
+/// valid non-ASCII prompts before the sibling can apply that character rule.
+const MAX_A2A_MESSAGE_BYTES: usize = 262_144;
 
 const MAX_A2A_PRESET_CHARS: usize = 64;
 const MAX_A2A_FEATURE_CHARS: usize = 128;
@@ -329,9 +330,13 @@ fn build_forwarded_call(
         }
         "provider-catalog" => {
             // Catalog enumeration can depend on the active workspace (for ACP
-            // project setup) but that root remains engine-owned. A2A owns the
-            // returned provider records, health evidence, freshness, and opaque
-            // entry/control values; the edge forwards that response verbatim.
+            // project setup). The browser first echoes its served scope as a
+            // generation fence, then the engine derives the root itself; a
+            // catalog response can never be relayed from a switched cell. A2A
+            // owns the returned provider records, health evidence, freshness,
+            // and opaque entry/control values; the edge forwards that response
+            // verbatim.
+            validate_expected_scope(state, cell, body, "provider-catalog")?;
             let root = crate::routes::scope_token(&cell.root);
             Ok(ForwardedCall {
                 method: Method::Get,
@@ -1169,7 +1174,7 @@ fn map_transport_error(
 }
 
 /// `POST /ops/a2a/{verb}` — the whitelisted a2a orchestration control pass-through.
-/// A verb outside the eight-verb whitelist is a 403 before any
+/// A verb outside the reviewed whitelist is a 403 before any
 /// discovery. A known-down sibling degrades the `agent` tier at 200; a genuine
 /// proxy crash/timeout is 502/504; a sibling answer (2xx or a business refusal)
 /// forwards VERBATIM under `data.envelope`. run-start provisions per-role actor

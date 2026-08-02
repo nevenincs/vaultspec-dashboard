@@ -106,6 +106,10 @@ export interface ProviderCatalogResult {
 /** The only selection shape a new product run may send. Every string originates
  * in one current A2A catalog response; callers never send a raw model value. */
 export interface ProviderCatalogSelection {
+  /** The A2A selection-reference contract version. New runs never rely on a
+   * producer default: every whole-team, override, and fallback reference says
+   * exactly which admitted shape it carries. */
+  readonly schema_version: 1;
   readonly provider_id: string;
   readonly execution_mode: string;
   readonly catalog_revision: string;
@@ -240,8 +244,9 @@ function adaptProviderHealth(raw: unknown): ProviderHealth {
   };
 }
 
-function adaptCatalog(raw: unknown): ProviderCatalog {
-  const catalog: Rec = isRec(raw) ? raw : {};
+function adaptCatalog(raw: unknown): ProviderCatalog | null {
+  if (!isRec(raw) || raw.schema_version !== 1) return null;
+  const catalog: Rec = raw;
   const state: Rec = isRec(catalog.state) ? catalog.state : {};
   const models = Array.isArray(catalog.models)
     ? catalog.models
@@ -272,6 +277,7 @@ function adaptProviderCatalogRecord(raw: unknown): ProviderCatalogRecord | null 
   const executionMode = asStr(raw.execution_mode);
   if (!providerId || !executionMode) return null;
   const catalog = adaptCatalog(raw.catalog);
+  if (catalog === null) return null;
   const health = adaptProviderHealth(raw.health);
   return {
     provider_id: providerId,
@@ -288,11 +294,27 @@ function adaptProviderCatalogRecord(raw: unknown): ProviderCatalogRecord | null 
   };
 }
 
-/** Adapt the A2A-owned current provider catalog. Sparse or future records remain
- * visible with `unknown` health, but no missing value can create a selectable row. */
+/** Adapt the A2A-owned current provider catalog. The API and every lane catalog
+ * version are an admission boundary: a missing or unknown producer version
+ * suppresses the whole snapshot, never a tolerant partial downgrade. Once that
+ * boundary is admitted, sparse records remain visible with `unknown` health,
+ * but no missing value can create a selectable row. */
 export function adaptProviderCatalog(pass: PassThrough): ProviderCatalogResult {
   const env = pass.envelope;
-  const rawProviders = isRec(env) && Array.isArray(env.providers) ? env.providers : [];
+  if (
+    !isRec(env) ||
+    env.api_version !== "v1" ||
+    !Array.isArray(env.providers) ||
+    !env.providers.every(
+      (provider) =>
+        isRec(provider) &&
+        isRec(provider.catalog) &&
+        provider.catalog.schema_version === 1,
+    )
+  ) {
+    return { providers: [], tiers: pass.tiers };
+  }
+  const rawProviders = env.providers;
   return {
     providers: rawProviders
       .map(adaptProviderCatalogRecord)
@@ -305,7 +327,7 @@ export function adaptProviderCatalog(pass: PassThrough): ProviderCatalogResult {
  * rather than being dressed up as a choice. (Also consumed by the frozen-role
  * adapter that stayed in `a2aTeam.ts`.) */
 export function adaptSelection(raw: unknown): ProviderCatalogSelection | null {
-  if (!isRec(raw)) return null;
+  if (!isRec(raw) || raw.schema_version !== 1) return null;
   const providerId = asStr(raw.provider_id);
   const executionMode = asStr(raw.execution_mode);
   const revision = asStr(raw.catalog_revision);
@@ -315,6 +337,7 @@ export function adaptSelection(raw: unknown): ProviderCatalogSelection | null {
     return null;
   }
   return {
+    schema_version: 1,
     provider_id: providerId,
     execution_mode: executionMode,
     catalog_revision: revision,
@@ -430,6 +453,7 @@ export function selectionFromCatalogEntry(
     }
   }
   return {
+    schema_version: 1,
     provider_id: record.provider_id,
     execution_mode: record.execution_mode,
     catalog_revision: record.catalog.state.revision!,
@@ -463,7 +487,13 @@ export function isCurrentCatalogSelection(
   selection: ProviderCatalogSelection | null,
   now: number = Date.now(),
 ): selection is ProviderCatalogSelection {
-  if (!selection || !isProviderCatalogSelectable(record, now)) return false;
+  if (
+    !selection ||
+    selection.schema_version !== 1 ||
+    !isProviderCatalogSelectable(record, now)
+  ) {
+    return false;
+  }
   if (
     selection.provider_id !== record.provider_id ||
     selection.execution_mode !== record.execution_mode ||
