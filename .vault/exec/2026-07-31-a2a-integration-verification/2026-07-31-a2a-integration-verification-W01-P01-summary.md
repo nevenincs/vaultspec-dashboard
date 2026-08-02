@@ -3,9 +3,9 @@ tags:
   - '#exec'
   - '#a2a-integration-verification'
 date: '2026-08-01'
-modified: '2026-08-01'
+modified: '2026-08-02'
 body_schema: 'body-v1'
-body_hash: 'sha256:ed400906d75ad5ff508400a78316c1386c0d7e9cf623036a571a3bbc59bcf2f0'
+body_hash: 'sha256:2899a5f89d3fd6606947733b17105b5f6e02165d77013e950cb5eb7aa5d6d3b9'
 related:
   - "[[2026-07-31-a2a-integration-verification-plan]]"
 ---

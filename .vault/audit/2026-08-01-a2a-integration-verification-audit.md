@@ -3,15 +3,12 @@ tags:
   - '#audit'
   - '#a2a-integration-verification'
 date: '2026-08-01'
-modified: '2026-08-01'
+modified: '2026-08-02'
 body_schema: 'body-v1'
-body_hash: 'sha256:3e927e494d1e37aa0d36063449cc96ca12013ed267494ddb5353b2d6f2bcb2dd'
+body_hash: 'sha256:63c526a2646fb476cfd4e11f98d70128fad5c67407c3b10519e0d257ea1aae38'
 related:
   - "[[2026-07-31-a2a-integration-verification-plan]]"
 ---
-
-
-
 # `a2a-integration-verification` audit: `W01.P01.S02` closure evidence
 
 ## Scope
@@ -41,7 +38,9 @@ downstream completion claims until the production terminal snapshot is reconcile
 the deterministic scenario is rerun, and a fresh bundle receives a manual approving
 sign-off.
 
-Status: open as of 2026-08-02. No S31 approval has been recorded.
+Status: remediated on 2026-08-02 by A2A revisions `a8426964` and `4a322775`,
+which settle all durable approval metadata during verdict and terminal
+transitions. The rejected bundle remains preserved as historical evidence.
 
 ### body-attestation | medium | The S02 execution record carries a stale body hash
 
@@ -55,7 +54,6 @@ execution record's body attestation, and the focused frontmatter check now
 reports the feature clean. The finding remains here as the historical review
 record; its required correction is complete.
 
-
 ## Recommendations
 
 Accept the `W01.P01.S02` closure artifacts once the focused frontmatter,
@@ -63,3 +61,20 @@ annotation, and required-body-section checks remain clean and plan validation
 confirms the completed Step maps to its execution record. Keep `W01.P01.S03`
 open: the no-code conclusion in S02 does not replace its required regression
 lock or deliberate-fault red proof.
+
+## Manual sign-off: `W01.P02.S31`
+
+- Reviewer: Codex, with independent Sol-medium code reviews of the lifecycle
+  remediation and the S05 health guard.
+- Artifact identity:
+  `w01-p02-s05-deterministic-research-adr:deterministic-completion-c0e019c275e241c4991bcca2c6047316`.
+- Scenario identity: `w01-p02-s05-deterministic-research-adr`.
+- Run identity: `deterministic-completion-c0e019c275e241c4991bcca2c6047316`.
+- Disposition: **approved**.
+- Reason: all five artifact SHA-256 values independently match the manifest;
+  the terminal result is `completed` with healthy repair/readiness and no
+  degraded reasons; the recovered history reports `snapshot_complete: true`,
+  healthy repair/readiness, and no degraded reasons; the bundle contains the
+  exact scripted output and the materialized research and ADR. The real run
+  used a fresh current-engine service record and was shut down through its own
+  authenticated endpoint after collection.

@@ -5,7 +5,7 @@ tags:
 date: '2026-08-02'
 modified: '2026-08-02'
 body_schema: 'body-v1'
-body_hash: 'sha256:fe94b23a6e0e5a0e24320f087120c1c47f953c6083e3aea378b7fb58faa3738a'
+body_hash: 'sha256:58ba2fe41e2211f2e4b9319a174f661c5e4958ecae6cd0936b5fc6fb048957f1'
 step_id: 'S05'
 related:
   - "[[2026-07-31-a2a-integration-verification-plan]]"
