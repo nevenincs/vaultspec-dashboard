@@ -255,6 +255,35 @@ async function waitForEngineAttachment(engine: EngineHandle): Promise<void> {
   );
 }
 
+/** Remove each root this harness owns, even if its sibling removal failed.
+ *
+ * Both roots are created only for this harness. Keeping their failure handling
+ * separate preserves the recovery path on Windows, where a just-exited child
+ * can transiently retain one handle while the other root is immediately safe
+ * to remove.
+ */
+function removeOwnedRoots(
+  a2aHome: string | undefined,
+  fixture: FixtureWorktree | undefined,
+): unknown[] {
+  const failures: unknown[] = [];
+  if (a2aHome) {
+    try {
+      rmSync(a2aHome, { recursive: true, force: true });
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+  if (fixture) {
+    try {
+      removeFixtureWorktree(fixture.root);
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+  return failures;
+}
+
 /**
  * Start a real engine over a fresh git worktree, then a real a2a source gateway
  * over a fresh application home. The final read is deliberately engine-origin
@@ -263,11 +292,13 @@ async function waitForEngineAttachment(engine: EngineHandle): Promise<void> {
  */
 export async function startAgentHarness(): Promise<AgentHarness> {
   const a2aRoot = resolveA2aRoot();
-  const fixture = createFixtureWorktree();
-  const a2aHome = mkdtempSync(join(tmpdir(), "vaultspec-a2a-e2e-"));
+  let fixture: FixtureWorktree | undefined;
+  let a2aHome: string | undefined;
   let engine: EngineHandle | undefined;
   let a2a: A2aHandle | undefined;
   try {
+    fixture = createFixtureWorktree();
+    a2aHome = mkdtempSync(join(tmpdir(), "vaultspec-a2a-e2e-"));
     engine = await spawnEngine(fixture.root, { VAULTSPEC_A2A_HOME: a2aHome });
     const engineServiceJson = join(
       fixture.root,
@@ -299,16 +330,15 @@ export async function startAgentHarness(): Promise<AgentHarness> {
         failures.push(cleanupError);
       }
     }
-    try {
-      rmSync(a2aHome, { recursive: true, force: true });
-      removeFixtureWorktree(fixture.root);
-    } catch (cleanupError) {
-      failures.push(cleanupError);
-    }
+    failures.push(...removeOwnedRoots(a2aHome, fixture));
     if (failures.length > 1) {
       throw new AggregateError(failures, "agent harness startup and cleanup failed");
     }
     throw startupError;
+  }
+
+  if (!fixture || !a2aHome || !engine || !a2a) {
+    throw new Error("agent harness startup returned without every owned resource");
   }
 
   let stopped = false;
@@ -319,7 +349,6 @@ export async function startAgentHarness(): Promise<AgentHarness> {
     a2aHome,
     async stop(): Promise<void> {
       if (stopped) return;
-      stopped = true;
       const failures: unknown[] = [];
       try {
         await stopA2a(a2a);
@@ -331,16 +360,12 @@ export async function startAgentHarness(): Promise<AgentHarness> {
       } catch (error) {
         failures.push(error);
       }
-      try {
-        rmSync(a2aHome, { recursive: true, force: true });
-        removeFixtureWorktree(fixture.root);
-      } catch (error) {
-        failures.push(error);
-      }
+      failures.push(...removeOwnedRoots(a2aHome, fixture));
       if (failures.length === 1) throw failures[0];
       if (failures.length > 1) {
         throw new AggregateError(failures, "agent harness cleanup failed");
       }
+      stopped = true;
     },
   };
 }
