@@ -189,12 +189,16 @@ export interface EngineHandle {
 
 /** Spawn the real engine over `root`, waiting for `service.json` + a live
  *  `/status` before returning. */
-export async function spawnEngine(root: string): Promise<EngineHandle> {
+export async function spawnEngine(
+  root: string,
+  extraEnv: NodeJS.ProcessEnv = {},
+): Promise<EngineHandle> {
   const { path: bin } = resolveEngineBin();
   const port = await freePort();
   const baseUrl = `http://127.0.0.1:${port}`;
   const proc = spawn(bin, ["serve", "--port", String(port), "--no-seat"], {
     cwd: root,
+    env: { ...process.env, ...extraEnv },
     stdio: ["ignore", "pipe", "pipe"],
     detached: process.platform !== "win32",
   });
