@@ -355,7 +355,6 @@ function teamPreset(id: string, displayName: string): TeamPreset {
     worker_count: 3,
     required_roles: ["writer", "reviewer"],
     is_mock: false,
-    profiles: [],
   };
 }
 

@@ -8,6 +8,7 @@ import { A2aTeamClient, type TeamRunStartPayload } from "./a2aTeam";
 describe("A2aTeamClient transport identity", () => {
   it("retries one lost run-start acknowledgement with the exact run id and resumes relay by cursor", async () => {
     const requestBodies: string[] = [];
+    const runStartBodies: string[] = [];
     const requestTargets: string[] = [];
     const server = createServer((request, response) => {
       requestTargets.push(request.url ?? "");
@@ -17,9 +18,53 @@ describe("A2aTeamClient transport identity", () => {
         body += chunk;
       });
       request.on("end", () => {
+        if (request.url === "/ops/a2a/provider-catalog") {
+          requestBodies.push(body);
+          response.writeHead(200, { "content-type": "application/json" });
+          response.end(
+            JSON.stringify({
+              data: {
+                envelope: {
+                  providers: [
+                    {
+                      provider_id: "provider-issued-id",
+                      execution_mode: "execution-lane-issued-id",
+                      health: {
+                        configured: "available",
+                        transport: "available",
+                        authentication: "authenticated",
+                        catalog: "available",
+                        admission: "admitted",
+                        selectable: true,
+                        reasons: [],
+                      },
+                      catalog: {
+                        state: {
+                          status: "available",
+                          revision: "catalog-revision-issued-id",
+                        },
+                        models: [{ entry_id: "entry-issued-id", capabilities: [] }],
+                        native_controls: [],
+                      },
+                    },
+                  ],
+                },
+              },
+              tiers: {
+                declared: { available: true },
+                structural: { available: true },
+                temporal: { available: true },
+                semantic: { available: true },
+              },
+            }),
+          );
+          return;
+        }
+
         if (request.url === "/ops/a2a/run-start") {
           requestBodies.push(body);
-          if (requestBodies.length === 1) {
+          runStartBodies.push(body);
+          if (runStartBodies.length === 1) {
             // Real lost-ack transport failure: close the TCP socket before any
             // response bytes. The production client must retry idempotently.
             request.socket.destroy();
@@ -65,12 +110,26 @@ describe("A2aTeamClient transport identity", () => {
         team_preset: "vaultspec-authoring",
         message: "Audit the edge",
         expected_scope: "scope-token",
+        selection: {
+          provider_id: "provider-issued-id",
+          execution_mode: "execution-lane-issued-id",
+          catalog_revision: "catalog-revision-issued-id",
+          entry_id: "entry-issued-id",
+          controls: {},
+        },
       };
 
+      const catalog = await client.listProviderCatalog();
+      expect(catalog.providers[0]?.catalog.models[0]?.entry_id).toBe("entry-issued-id");
       const started = await client.startRun(payload);
       expect(started.ok).toBe(true);
       expect(started.run_id).toBe(payload.run_id);
-      expect(requestBodies).toEqual([JSON.stringify(payload), JSON.stringify(payload)]);
+      expect(requestBodies).toEqual([
+        "{}",
+        JSON.stringify(payload),
+        JSON.stringify(payload),
+      ]);
+      expect(requestTargets).toContain("/ops/a2a/provider-catalog");
 
       const relay = await client.openRunStream("run-a", 17);
       expect(relay.ok).toBe(true);

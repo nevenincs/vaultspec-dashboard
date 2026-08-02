@@ -77,11 +77,16 @@ import {
   useSession,
   useStartTeamRun,
   useStartTurn,
+  useProviderCatalog,
   useTeamSelectorState,
 } from "../../stores/server/agent";
 import { useTeamRunProgress } from "./TeamRunProgressContext";
 import { normalizePendingClarification } from "./clarification";
-import type { TeamProfile } from "../../stores/server/agent/a2aTeam";
+import {
+  isCurrentCatalogSelection,
+  type ProviderCatalogRecord,
+  type ProviderCatalogSelection,
+} from "../../stores/server/agent/a2aTeam";
 import {
   setAgentCurrentSession,
   setAgentTeamRun,
@@ -552,24 +557,21 @@ function ComposerTeamSelector({
  *  rendered by the composer itself since it changes shape with the run. */
 function ComposerThinkingControls({
   locked,
-  profiles,
-  selectedProfileId,
-  defaultProfileId,
-  onSelectProfile,
+  providers,
+  selection,
+  onSelectSelection,
 }: {
   locked: boolean;
-  profiles: readonly TeamProfile[];
-  selectedProfileId: string | null;
-  defaultProfileId: string | null;
-  onSelectProfile: (profileId: string | null) => void;
+  providers: readonly ProviderCatalogRecord[];
+  selection: ProviderCatalogSelection | null;
+  onSelectSelection: (selection: ProviderCatalogSelection | null) => void;
 }) {
   return (
     <div className="flex min-w-0 items-center gap-fg-1" data-composer-thinking>
       <ComposerModelPicker
-        profiles={profiles}
-        selectedProfileId={selectedProfileId}
-        defaultProfileId={defaultProfileId}
-        onSelectProfile={onSelectProfile}
+        providers={providers}
+        selection={selection}
+        onSelectSelection={onSelectSelection}
         locked={locked}
       />
     </div>
@@ -754,31 +756,38 @@ export function Composer() {
   const parkedOnClarification =
     normalizePendingClarification(teamProgress.status?.pending_clarification) !== null;
   const teamMode = selectedTeamPreset !== null;
-  // The model the run will actually use, read from the SERVED preset list: a preset
-  // carries one `default_profile_id`. No preset (or none served) means no profile to
-  // name, and the pill says so rather than showing a model the run would not use.
+  // Team topology remains preset-owned, while the provider/model that produces a
+  // new artifact is an explicit current A2A catalog selection. Neither the preset
+  // nor the Dashboard gets to fill a missing selection with a static default.
   const teamSelector = useTeamSelectorState();
   const activePreset =
     selectedTeamPreset === null
       ? null
       : (teamSelector.presets.find((preset) => preset.id === selectedTeamPreset) ??
         null);
-  const profiles = activePreset?.profiles ?? [];
-  const defaultProfileId = activePreset?.default_profile_id ?? null;
-  // The user's explicit model choice, cleared whenever the preset changes — a
-  // profile belongs to the preset that serves it, so carrying one across would send
-  // an id the new preset never offered.
-  const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
+  const providerCatalog = useProviderCatalog(scope, { enabled: teamMode });
+  const providers = teamMode ? (providerCatalog.data?.providers ?? []) : [];
+  const [selectedCatalogSelection, setSelectedCatalogSelection] =
+    useState<ProviderCatalogSelection | null>(null);
   useEffect(() => {
-    setSelectedProfileId(null);
-  }, [selectedTeamPreset]);
-  // What run-start will actually be sent: the explicit choice when it is still on
-  // offer, else nothing (the sibling then applies the preset's own default).
-  const runProfileId =
-    selectedProfileId !== null &&
-    profiles.some((profile) => profile.id === selectedProfileId && profile.eligible)
-      ? selectedProfileId
-      : null;
+    setSelectedCatalogSelection(null);
+  }, [scope, selectedTeamPreset]);
+  // A retained browser selection is meaningful only while the same provider lane,
+  // catalog revision, entry and native options remain served and selectable.
+  const runSelection = useMemo(
+    () =>
+      providers.find((provider) =>
+        isCurrentCatalogSelection(provider, selectedCatalogSelection),
+      ) === undefined
+        ? null
+        : selectedCatalogSelection,
+    [providers, selectedCatalogSelection],
+  );
+  useEffect(() => {
+    if (selectedCatalogSelection !== null && runSelection === null) {
+      setSelectedCatalogSelection(null);
+    }
+  }, [runSelection, selectedCatalogSelection]);
 
   // S44 — the CORNERSTONE feature binding. Which presets need one is SERVED
   // (`authoring_capability`), the default comes from the open document, and the
@@ -995,7 +1004,13 @@ export function Composer() {
    *  sibling's forwarded 4xx) surfaces honestly inline rather than as a fake start. */
   const startTeam = async () => {
     const prompt = buildAgentPrompt(text, mentions);
-    if (prompt.length === 0 || selectedTeamPreset === null || scope === null) return;
+    if (
+      prompt.length === 0 ||
+      selectedTeamPreset === null ||
+      scope === null ||
+      runSelection === null
+    )
+      return;
     // A document-authoring run without its cornerstone feature is a run the sibling
     // will refuse. Hold it here and say so, rather than spending a round trip to be
     // told something the served capability already told us.
@@ -1010,8 +1025,8 @@ export function Composer() {
         team_preset: selectedTeamPreset,
         message: prompt,
         expected_scope: scope,
+        selection: runSelection,
         title: sessionTitleFromPrompt(prompt),
-        ...(runProfileId === null ? {} : { profile_id: runProfileId }),
         ...(runFeatureTag === null ? {} : { feature_tag: runFeatureTag }),
       });
       if (result.ok && result.run_id !== undefined && result.run_id.length > 0) {
@@ -1268,10 +1283,9 @@ export function Composer() {
           <div className="ml-auto flex min-w-0 items-center gap-fg-2">
             <ComposerThinkingControls
               locked={activeRun !== null || teamRunActive || startTeamRun.isPending}
-              profiles={profiles}
-              selectedProfileId={selectedProfileId}
-              defaultProfileId={defaultProfileId}
-              onSelectProfile={setSelectedProfileId}
+              providers={providers}
+              selection={runSelection}
+              onSelectSelection={setSelectedCatalogSelection}
             />
             {/* The RUN SLOT (D10, C6): nothing at idle — Enter sends and Enter
               starts a team run; there is no send or start button to drift from

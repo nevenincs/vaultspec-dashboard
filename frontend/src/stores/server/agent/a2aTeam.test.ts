@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   advanceRelayResumeCursor,
   adaptActiveRuns,
+  adaptProviderCatalog,
   adaptPresetsList,
   adaptRunStart,
   adaptRunStatus,
@@ -14,6 +15,9 @@ import {
   recoverableActiveRunId,
   relayStreamNeedsStatusPolling,
   resolveRunReconciliation,
+  isCurrentCatalogSelection,
+  selectionFromCatalogEntry,
+  selectionWithCatalogControl,
   scopedTeamRunStatus,
   type PassThrough,
   type RunReconciliationState,
@@ -278,7 +282,7 @@ describe("adaptActiveRuns", () => {
 });
 
 describe("adaptPresetsList", () => {
-  it("adapts the sibling preset list tolerantly and preserves tiers", () => {
+  it("adapts provider-free team topology tolerantly and preserves tiers", () => {
     const pass: PassThrough = {
       envelope: {
         api_version: "v1",
@@ -290,7 +294,6 @@ describe("adaptPresetsList", () => {
             required_roles: ["researcher", "planner"],
             is_mock: false,
             origin: "bundled",
-            default_profile_id: "team-defaults",
           },
           // A preset that failed to load is still listed (truthful set).
           { id: "broken", loadable: false, unavailable_reason: "preset not found" },
@@ -315,6 +318,174 @@ describe("adaptPresetsList", () => {
   });
 });
 
+describe("adaptProviderCatalog", () => {
+  const providerCatalogPass: PassThrough = {
+    envelope: {
+      providers: [
+        {
+          provider_id: "provider-issued-id",
+          display_name: "Provider-issued display",
+          execution_mode: "execution-lane-issued-id",
+          health: {
+            configured: "available",
+            transport: "available",
+            authentication: "authenticated",
+            catalog: "available",
+            admission: "admitted",
+            selectable: true,
+            reasons: [],
+            checked_at: "2026-08-02T09:00:00Z",
+          },
+          catalog: {
+            state: {
+              status: "available",
+              revision: "catalog-revision-issued-id",
+              checked_at: "2026-08-02T09:00:00Z",
+            },
+            models: [
+              {
+                entry_id: "entry-issued-id",
+                display_name: "Entry-issued display",
+                capabilities: ["provider-issued-capability"],
+              },
+            ],
+            native_controls: [
+              {
+                control_id: "provider-native-control-id",
+                kind: "provider-issued-kind",
+                display_name: "Provider-native control",
+                default_option_id: "provider-native-default-option",
+                options: [
+                  {
+                    option_id: "provider-native-default-option",
+                    display_name: "Provider-native default",
+                  },
+                  {
+                    option_id: "provider-native-other-option",
+                    display_name: "Provider-native alternative",
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    },
+  };
+
+  it("keeps provider-owned entries, health, and native controls without inventing tiers", () => {
+    const catalog = adaptProviderCatalog(providerCatalogPass);
+    expect(catalog.providers).toHaveLength(1);
+    const provider = catalog.providers[0]!;
+    expect(provider.health).toMatchObject({
+      configured: "available",
+      transport: "available",
+      authentication: "authenticated",
+      admission: "admitted",
+      selectable: true,
+    });
+    expect(provider.catalog.models[0]?.entry_id).toBe("entry-issued-id");
+    expect(provider.catalog.native_controls[0]?.kind).toBe("provider-issued-kind");
+    expect(provider.catalog.native_controls[0]?.options).toHaveLength(2);
+  });
+
+  it("fails closed when A2A omits selectability, even if a catalog entry is present", () => {
+    const catalog = adaptProviderCatalog({
+      envelope: {
+        providers: [
+          {
+            provider_id: "provider-issued-id",
+            execution_mode: "execution-lane-issued-id",
+            health: {
+              configured: "available",
+              catalog: "available",
+              admission: "admitted",
+            },
+            catalog: {
+              state: { status: "available", revision: "catalog-revision-issued-id" },
+              models: [{ entry_id: "entry-issued-id", capabilities: [] }],
+              native_controls: [],
+            },
+          },
+        ],
+      },
+    });
+    const provider = catalog.providers[0]!;
+    expect(provider.health.selectable).toBe(false);
+    expect(selectionFromCatalogEntry(provider, "entry-issued-id")).toBeNull();
+  });
+
+  it("rejects an inconsistent selectable flag when any health axis or catalog freshness is stale", () => {
+    const stale = adaptProviderCatalog({
+      envelope: {
+        providers: [
+          {
+            provider_id: "provider-issued-id",
+            execution_mode: "execution-lane-issued-id",
+            health: {
+              configured: "available",
+              transport: "available",
+              authentication: "authenticated",
+              catalog: "stale",
+              admission: "admitted",
+              selectable: true,
+            },
+            catalog: {
+              state: { status: "stale", revision: "catalog-revision-issued-id" },
+              models: [{ entry_id: "entry-issued-id", capabilities: [] }],
+              native_controls: [],
+            },
+          },
+        ],
+      },
+    }).providers[0]!;
+    expect(stale.health.selectable).toBe(false);
+    expect(selectionFromCatalogEntry(stale, "entry-issued-id")).toBeNull();
+  });
+
+  it("mints and revises a selection only from the current served revision and options", () => {
+    const provider = adaptProviderCatalog(providerCatalogPass).providers[0]!;
+    const initial = selectionFromCatalogEntry(provider, "entry-issued-id");
+    expect(initial).toEqual({
+      provider_id: "provider-issued-id",
+      execution_mode: "execution-lane-issued-id",
+      catalog_revision: "catalog-revision-issued-id",
+      entry_id: "entry-issued-id",
+      controls: { "provider-native-control-id": "provider-native-default-option" },
+    });
+    expect(isCurrentCatalogSelection(provider, initial)).toBe(true);
+    const changed = selectionWithCatalogControl(
+      provider,
+      initial!,
+      "provider-native-control-id",
+      "provider-native-other-option",
+    );
+    expect(changed?.controls["provider-native-control-id"]).toBe(
+      "provider-native-other-option",
+    );
+    expect(
+      selectionWithCatalogControl(
+        provider,
+        initial!,
+        "provider-native-control-id",
+        "not-issued-by-provider",
+      ),
+    ).toBeNull();
+    expect(
+      isCurrentCatalogSelection(
+        {
+          ...provider,
+          catalog: {
+            ...provider.catalog,
+            state: { ...provider.catalog.state, revision: "a-new-revision" },
+          },
+        },
+        initial,
+      ),
+    ).toBe(false);
+  });
+});
+
 describe("adaptRunStart", () => {
   it("adapts a successful run-start ack", () => {
     const result = adaptRunStart({
@@ -323,14 +494,25 @@ describe("adaptRunStart", () => {
         run_id: "run-9",
         status: "active",
         nickname: "brave-otter",
-        eligible: true,
-        profile_id: "team-defaults",
+        frozen_assignment: {
+          schema_version: 1,
+          assignments: [
+            {
+              role_id: "role-issued-id",
+              provider_id: "provider-issued-id",
+              execution_mode: "execution-lane-issued-id",
+              catalog_revision: "catalog-revision-issued-id",
+              entry_id: "entry-issued-id",
+              controls: {},
+            },
+          ],
+        },
       },
     });
     expect(result.ok).toBe(true);
     expect(result.run_id).toBe("run-9");
     expect(result.status).toBe("active");
-    expect(result.eligible).toBe(true);
+    expect(result.frozen_assignment?.assignments[0]?.entry_id).toBe("entry-issued-id");
   });
 
   it("surfaces a sibling business refusal (422) as ok:false with detail", () => {
@@ -365,6 +547,32 @@ describe("adaptRunStatus", () => {
     expect(status.semantic_phase).toBe("adr");
     expect(status.proposal_ids).toEqual(["p1", "p2"]);
     expect(status.last_sequence).toBe(12);
+  });
+
+  it("retains a legacy profile-backed assignment as read-only run evidence", () => {
+    const status = adaptRunStatus({
+      envelope: {
+        run_id: "legacy-run",
+        status: "running",
+        assignments: [
+          {
+            role_id: "writer",
+            agent_id: "writer-agent",
+            provider_id: "legacy-provider-id",
+            model_name: "legacy-frozen-model",
+          },
+        ],
+      },
+    });
+    expect(status.frozen_assignment).toBeUndefined();
+    expect(status.assignments).toEqual([
+      {
+        role_id: "writer",
+        agent_id: "writer-agent",
+        provider_id: "legacy-provider-id",
+        model_name: "legacy-frozen-model",
+      },
+    ]);
   });
 
   it("floors a sparse status body without throwing", () => {
