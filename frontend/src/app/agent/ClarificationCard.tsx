@@ -50,6 +50,7 @@ const MSG = {
   submit: "common:agent.clarification.submit",
   required: "common:agent.clarification.required",
   answerPlaceholder: "common:agent.clarification.answerPlaceholder",
+  optionOrdinal: "common:agent.clarification.optionOrdinal",
   failed: "common:agent.clarification.failed",
   recapTitle: "common:agent.clarification.recapTitle",
 } as const;
@@ -178,13 +179,16 @@ export function ClarificationCard({
     pending.questions.length === 1 && pending.questions[0]!.kind === "choice";
 
   return (
+    // The question reads as a turn in the conversation: no rule, no heading row
+    // announcing that a decision exists — the question itself says that. Options are
+    // NUMBERED full-width rows, which is how every desktop agent renders a bounded
+    // choice: one per line, scannable, and answerable from the keyboard by its number.
     <section
-      className="flex flex-col gap-fg-3 border-l-2 border-accent/40 pl-fg-3"
+      className="flex flex-col gap-fg-3 py-fg-2"
       aria-label={region.message}
       data-clarification-card={pending.requestId}
     >
-      <p className="text-body text-ink">{heading.message}</p>
-      <ol className="flex flex-col gap-fg-3">
+      <ol className="flex flex-col gap-fg-4">
         {pending.questions.map((question) => (
           <li
             key={question.id}
@@ -203,16 +207,34 @@ export function ClarificationCard({
               <div
                 role="radiogroup"
                 aria-label={authoredDisplayText(question.prompt)}
-                className="flex flex-wrap gap-fg-1"
+                className="flex flex-col gap-fg-1"
               >
-                {question.options.map((option) => {
+                {question.options.map((option, index) => {
                   const selected = draft[question.id] === option.id;
+                  const ordinal = index + 1;
                   return (
                     <button
                       key={option.id}
                       type="button"
                       role="radio"
                       aria-checked={selected}
+                      // Roving arrow keys within the group, and the row's own number
+                      // as a direct accelerator — the two ways these are answered.
+                      onKeyDown={(event) => {
+                        const keyed = Number.parseInt(event.key, 10);
+                        if (
+                          Number.isInteger(keyed) &&
+                          keyed >= 1 &&
+                          keyed <= question.options.length
+                        ) {
+                          event.preventDefault();
+                          const picked = question.options[keyed - 1]!;
+                          setAnswer(question.id, picked.id);
+                          if (singleChoice) {
+                            void submit({ ...draft, [question.id]: picked.id });
+                          }
+                        }
+                      }}
                       onClick={() => {
                         setAnswer(question.id, option.id);
                         // The only question, and it is a choice: the click is the
@@ -224,16 +246,56 @@ export function ClarificationCard({
                       }}
                       disabled={respond.isPending}
                       data-clarification-option={option.id}
-                      className={`rounded-fg-md border px-fg-3 py-fg-1-5 text-body text-left transition-colors duration-ui-fast focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-60 ${
+                      className={`flex w-full items-baseline gap-fg-2 rounded-fg-md border px-fg-3 py-fg-2 text-body text-left transition-colors duration-ui-fast focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-60 ${
                         selected
                           ? "border-accent bg-accent-subtle text-ink"
                           : "border-rule text-ink hover:bg-paper-sunken"
                       }`}
                     >
-                      {authoredDisplayText(option.label)}
+                      {/* The row marker is CATALOG copy, not a literal: its number is
+                          locale-formatted and its separator is part of the message, so
+                          a locale that marks lists differently can say so. */}
+                      <span aria-hidden className="shrink-0 text-meta text-ink-faint">
+                        {
+                          resolveMessage({
+                            key: MSG.optionOrdinal,
+                            values: { ordinal },
+                          }).message
+                        }
+                      </span>
+                      <span className="min-w-0">
+                        {authoredDisplayText(option.label)}
+                      </span>
                     </button>
                   );
                 })}
+                {/* The n+1 row: a bounded option set must never trap someone whose
+                    answer is not on it. It carries the next ordinal and answers as
+                    free text, so choosing it is the same act as picking a row. */}
+                <input
+                  type="text"
+                  value={
+                    question.options.some((o) => o.id === draft[question.id])
+                      ? ""
+                      : (draft[question.id] ?? "")
+                  }
+                  maxLength={CLARIFICATION_MAX_ANSWER_CHARS}
+                  onChange={(event) => setAnswer(question.id, event.target.value)}
+                  onKeyDown={(event) => {
+                    // Enter sends, exactly as it does in the composer. The card must
+                    // not teach a second way to send a sentence.
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      if (submittable) void submit();
+                    }
+                  }}
+                  placeholder={
+                    placeholder.usedFallback ? undefined : placeholder.message
+                  }
+                  aria-label={authoredDisplayText(question.prompt)}
+                  data-clarification-input={question.id}
+                  className="w-full rounded-fg-md border border-rule bg-paper px-fg-3 py-fg-2 text-body text-ink placeholder:text-ink-faint focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+                />
               </div>
             ) : (
               // SINGLE-LINE by contract: the engine refuses control characters in a
@@ -263,9 +325,12 @@ export function ClarificationCard({
         </p>
       )}
       {!singleChoice && (
+        // Secondary, not primary: the composer has NO filled send button (Enter
+        // sends), so a filled one here would teach two different send affordances
+        // for the same act in one panel.
         <div className="flex">
           <Button
-            variant="primary"
+            variant="secondary"
             disabled={!submittable}
             onClick={() => void submit()}
             data-clarification-submit

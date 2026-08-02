@@ -35,6 +35,7 @@ export const EXPECTED_AGENT_KEYS = [
   "common:agent.clarification.submit",
   "common:agent.clarification.required",
   "common:agent.clarification.answerPlaceholder",
+  "common:agent.clarification.optionOrdinal",
   "common:agent.clarification.failed",
   "common:agent.clarification.recapTitle",
   "common:agent.runHeader.region",

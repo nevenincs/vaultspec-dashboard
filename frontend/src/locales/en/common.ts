@@ -356,6 +356,7 @@ export const common = {
     clarification: {
       answerPlaceholder: "Type your answer",
       failed: "The answer couldn’t be sent. Try again.",
+      optionOrdinal: "{{ordinal, number}}.",
       recapTitle: "ANSWERED",
       region: "Question from the run",
       required: "Required",

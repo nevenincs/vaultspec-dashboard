@@ -52,6 +52,7 @@ export const AGENT_MESSAGE_POLICY = {
   "common:agent.clarification.region": { role: "accessibility" },
   "common:agent.clarification.title": { role: "status" },
   "common:agent.clarification.submit": { role: "action" },
+  "common:agent.clarification.optionOrdinal": { role: "label" },
   "common:agent.clarification.required": { role: "label" },
   "common:agent.clarification.answerPlaceholder": { role: "label" },
   "common:agent.clarification.failed": { role: "error-message" },
