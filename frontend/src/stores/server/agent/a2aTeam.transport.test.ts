@@ -37,11 +37,15 @@ describe("A2aTeamClient transport identity", () => {
                         admission: "admitted",
                         selectable: true,
                         reasons: [],
+                        checked_at: "2026-08-02T08:30:00Z",
                       },
                       catalog: {
                         state: {
                           status: "available",
                           revision: "catalog-revision-issued-id",
+                          checked_at: "2026-08-02T09:30:00Z",
+                          expires_at: "2099-08-02T10:30:00Z",
+                          reason: "A2A-issued freshness reason",
                         },
                         models: [
                           {
@@ -162,6 +166,21 @@ describe("A2aTeamClient transport identity", () => {
       expect(catalog.providers[0]?.catalog.models[0]?.native_control_ids).toEqual([
         "provider-native-control-issued-id",
       ]);
+      expect(catalog.providers[0]?.health).toMatchObject({
+        configured: "available",
+        transport: "available",
+        authentication: "authenticated",
+        catalog: "available",
+        admission: "admitted",
+        selectable: true,
+        checked_at: "2026-08-02T08:30:00Z",
+      });
+      expect(catalog.providers[0]?.catalog.state).toMatchObject({
+        status: "available",
+        checked_at: "2026-08-02T09:30:00Z",
+        expires_at: "2099-08-02T10:30:00Z",
+        reason: "A2A-issued freshness reason",
+      });
       const started = await client.startRun(payload);
       expect(started.ok).toBe(true);
       expect(started.run_id).toBe(payload.run_id);

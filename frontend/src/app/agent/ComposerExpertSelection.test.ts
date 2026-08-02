@@ -32,7 +32,12 @@ const currentProvider: ProviderCatalogRecord = {
     reasons: [],
   },
   catalog: {
-    state: { status: "available", revision: "catalog-revision-issued-id" },
+    state: {
+      status: "available",
+      revision: "catalog-revision-issued-id",
+      checked_at: "2026-08-02T09:00:00Z",
+      expires_at: "2099-08-02T09:00:00Z",
+    },
     models: [{ entry_id: "entry-issued-id", capabilities: [] }],
     native_controls: [],
   },

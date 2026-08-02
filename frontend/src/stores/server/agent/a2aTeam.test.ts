@@ -8,6 +8,7 @@ import {
   adaptRunStart,
   adaptRunStatus,
   createTeamRunId,
+  isProviderCatalogSelectable,
   isTeamRunTerminalStatus,
   latestRelayReconciliationSignal,
   observeRunReconciliation,
@@ -365,6 +366,7 @@ describe("adaptProviderCatalog", () => {
               status: "available",
               revision: "catalog-revision-issued-id",
               checked_at: "2026-08-02T09:00:00Z",
+              expires_at: "2099-08-02T09:00:00Z",
             },
             models: [
               {
@@ -476,6 +478,112 @@ describe("adaptProviderCatalog", () => {
     expect(selectionFromCatalogEntry(stale, "entry-issued-id")).toBeNull();
   });
 
+  it("preserves a conflicting catalog health axis and freshness state while failing selection closed", () => {
+    const provider = adaptProviderCatalog({
+      envelope: {
+        providers: [
+          {
+            provider_id: "provider-issued-id",
+            execution_mode: "execution-lane-issued-id",
+            health: {
+              configured: "available",
+              transport: "available",
+              authentication: "authenticated",
+              catalog: "available",
+              admission: "admitted",
+              selectable: true,
+            },
+            catalog: {
+              state: {
+                status: "stale",
+                revision: "catalog-revision-issued-id",
+              },
+              models: [{ entry_id: "entry-issued-id", capabilities: [] }],
+              native_controls: [],
+            },
+          },
+        ],
+      },
+    }).providers[0]!;
+
+    expect(provider.health.catalog).toBe("available");
+    expect(provider.catalog.state.status).toBe("stale");
+    expect(provider.health.selectable).toBe(false);
+    expect(selectionFromCatalogEntry(provider, "entry-issued-id")).toBeNull();
+  });
+
+  it("fails closed when otherwise selectable freshness omits checked_at", () => {
+    const provider = adaptProviderCatalog(providerCatalogPass).providers[0]!;
+    const now = Date.parse("2030-08-02T09:00:00Z");
+    const candidate = {
+      ...provider,
+      catalog: {
+        ...provider.catalog,
+        state: { ...provider.catalog.state, checked_at: undefined },
+      },
+    };
+    expect(isProviderCatalogSelectable(candidate, now)).toBe(false);
+    expect(selectionFromCatalogEntry(candidate, "entry-issued-id", now)).toBeNull();
+  });
+
+  it("fails closed when otherwise selectable freshness omits expires_at", () => {
+    const provider = adaptProviderCatalog(providerCatalogPass).providers[0]!;
+    const now = Date.parse("2030-08-02T09:00:00Z");
+    const candidate = {
+      ...provider,
+      catalog: {
+        ...provider.catalog,
+        state: { ...provider.catalog.state, expires_at: undefined },
+      },
+    };
+    expect(isProviderCatalogSelectable(candidate, now)).toBe(false);
+    expect(selectionFromCatalogEntry(candidate, "entry-issued-id", now)).toBeNull();
+  });
+
+  it("fails closed when otherwise selectable freshness has malformed checked_at", () => {
+    const provider = adaptProviderCatalog(providerCatalogPass).providers[0]!;
+    const now = Date.parse("2030-08-02T09:00:00Z");
+    const candidate = {
+      ...provider,
+      catalog: {
+        ...provider.catalog,
+        state: { ...provider.catalog.state, checked_at: "not-an-instant" },
+      },
+    };
+    expect(isProviderCatalogSelectable(candidate, now)).toBe(false);
+    expect(selectionFromCatalogEntry(candidate, "entry-issued-id", now)).toBeNull();
+  });
+
+  it("fails closed for malformed, expired, or chronologically invalid freshness evidence", () => {
+    const provider = adaptProviderCatalog(providerCatalogPass).providers[0]!;
+    const now = Date.parse("2030-08-02T09:00:00Z");
+    expect(isProviderCatalogSelectable(provider, now)).toBe(true);
+
+    for (const state of [
+      {
+        ...provider.catalog.state,
+        expires_at: "not-an-instant",
+      },
+      {
+        ...provider.catalog.state,
+        checked_at: "2029-08-02T09:00:00Z",
+        expires_at: "2029-08-02T08:59:59Z",
+      },
+      {
+        ...provider.catalog.state,
+        checked_at: "2029-08-02T09:00:00Z",
+        expires_at: "2029-08-02T10:00:00Z",
+      },
+    ]) {
+      const candidate = {
+        ...provider,
+        catalog: { ...provider.catalog, state },
+      };
+      expect(isProviderCatalogSelectable(candidate, now)).toBe(false);
+      expect(selectionFromCatalogEntry(candidate, "entry-issued-id", now)).toBeNull();
+    }
+  });
+
   it("mints and revises a selection only from the current served revision and options", () => {
     const provider = adaptProviderCatalog(providerCatalogPass).providers[0]!;
     const initial = selectionFromCatalogEntry(provider, "entry-issued-id");
@@ -496,6 +604,15 @@ describe("adaptProviderCatalog", () => {
     expect(changed?.controls["provider-native-control-id"]).toBe(
       "provider-native-other-option",
     );
+    expect(
+      selectionWithCatalogControl(
+        provider,
+        initial!,
+        "provider-native-control-id",
+        "provider-native-other-option",
+        Date.parse("2100-08-02T09:00:00Z"),
+      ),
+    ).toBeNull();
     expect(
       selectionWithCatalogControl(
         provider,

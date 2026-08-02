@@ -271,12 +271,20 @@ function adaptProviderCatalogRecord(raw: unknown): ProviderCatalogRecord | null 
   const providerId = asStr(raw.provider_id);
   const executionMode = asStr(raw.execution_mode);
   if (!providerId || !executionMode) return null;
+  const catalog = adaptCatalog(raw.catalog);
+  const health = adaptProviderHealth(raw.health);
   return {
     provider_id: providerId,
     display_name: asStr(raw.display_name),
     execution_mode: executionMode,
-    health: adaptProviderHealth(raw.health),
-    catalog: adaptCatalog(raw.catalog),
+    // The catalog state is a separate, timestamped freshness proof. A2A's
+    // aggregate selectable claim must also be current against it; an inconsistent
+    // `true` fails closed without overwriting either independently displayed fact.
+    health: {
+      ...health,
+      selectable: health.selectable && catalog.state.status === "available",
+    },
+    catalog,
   };
 }
 
@@ -317,13 +325,57 @@ export function adaptSelection(raw: unknown): ProviderCatalogSelection | null {
 
 // --- the selection algebra ------------------------------------------------------
 
+function parseInstant(value: string | undefined): number | null {
+  if (value === undefined) return null;
+  const instant = Date.parse(value);
+  return Number.isFinite(instant) ? instant : null;
+}
+
+/** The next valid freshness expiry among lanes that could currently be selected.
+ * The UI uses this only to schedule a fresh selection check; the returned instant
+ * remains A2A-served evidence rather than a browser-authored expiry. */
+export function nextProviderCatalogExpiry(
+  providers: readonly ProviderCatalogRecord[],
+  now: number = Date.now(),
+): number | null {
+  if (!Number.isFinite(now)) return null;
+  let earliest: number | null = null;
+  for (const provider of providers) {
+    if (!provider.health.selectable || provider.catalog.state.status !== "available") {
+      continue;
+    }
+    const checkedAt = parseInstant(provider.catalog.state.checked_at);
+    const expiresAt = parseInstant(provider.catalog.state.expires_at);
+    if (
+      checkedAt === null ||
+      expiresAt === null ||
+      expiresAt <= checkedAt ||
+      expiresAt <= now
+    ) {
+      continue;
+    }
+    earliest = earliest === null ? expiresAt : Math.min(earliest, expiresAt);
+  }
+  return earliest;
+}
+
 /** Whether one served lane can currently mint a new run selection. This is more
- * restrictive than merely rendering a catalog record: stale, unknown, or omitted
- * selectability must never become a browser-side default. */
-export function isProviderCatalogSelectable(record: ProviderCatalogRecord): boolean {
+ * restrictive than merely rendering a catalog record: stale, unknown, malformed,
+ * expired, or omitted freshness evidence must never become a browser-side default. */
+export function isProviderCatalogSelectable(
+  record: ProviderCatalogRecord,
+  now: number = Date.now(),
+): boolean {
+  const checkedAt = parseInstant(record.catalog.state.checked_at);
+  const expiresAt = parseInstant(record.catalog.state.expires_at);
   return (
+    Number.isFinite(now) &&
     record.health.selectable &&
     record.catalog.state.status === "available" &&
+    checkedAt !== null &&
+    expiresAt !== null &&
+    expiresAt > checkedAt &&
+    now < expiresAt &&
     typeof record.catalog.state.revision === "string" &&
     record.catalog.state.revision.length > 0
   );
@@ -333,12 +385,16 @@ function nativeControlsForEntry(
   record: ProviderCatalogRecord,
   entryId: string,
 ): readonly ProviderNativeControl[] | null {
-  const entry = record.catalog.models.find((candidate) => candidate.entry_id === entryId);
+  const entry = record.catalog.models.find(
+    (candidate) => candidate.entry_id === entryId,
+  );
   if (entry === undefined) return null;
   const controlIds = entry.native_control_ids ?? [];
   if (new Set(controlIds).size !== controlIds.length) return null;
   const controls = controlIds.map((controlId) =>
-    record.catalog.native_controls.find((candidate) => candidate.control_id === controlId),
+    record.catalog.native_controls.find(
+      (candidate) => candidate.control_id === controlId,
+    ),
   );
   return controls.every(
     (control): control is ProviderNativeControl => control !== undefined,
@@ -362,8 +418,9 @@ export function nativeControlsForCatalogEntry(
 export function selectionFromCatalogEntry(
   record: ProviderCatalogRecord,
   entryId: string,
+  now: number = Date.now(),
 ): ProviderCatalogSelection | null {
-  if (!isProviderCatalogSelectable(record)) return null;
+  if (!isProviderCatalogSelectable(record, now)) return null;
   const nativeControls = nativeControlsForEntry(record, entryId);
   if (nativeControls === null) return null;
   const controls: Record<string, string> = {};
@@ -389,8 +446,9 @@ export function selectionWithCatalogControl(
   selection: ProviderCatalogSelection,
   controlId: string,
   optionId: string,
+  now: number = Date.now(),
 ): ProviderCatalogSelection | null {
-  if (!isCurrentCatalogSelection(record, selection)) return null;
+  if (!isCurrentCatalogSelection(record, selection, now)) return null;
   const control = nativeControlsForEntry(record, selection.entry_id)?.find(
     (candidate) => candidate.control_id === controlId,
   );
@@ -403,8 +461,9 @@ export function selectionWithCatalogControl(
 export function isCurrentCatalogSelection(
   record: ProviderCatalogRecord,
   selection: ProviderCatalogSelection | null,
+  now: number = Date.now(),
 ): selection is ProviderCatalogSelection {
-  if (!selection || !isProviderCatalogSelectable(record)) return false;
+  if (!selection || !isProviderCatalogSelectable(record, now)) return false;
   if (
     selection.provider_id !== record.provider_id ||
     selection.execution_mode !== record.execution_mode ||

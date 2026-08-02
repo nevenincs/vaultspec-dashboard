@@ -3,7 +3,7 @@
 // level: every row, native control, reason, and opaque selection reference is
 // served by the active execution lane.
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 
 import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
@@ -12,6 +12,7 @@ import {
   isCurrentCatalogSelection,
   isProviderCatalogSelectable,
   nativeControlsForCatalogEntry,
+  nextProviderCatalogExpiry,
   selectionFromCatalogEntry,
   selectionWithCatalogControl,
   type ProviderCatalogRecord,
@@ -19,6 +20,7 @@ import {
   type ProviderNativeControl,
 } from "../../stores/server/agent/a2aTeam";
 import { DropdownButton, Popover } from "../kit";
+import { ProviderHealthStatus } from "./ProviderHealthStatus";
 
 const MSG = {
   model: "common:agent.composer.model",
@@ -27,6 +29,30 @@ const MSG = {
   selectorDisabled: "common:agent.composer.selectorDisabled",
   menuAria: "common:agent.composer.modelMenuAria",
 } as const;
+
+const MAX_TIMEOUT_DELAY_MS = 2_147_483_647;
+
+/** Revalidate the render-time selection gate at the earliest served expiry.
+ * The effect owns no catalog data and does not invent a deadline: it only wakes
+ * the picker to re-read A2A's timestamped freshness evidence. */
+function useCatalogFreshnessNow(providers: readonly ProviderCatalogRecord[]): number {
+  const [, rerenderAtExpiry] = useState(0);
+  const now = Date.now();
+  const expiresAt = nextProviderCatalogExpiry(providers, now);
+  const expiryDelay =
+    expiresAt === null
+      ? null
+      : Math.min(Math.max(0, expiresAt - now), MAX_TIMEOUT_DELAY_MS);
+  useEffect(() => {
+    if (expiryDelay === null) return undefined;
+    const timeoutId = setTimeout(
+      () => rerenderAtExpiry((revision) => revision + 1),
+      expiryDelay,
+    );
+    return () => clearTimeout(timeoutId);
+  }, [expiryDelay]);
+  return now;
+}
 
 function providerLabel(provider: ProviderCatalogRecord): string {
   return provider.display_name ?? provider.provider_id;
@@ -126,8 +152,9 @@ export function ComposerModelPicker({
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const firstModelRef = useRef<HTMLButtonElement>(null);
+  const now = useCatalogFreshnessNow(providers);
   const selectedProvider =
-    providers.find((provider) => isCurrentCatalogSelection(provider, selection)) ??
+    providers.find((provider) => isCurrentCatalogSelection(provider, selection, now)) ??
     null;
   const selectedEntry =
     selectedProvider === null || selection === null
@@ -147,9 +174,9 @@ export function ComposerModelPicker({
       : modelLabel;
   const selectable = providers.some(
     (provider) =>
-      isProviderCatalogSelectable(provider) &&
+      isProviderCatalogSelectable(provider, now) &&
       provider.catalog.models.some(
-        (entry) => selectionFromCatalogEntry(provider, entry.entry_id) !== null,
+        (entry) => selectionFromCatalogEntry(provider, entry.entry_id, now) !== null,
       ),
   );
   const disabled = !selectable || locked;
@@ -176,7 +203,7 @@ export function ComposerModelPicker({
     )
     .find(
       ({ provider, entry }) =>
-        selectionFromCatalogEntry(provider, entry.entry_id) !== null,
+        selectionFromCatalogEntry(provider, entry.entry_id, now) !== null,
     );
   const selectedControls =
     selectedProvider === null || selection === null
@@ -208,6 +235,7 @@ export function ComposerModelPicker({
           ariaHasPopup="dialog"
         />
       </span>
+      <ProviderHealthStatus providers={providers} now={now} />
       {open && !disabled && !menuAria.usedFallback && (
         <Popover
           open
@@ -235,11 +263,12 @@ export function ComposerModelPicker({
                   className="flex flex-col gap-fg-0-5"
                   aria-label={authoredDisplayText(providerLabel(provider))}
                 >
-                  {provider.catalog.models.map((entry) => (
+                  {provider.catalog.models.map((entry) =>
                     (() => {
                       const catalogSelection = selectionFromCatalogEntry(
                         provider,
                         entry.entry_id,
+                        now,
                       );
                       const modelSelectable = catalogSelection !== null;
                       return (
@@ -249,7 +278,8 @@ export function ComposerModelPicker({
                           entry={entry}
                           selected={
                             selectedProvider?.provider_id === provider.provider_id &&
-                            selectedProvider.execution_mode === provider.execution_mode &&
+                            selectedProvider.execution_mode ===
+                              provider.execution_mode &&
                             selectedEntry?.entry_id === entry.entry_id
                           }
                           selectable={modelSelectable}
@@ -260,60 +290,70 @@ export function ComposerModelPicker({
                               : undefined
                           }
                           onSelect={() => {
-                            if (catalogSelection !== null) {
-                              onSelectSelection(catalogSelection);
+                            const currentSelection = selectionFromCatalogEntry(
+                              provider,
+                              entry.entry_id,
+                              now,
+                            );
+                            if (currentSelection !== null) {
+                              onSelectSelection(currentSelection);
                               setOpen(false);
                             }
                           }}
                         />
                       );
-                    })()
-                  ))}
+                    })(),
+                  )}
                 </ul>
               </li>
             ))}
           </ul>
-          {selectedProvider !== null && selection !== null && selectedControls.length > 0 && (
-            <div
-              className="mt-fg-1 flex flex-col gap-fg-1 border-t border-rule pt-fg-1"
-              data-provider-native-controls
-            >
-              {selectedControls.map((control) => {
-                const selectedOption = selection.controls[control.control_id] ?? "";
-                return (
-                  <label
-                    key={control.control_id}
-                    className="flex min-w-0 flex-col gap-fg-0-5 text-caption text-ink-muted"
-                  >
-                    <span className="truncate">
-                      {authoredDisplayText(controlLabel(control))}
-                    </span>
-                    <select
-                      value={selectedOption}
-                      data-provider-control-id={control.control_id}
-                      onChange={(event) => {
-                        const next = selectionWithCatalogControl(
-                          selectedProvider,
-                          selection,
-                          control.control_id,
-                          event.currentTarget.value,
-                        );
-                        if (next !== null) onSelectSelection(next);
-                      }}
-                      className="min-w-0 rounded-fg-sm border border-rule bg-paper px-fg-1 py-fg-0-5 text-label text-ink"
+          {selectedProvider !== null &&
+            selection !== null &&
+            selectedControls.length > 0 && (
+              <div
+                className="mt-fg-1 flex flex-col gap-fg-1 border-t border-rule pt-fg-1"
+                data-provider-native-controls
+              >
+                {selectedControls.map((control) => {
+                  const selectedOption = selection.controls[control.control_id] ?? "";
+                  return (
+                    <label
+                      key={control.control_id}
+                      className="flex min-w-0 flex-col gap-fg-0-5 text-caption text-ink-muted"
                     >
-                      {selectedOption.length === 0 && <option value="" disabled />}
-                      {control.options.map((option) => (
-                        <option key={option.option_id} value={option.option_id}>
-                          {authoredDisplayText(option.display_name ?? option.option_id)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                );
-              })}
-            </div>
-          )}
+                      <span className="truncate">
+                        {authoredDisplayText(controlLabel(control))}
+                      </span>
+                      <select
+                        value={selectedOption}
+                        data-provider-control-id={control.control_id}
+                        onChange={(event) => {
+                          const next = selectionWithCatalogControl(
+                            selectedProvider,
+                            selection,
+                            control.control_id,
+                            event.currentTarget.value,
+                            now,
+                          );
+                          if (next !== null) onSelectSelection(next);
+                        }}
+                        className="min-w-0 rounded-fg-sm border border-rule bg-paper px-fg-1 py-fg-0-5 text-label text-ink"
+                      >
+                        {selectedOption.length === 0 && <option value="" disabled />}
+                        {control.options.map((option) => (
+                          <option key={option.option_id} value={option.option_id}>
+                            {authoredDisplayText(
+                              option.display_name ?? option.option_id,
+                            )}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
         </Popover>
       )}
     </div>
