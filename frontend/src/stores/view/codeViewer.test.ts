@@ -74,7 +74,7 @@ describe("deriveCodeLineWindow", () => {
 
     expect(deriveCodeLineWindowPresentation(lineWindow)).toEqual({
       scrollerClassName:
-        "min-h-0 flex-1 overflow-auto bg-paper-sunken font-mono text-body",
+        "min-h-0 flex-1 overflow-auto bg-paper-sunken py-fg-2 font-mono text-body",
       scrollerAriaLabel: "file contents",
       spacerStyle: { height: 2_400, position: "relative" },
       rowClassName: "flex whitespace-pre",
