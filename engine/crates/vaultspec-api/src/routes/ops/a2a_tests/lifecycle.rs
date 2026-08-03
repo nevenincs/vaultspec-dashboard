@@ -449,6 +449,85 @@ async fn provider_catalog_round_trips_opaque_catalog_and_health_through_the_hand
 }
 
 #[tokio::test]
+async fn run_status_forwards_a_failed_runs_provider_condition_unaltered() {
+    // A failed run's classification is what tells a client whether to wait,
+    // re-authenticate, top up, or change the request. It reaches the panel only
+    // through this edge when there is no live stream to read, so anything this
+    // route drops or rewrites is lost outright.
+    //
+    // The served snapshot carries a member the vocabulary DOES name and one it
+    // does not. Both must arrive: the sibling owns this value and may add a
+    // member, so an edge that gated it would blank a whole run's status the day
+    // that happened — losing the run, not just the field. This drives the real
+    // discovery, health probe, blocking broker, and public handler over loopback
+    // sockets, so a gate introduced anywhere in that chain fails here.
+    use std::net::TcpListener;
+
+    let expected = json!({
+        "api_version": "v1",
+        "run_id": "run-refused",
+        "status": "failed",
+        "failure_reason": "the lane answered with a refusal",
+        "provider_condition": "credits_exhausted",
+        "history": [
+            { "status": "failed", "provider_condition": "a_member_this_engine_does_not_model" }
+        ]
+    });
+    let response_body = expected.to_string();
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let server = std::thread::spawn(move || {
+        let responses = [
+            (200, r#"{"status":"ok","checks":{}}"#.to_string()),
+            (200, response_body),
+        ];
+        for (status, body) in responses {
+            let (mut stream, _) = listener.accept().unwrap();
+            let _ = read_request(&stream);
+            write_response(&mut stream, status, &body);
+        }
+    });
+
+    let discovery = tempfile::tempdir().unwrap();
+    let service_json = discovery.path().join("service.json");
+    write_service_record(&service_json, port);
+
+    let (_state_dir, state) = test_state();
+    let Json(response) = ops_a2a_with_candidates(
+        state,
+        "run-status".to_string(),
+        A2aVerbBody {
+            run_id: Some("run-refused".to_string()),
+            ..Default::default()
+        },
+        vec![service_json],
+    )
+    .await
+    .expect("a failed run's status is a normal sibling answer, not a proxy fault");
+
+    assert_eq!(
+        response["data"]["envelope"], expected,
+        "the whole failed-run snapshot forwards byte-for-byte"
+    );
+    assert_eq!(
+        response["data"]["envelope"]["provider_condition"], "credits_exhausted",
+        "the classification the client acts on survives the edge"
+    );
+    assert_eq!(
+        response["data"]["envelope"]["failure_reason"], "the lane answered with a refusal",
+        "the human-readable reason rides beside it, neither replacing nor deriving it"
+    );
+    assert_eq!(
+        response["data"]["envelope"]["history"][0]["provider_condition"],
+        "a_member_this_engine_does_not_model",
+        "a member this engine's own store would refuse still reaches the client: \
+         the sibling owns this vocabulary and gating it here would lose the run"
+    );
+    server.join().unwrap();
+}
+
+#[tokio::test]
 async fn run_status_round_trips_frozen_assignment_without_reclassification() {
     // This uses the production discovery, health probe, blocking broker, and
     // public handler over real loopback sockets. The served frozen snapshot is

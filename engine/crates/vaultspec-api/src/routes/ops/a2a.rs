@@ -384,6 +384,20 @@ fn build_forwarded_call(
             })
         }
         "run-status" => {
+            // The response is the authoritative recovery snapshot, forwarded
+            // verbatim like every other sibling answer — including the failure
+            // classification a failed run carries, which is why a reloaded panel
+            // recovers it with no live stream to read.
+            //
+            // That classification is deliberately NOT checked against the
+            // vocabulary the dashboard's own run store enforces, and the
+            // asymmetry is intentional. The sibling owns the value and may add a
+            // member; refusing an unrecognised one HERE would blank a run's whole
+            // status the moment it did, and the client would lose the run rather
+            // than one field of it. Membership is enforced where the dashboard
+            // WRITES its own records, because there an unmodeled value means the
+            // caller is wrong, and a wrong record outlives the request that made
+            // it.
             let run_id = body.run_id.as_deref().ok_or_else(|| {
                 super::super::api_error(
                     state,
