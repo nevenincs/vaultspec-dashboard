@@ -192,6 +192,7 @@ impl SessionRepository<'_, '_> {
             langgraph,
             cancellation_reason: None,
             failure_reason: None,
+            provider_condition: None,
             created_at_ms: now_ms,
             updated_at_ms: now_ms,
             cancelled_at_ms: None,
