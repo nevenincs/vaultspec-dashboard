@@ -449,6 +449,82 @@ async fn provider_catalog_round_trips_opaque_catalog_and_health_through_the_hand
 }
 
 #[tokio::test]
+async fn a_cold_catalog_slower_than_the_fast_read_budget_still_completes() {
+    // The end-to-end proof that the catalog's budget is EFFECTIVE, not merely
+    // declared: a sibling that takes longer to answer than a fast read is
+    // allowed to must still produce a catalog rather than a gateway timeout.
+    //
+    // This is what a cold workspace actually looks like — the sibling spawns
+    // each lane's provider tooling before it can answer, measured at 16.3s
+    // against a 15s fast-read budget. It cannot be proven by a second call:
+    // the timed-out attempt still warms the sibling's five-minute cache, so a
+    // retry succeeds and hides the breach. The delay is served ONCE, on the
+    // first and only catalog call.
+    //
+    // Deliberately slow (it sleeps past the fast-read budget in real time) and
+    // that cost is the point — a shorter delay would prove nothing, because
+    // anything under the fast-read budget passes with or without the fix.
+    use std::net::TcpListener;
+    use std::time::Instant;
+
+    let body = json!({
+        "api_version": "v1",
+        "providers": [{ "provider_id": "provider-issued-id" }]
+    })
+    .to_string();
+    // Clear the fast-read budget the catalog used to be held to, by enough that
+    // scheduling jitter cannot make the outcome ambiguous either way.
+    let delay = A2A_READ_BUDGET + Duration::from_secs(2);
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let server = std::thread::spawn(move || {
+        // The health probe carries its OWN short budget and is answered
+        // immediately; only the catalog read is slow. Delaying the probe would
+        // fail the attach predicate and prove nothing about the catalog.
+        let (mut health, _) = listener.accept().unwrap();
+        let _ = read_request(&health);
+        write_response(&mut health, 200, r#"{"status":"ok","checks":{}}"#);
+
+        let (mut catalog, _) = listener.accept().unwrap();
+        let _ = read_request(&catalog);
+        std::thread::sleep(delay);
+        write_response(&mut catalog, 200, &body);
+    });
+
+    let discovery = tempfile::tempdir().unwrap();
+    let service_json = discovery.path().join("service.json");
+    write_service_record(&service_json, port);
+
+    let (_state_dir, state) = test_state();
+    let expected_scope = crate::routes::scope_token(&state.active_cell().root);
+    let started = Instant::now();
+    let Json(response) = ops_a2a_with_candidates(
+        state,
+        "provider-catalog".to_string(),
+        A2aVerbBody {
+            expected_scope: Some(expected_scope),
+            ..Default::default()
+        },
+        vec![service_json],
+    )
+    .await
+    .expect("a cold catalog is a slow success, not a gateway timeout");
+    let elapsed = started.elapsed();
+
+    assert_eq!(
+        response["data"]["envelope"]["providers"][0]["provider_id"], "provider-issued-id",
+        "the discovery result survives the wait intact"
+    );
+    assert!(
+        elapsed >= delay,
+        "the handler must actually have waited past the fast-read budget; a run \
+         that returned early proves nothing about the budget (elapsed {elapsed:?})"
+    );
+    server.join().unwrap();
+}
+
+#[tokio::test]
 async fn run_status_forwards_a_failed_runs_provider_condition_unaltered() {
     // A failed run's classification is what tells a client whether to wait,
     // re-authenticate, top up, or change the request. It reaches the panel only

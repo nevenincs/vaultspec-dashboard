@@ -127,10 +127,11 @@ fn build_forwarded_call_maps_read_verbs_to_the_right_paths() {
         presets.path
     );
 
-    // provider-catalog requires the same served scope fence as a run-start,
-    // then uses the engine-owned workspace context and bounded read budget. Its
-    // response includes A2A-owned catalog and health records and therefore is
-    // not parsed or reclassified at this edge.
+    // provider-catalog requires the same served scope fence as a run-start, then
+    // uses the engine-owned workspace context. Its response includes A2A-owned
+    // catalog and health records and therefore is not parsed or reclassified at
+    // this edge. Its budget is asserted by the dedicated budget test, which holds
+    // it as a relation against the other verbs rather than against a number.
     let catalog = build_forwarded_call(
         &state,
         "provider-catalog",
@@ -147,7 +148,6 @@ fn build_forwarded_call_maps_read_verbs_to_the_right_paths() {
             .starts_with("/v1/provider-catalog?workspace_root=")
     );
     assert!(catalog.body.is_none());
-    assert_eq!(catalog.budget, A2A_READ_BUDGET);
     assert!(
         !catalog.path.contains('\\') && !catalog.path.contains(' '),
         "the workspace_root path is percent-encoded: {}",
@@ -253,6 +253,86 @@ fn build_forwarded_call_maps_read_verbs_to_the_right_paths() {
             .unwrap_err()
             .0,
         StatusCode::BAD_REQUEST
+    );
+}
+
+#[test]
+fn the_catalog_is_budgeted_as_a_discovery_not_as_a_fast_read() {
+    let (_dir, state) = test_state();
+    let cell = state.active_cell();
+    let expected_scope = crate::routes::scope_token(&cell.root);
+
+    let catalog = build_forwarded_call(
+        &state,
+        "provider-catalog",
+        &cell,
+        &A2aVerbBody {
+            expected_scope: Some(expected_scope.clone()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let run_status = build_forwarded_call(
+        &state,
+        "run-status",
+        &cell,
+        &A2aVerbBody {
+            run_id: Some("run-7".to_string()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let active_runs = build_forwarded_call(
+        &state,
+        "active-runs",
+        &cell,
+        &A2aVerbBody {
+            expected_scope: Some(expected_scope),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let run_cancel = build_forwarded_call(
+        &state,
+        "run-cancel",
+        &cell,
+        &A2aVerbBody {
+            run_id: Some("run-7".to_string()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+
+    // Asserted as a RELATION between verbs, deliberately, rather than against a
+    // number. A test naming the seconds would restate the constant and pass
+    // whatever it said; what has to stay true is that a cold catalog — which
+    // spawns provider tooling per lane — is not held to the budget of two verbs
+    // that really are fast reads. Collapsing them back is the regression.
+    assert!(
+        catalog.budget > run_status.budget,
+        "the catalog performs live discovery and cannot share the run-status budget: \
+         catalog={:?} run_status={:?}",
+        catalog.budget,
+        run_status.budget
+    );
+    assert!(
+        catalog.budget > active_runs.budget,
+        "active-runs is an identity-only listing; the catalog is not: \
+         catalog={:?} active_runs={:?}",
+        catalog.budget,
+        active_runs.budget
+    );
+    assert_eq!(
+        run_status.budget, active_runs.budget,
+        "the two genuine fast reads stay together — widening one to accommodate \
+         discovery is what this separation exists to prevent"
+    );
+    assert!(
+        catalog.budget < run_cancel.budget,
+        "discovery is still not a dispatch and stays under the control budget: \
+         catalog={:?} control={:?}",
+        catalog.budget,
+        run_cancel.budget
     );
 }
 

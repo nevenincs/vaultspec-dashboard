@@ -99,6 +99,35 @@ const A2A_READ_BUDGET: Duration = Duration::from_secs(15);
 /// it gets a wider — but still bounded — ceiling. A breach is a 504.
 const A2A_CONTROL_BUDGET: Duration = Duration::from_secs(60);
 
+/// Wall-clock budget for the provider catalog, which is a live DISCOVERY rather
+/// than a listing read and is budgeted as its own kind of operation.
+///
+/// A cold catalog does not read a stored list. The sibling spawns each provider
+/// lane's own tooling and completes a protocol handshake with it, gathering the
+/// lanes concurrently, then caches the result for five minutes. So the verb has
+/// two utterly different costs: a measured 16.3s on a cold workspace, and ~0s
+/// immediately afterwards for the identical response.
+///
+/// That cache is what makes an under-budget here so treacherous, and is why this
+/// is a distinct constant rather than a wider `A2A_READ_BUDGET`. The attempt that
+/// times out still WARMS the cache, so a person who retries sees it work and any
+/// test that calls twice never observes the breach at all. What breaks is the
+/// first provider listing on a cold workspace — precisely when someone is trying
+/// to choose a lane, and a lane must be chosen before a run can start.
+///
+/// Sized from evidence rather than taste: it clears the measured cold cost by
+/// roughly 2.7x, so a slower host or a colder cache does not reintroduce the
+/// breach, and it clears the 30s ceiling the sibling puts on a single catalog
+/// protocol read, so this side does not give up while the other is still inside
+/// one bounded read. It stays under `A2A_CONTROL_BUDGET` because discovery is
+/// still not a dispatch.
+///
+/// What it deliberately does NOT cover: a lane that hangs. The sibling bounds
+/// each protocol READ at 30s and may perform several, and its ACP startup
+/// ceiling is 300s; a browser-facing verb cannot wait on either. Giving up
+/// before a wedged lane is the intended behaviour, and a 504 there is honest.
+const A2A_DISCOVERY_BUDGET: Duration = Duration::from_secs(45);
+
 /// Run-scoped actor-token lifetime (resource-bounds: a credential is bounded at
 /// creation). Clamped by `MAX_ACTOR_TOKEN_LIFETIME_MS` in the issue path
 /// regardless; a generous run window that still expires.
@@ -345,7 +374,9 @@ fn build_forwarded_call(
                     percent_encode(&root)
                 ),
                 body: None,
-                budget: A2A_READ_BUDGET,
+                // Not a listing read: a cold catalog spawns provider tooling per
+                // lane before it can answer. See `A2A_DISCOVERY_BUDGET`.
+                budget: A2A_DISCOVERY_BUDGET,
             })
         }
         "active-runs" => {
