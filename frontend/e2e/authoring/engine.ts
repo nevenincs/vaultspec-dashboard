@@ -38,6 +38,7 @@ import {
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 const BIN_NAME = process.platform === "win32" ? "vaultspec.exe" : "vaultspec";
 const COMMAND_TIMEOUT_MS = 60_000;
+const ENGINE_STARTUP_TIMEOUT_MS = COMMAND_TIMEOUT_MS;
 const MAX_ENGINE_LOG_BYTES = 1024 * 1024;
 
 const GIT_DATE = "2026-01-06T12:00:00";
@@ -210,7 +211,7 @@ export async function spawnEngine(
   proc.stderr?.on("data", appendLog);
 
   const tokenPath = join(root, ".vault", "data", "engine-data", "service.json");
-  const deadline = Date.now() + 30_000;
+  const deadline = Date.now() + ENGINE_STARTUP_TIMEOUT_MS;
   let token = "";
   let ready = false;
   try {
@@ -247,7 +248,11 @@ export async function spawnEngine(
       }
       await new Promise((r) => setTimeout(r, 150));
     }
-    if (!ready) throw new Error(`engine did not come up within 30s:\n${log}`);
+    if (!ready) {
+      throw new Error(
+        `engine did not come up within ${ENGINE_STARTUP_TIMEOUT_MS / 1000}s:\n${log}`,
+      );
+    }
     return { proc, port, baseUrl, token };
   } catch (startupError) {
     try {
@@ -256,6 +261,7 @@ export async function spawnEngine(
       throw new AggregateError(
         [startupError, cleanupError],
         "authoring engine startup and cleanup both failed",
+        { cause: cleanupError },
       );
     }
     throw startupError;

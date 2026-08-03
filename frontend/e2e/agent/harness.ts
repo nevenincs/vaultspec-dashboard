@@ -31,6 +31,8 @@ import {
 
 const A2A_ROOT_ENV = "VAULTSPEC_TEST_A2A_ROOT";
 const STARTUP_TIMEOUT_MS = 60_000;
+const ATTACHMENT_TIMEOUT_MS = 150_000;
+const WORKER_READY_TIMEOUT_SECONDS = 120;
 const POLL_INTERVAL_MS = 200;
 const MAX_A2A_LOG_BYTES = 1024 * 1024;
 
@@ -38,6 +40,7 @@ export interface A2aHandle {
   readonly proc: ChildProcess;
   readonly baseUrl: string;
   readonly serviceJson: string;
+  readonly attachToken: string;
   readonly diagnostics: () => string;
 }
 
@@ -54,6 +57,13 @@ export interface AgentHarness {
 
 interface A2aServiceRecord {
   readonly port?: unknown;
+  readonly handoff_reference?: unknown;
+}
+
+interface A2aServiceState {
+  readonly worker_ready?: unknown;
+  readonly can_accept_run?: unknown;
+  readonly degraded_reasons?: unknown;
 }
 
 function resolveA2aRoot(): string {
@@ -136,6 +146,7 @@ async function spawnA2a(
     VAULTSPEC_PORT: String(gatewayPort),
     VAULTSPEC_WORKER_HOST: "127.0.0.1",
     VAULTSPEC_WORKER_PORT: String(workerPort),
+    VAULTSPEC_WORKER_READY_TIMEOUT_SECONDS: String(WORKER_READY_TIMEOUT_SECONDS),
     VAULTSPEC_MCP_HOST: "127.0.0.1",
     VAULTSPEC_MCP_PORT: String(mcpPort),
     VAULTSPEC_DATABASE_BACKEND: "sqlite",
@@ -182,13 +193,27 @@ async function spawnA2a(
           readFileSync(serviceJson, "utf8"),
         ) as A2aServiceRecord;
         const port = record.port;
-        if (typeof port === "number" && Number.isInteger(port) && port > 0) {
+        const handoffReference = record.handoff_reference;
+        if (
+          typeof port === "number" &&
+          Number.isInteger(port) &&
+          port > 0 &&
+          typeof handoffReference === "string"
+        ) {
           const baseUrl = `http://127.0.0.1:${port}`;
+          const attachToken = readFileSync(handoffReference, "utf8").trim();
+          if (!attachToken) throw new Error("a2a handoff token is empty");
           const response = await fetch(`${baseUrl}/health`, {
             signal: AbortSignal.timeout(2_000),
           });
           if (response.ok)
-            return { proc, baseUrl, serviceJson, diagnostics: () => log };
+            return {
+              proc,
+              baseUrl,
+              serviceJson,
+              attachToken,
+              diagnostics: () => log,
+            };
         }
       } catch {
         // Discovery has not been atomically published yet, or the listener is
@@ -199,12 +224,7 @@ async function spawnA2a(
     throw new Error(`a2a did not become discoverably healthy within 60s:\n${log}`);
   } catch (startupError) {
     try {
-      await stopA2a({
-        proc,
-        baseUrl: `http://127.0.0.1:${gatewayPort}`,
-        serviceJson,
-        diagnostics: () => log,
-      });
+      await stopA2a({ proc });
     } catch (cleanupError) {
       throw new AggregateError(
         [startupError, cleanupError],
@@ -216,20 +236,57 @@ async function spawnA2a(
   }
 }
 
+async function waitForA2aWorker(handle: A2aHandle): Promise<void> {
+  const deadline = Date.now() + ATTACHMENT_TIMEOUT_MS;
+  let lastFailure = "a2a service-state has not answered";
+  while (Date.now() < deadline) {
+    if (handle.proc.exitCode !== null || handle.proc.signalCode !== null) {
+      throw childFailure(handle.proc, handle.diagnostics(), "worker readiness");
+    }
+    try {
+      const response = await fetch(`${handle.baseUrl}/v1/service`, {
+        headers: { Authorization: `Bearer ${handle.attachToken}` },
+        signal: AbortSignal.timeout(5_000),
+      });
+      const raw = await response.text();
+      if (response.ok) {
+        const state = JSON.parse(raw) as A2aServiceState;
+        if (state.worker_ready === true && state.can_accept_run === true) return;
+        lastFailure = `worker_ready=${String(state.worker_ready)}, can_accept_run=${String(state.can_accept_run)}, degraded_reasons=${JSON.stringify(state.degraded_reasons)}`;
+      } else {
+        lastFailure = `service-state returned ${response.status}: ${raw}`;
+      }
+    } catch (error) {
+      lastFailure = error instanceof Error ? error.message : String(error);
+    }
+  }
+  throw new Error(
+    `a2a worker did not become production-ready within ${ATTACHMENT_TIMEOUT_MS / 1000}s: ${lastFailure}\n${handle.diagnostics()}`,
+  );
+}
+
 /** Stop the exact process tree this harness launched. A plain source `serve`
  * has no lifecycle capability, so the trusted bounded tree terminator is the
  * authoritative teardown rather than pretending the product-managed admin stop
  * is available. */
-export async function stopA2a(handle: A2aHandle): Promise<void> {
+export async function stopA2a(handle: Pick<A2aHandle, "proc">): Promise<void> {
   if (handle.proc.exitCode !== null || handle.proc.signalCode !== null) return;
-  forceTerminateProcessTree(handle.proc);
+  try {
+    forceTerminateProcessTree(handle.proc);
+  } catch (error) {
+    // The owned gateway can finish between the liveness check above and
+    // taskkill opening its process handle. That is already the requested
+    // postcondition; preserve real termination failures only while it stays live.
+    if (!(await waitForChildExit(handle.proc, 10_000))) throw error;
+    return;
+  }
   if (!(await waitForChildExit(handle.proc, 10_000))) {
     throw new Error(`a2a process ${handle.proc.pid} did not exit after tree stop`);
   }
 }
 
 async function waitForEngineAttachment(engine: EngineHandle): Promise<void> {
-  const deadline = Date.now() + STARTUP_TIMEOUT_MS;
+  const deadline = Date.now() + ATTACHMENT_TIMEOUT_MS;
   let lastFailure = "engine has not answered the a2a presets read";
   while (Date.now() < deadline) {
     try {
@@ -320,6 +377,7 @@ export async function startAgentHarness(): Promise<AgentHarness> {
     }
     a2a = await spawnA2a(a2aRoot, a2aHome, engineServiceJson);
     await waitForEngineAttachment(engine);
+    await waitForA2aWorker(a2a);
   } catch (startupError) {
     const failures: unknown[] = [startupError];
     if (a2a) {
