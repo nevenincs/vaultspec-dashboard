@@ -407,10 +407,22 @@ impl SessionRepository<'_, '_> {
         validate_completion_summary(input.summary.as_deref())?;
         let outcome = input.outcome.unwrap_or(RunOutcome::Completed);
         match outcome {
-            RunOutcome::Failed => validate_failure_reason(input.failure_reason.as_deref())?,
+            RunOutcome::Failed => {
+                validate_failure_reason(input.failure_reason.as_deref())?;
+                validate_provider_condition(input.provider_condition.as_deref())?;
+            }
+            // A provider condition on a run that did not fail is a contradiction,
+            // not a harmless extra: it would tell every downstream reader to act
+            // on a refusal that never happened. Refused here rather than trusted,
+            // exactly like the reason it accompanies.
             RunOutcome::Completed if input.failure_reason.is_some() => {
                 return Err(StoreError::Session(
                     "a completed run carries no failure_reason".to_string(),
+                ));
+            }
+            RunOutcome::Completed if input.provider_condition.is_some() => {
+                return Err(StoreError::Session(
+                    "a completed run carries no provider_condition".to_string(),
                 ));
             }
             RunOutcome::Completed => {}

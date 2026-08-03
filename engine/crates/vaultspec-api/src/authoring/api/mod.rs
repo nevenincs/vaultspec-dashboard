@@ -450,6 +450,16 @@ pub struct CompleteRunRequest {
     pub summary: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub failure_reason: Option<String>,
+    /// The machine-readable classification of a `failed` outcome: which member
+    /// of the closed provider-condition vocabulary the failure resolved to. It
+    /// is reported alongside the reason and never inferred from it — the reason
+    /// is prose a vendor may reword, and settling code that sniffed it would
+    /// misclassify the moment they did.
+    ///
+    /// A value outside the vocabulary is refused rather than recorded, and a
+    /// `completed` outcome must carry none at all.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_condition: Option<String>,
 }
 
 /// Explicitly terminate a whole session (D2), cancelling its active run if one exists

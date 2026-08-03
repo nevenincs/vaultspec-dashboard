@@ -765,6 +765,7 @@ fn completing_a_run_covers_the_outcome_enum_owner_and_failed_arm() {
             outcome: None,
             summary: None,
             failure_reason: None,
+            provider_condition: None,
         },
     )
     .unwrap_err();
@@ -782,6 +783,7 @@ fn completing_a_run_covers_the_outcome_enum_owner_and_failed_arm() {
             outcome: Some(RunOutcome::Completed),
             summary: None,
             failure_reason: Some("should not be here".to_string()),
+            provider_condition: None,
         },
     )
     .unwrap_err();
@@ -797,6 +799,7 @@ fn completing_a_run_covers_the_outcome_enum_owner_and_failed_arm() {
                 outcome: Some(RunOutcome::Failed),
                 summary: None,
                 failure_reason: Some("the model errored".to_string()),
+                provider_condition: None,
             },
         )
         .unwrap(),
@@ -863,6 +866,7 @@ fn settle_and_promote_are_atomic_a_failure_between_them_rolls_back_both() {
                 outcome: None,
                 summary: None,
                 failure_reason: None,
+                provider_condition: None,
             },
             &actor,
             300,
@@ -930,6 +934,7 @@ fn run_completion_transitions_emits_run_completed_and_replays_across_restart() {
                 outcome: None,
                 summary: Some("generation finished".to_string()),
                 failure_reason: None,
+                provider_condition: None,
             },
         )
         .unwrap(),
@@ -981,6 +986,7 @@ fn run_completion_transitions_emits_run_completed_and_replays_across_restart() {
                 outcome: None,
                 summary: Some("generation finished".to_string()),
                 failure_reason: None,
+                provider_condition: None,
             },
         )
         .unwrap(),
@@ -1003,6 +1009,7 @@ fn run_completion_transitions_emits_run_completed_and_replays_across_restart() {
                 outcome: None,
                 summary: None,
                 failure_reason: None,
+                provider_condition: None,
             },
         )
         .unwrap(),
@@ -1208,6 +1215,7 @@ fn failure_reason_bounds_reject_empty_padded_and_oversized() {
                 outcome: Some(RunOutcome::Failed),
                 summary: None,
                 failure_reason: Some(reason),
+                provider_condition: None,
             },
         )
         .unwrap_err();
@@ -1228,6 +1236,7 @@ fn failure_reason_bounds_reject_empty_padded_and_oversized() {
                 outcome: Some(RunOutcome::Failed),
                 summary: None,
                 failure_reason: Some("x".repeat(500)),
+                provider_condition: None,
             },
         )
         .unwrap(),
@@ -1284,6 +1293,7 @@ fn a_delegator_may_complete_its_delegated_agents_run() {
                 outcome: None,
                 summary: None,
                 failure_reason: None,
+                provider_condition: None,
             },
         )
         .unwrap(),
