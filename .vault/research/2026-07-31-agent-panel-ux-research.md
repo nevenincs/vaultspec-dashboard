@@ -3,8 +3,8 @@ tags:
   - '#research'
   - '#agent-panel'
 date: '2026-07-31'
-modified: '2026-08-01'
-body_hash: 'sha256:e709f786dc45e6ef5d8d294347292899d8fdc7d0be39beabb2e9859ae7851c91'
+modified: '2026-08-02'
+body_hash: 'sha256:1c1d494a9a2ff199aac0812989a5a11d47dee6f7adebe12cad7ecd829ecdb356'
 related:
   - '[[2026-07-19-review-surface-flow-research]]'
   - '[[2026-07-19-review-surface-flow-adr]]'
@@ -315,7 +315,6 @@ What the pixels confirm or sharpen against the prose capture:
   value-label.
 - **Recents rows carry an unread/activity blue dot** (Codex project conversation
   rows), and no visible send button appears in any captured composer.
-
 
 ## Recommendation
 

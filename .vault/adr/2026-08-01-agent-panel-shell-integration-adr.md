@@ -4,7 +4,7 @@ tags:
   - '#agent-panel'
 date: '2026-08-01'
 modified: '2026-08-02'
-body_hash: 'sha256:9d2d16e3ffbb456b8f1811cec34eb8682c7c5817025a05dfe32de5412e479f2c'
+body_hash: 'sha256:92ee486f0beeea1dc6eef03ef94693b8d4f59b3cbe1726760d44ce4be140caee'
 related:
   - '[[2026-07-31-agent-panel-ux-research]]'
   - '[[2026-08-01-a2a-agent-flow-adr]]'

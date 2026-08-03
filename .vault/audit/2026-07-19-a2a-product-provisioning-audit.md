@@ -3,7 +3,7 @@ tags:
   - '#audit'
   - '#a2a-product-provisioning'
 date: '2026-07-19'
-modified: '2026-07-20'
+modified: '2026-08-02'
 body_hash: 'sha256:df050282b220d81d2c72f6b9668cc7a2989309f4bcace8799321022f3f002d85'
 related:
   - "[[2026-07-18-a2a-product-provisioning-plan]]"
@@ -831,3 +831,17 @@ activation contract; not a P06 blocker.
   receipt/generation authority; the full product gate was green at both the initial
   commit set and the revision. All three findings re-checked as resolved with no
   regression.
+
+
+## `W06 P14 S143` cross-repository release-set reconciliation
+
+Reconciled the dashboard's release-set contract against the supplier's accepted records, and against a real built artifact rather than either side's prose. Both repositories were internally consistent and disagreed with each other; only reading both revealed it.
+
+**Record state.** The supplier's governing decision is its 2026-08-01 subordination record, which supersedes its 2026-07-24 one and rules that this project is the authority and the supplier conforms to what our accepted records require. That record briefly concluded the capsule apparatus should be RETAINED, reading our records as depending on it. Its own same-day correction reference withdraws that reading: our capsule clauses were amended on 2026-07-31, the capsule is replaced by a frozen onedir admitted as ordinary digest-covered release files, and the source-commit pin retires in favour of a version reference. The supplier's governance conclusions stand; its capsule-retention clause was decided on stale input and is marked for re-examination there. No successor decision has yet been recorded on that clause, so the supplier's governing record still formally says retain.
+
+**Entrypoint audit.** The supplier now emits what our records require: four native per-target archives under fixed names, one `.sha256` sidecar per archive holding a single bare lowercase hex digest with no filename column, attached to the release for the tag. Its release gate proves the artifact starts, serves its API, and stops before publishing - a version or help probe alone was explicitly ruled insufficient evidence about the surface we depend on.
+
+**Verified against a real artifact, not a promise.** The Apple Silicon member of the 0.3.0 build was downloaded and checked: the sidecar digest matches the archive byte-for-byte; the tree unpacks as the expected onedir with the binary beside its `_internal` closure, 1547 entries; and it contains NO links or reparse objects, which our composed-tree verification refuses. That last property was absent until this reconciliation: the freeze reproduced the versioned shared-library symlink chains its dependencies ship, and our verifier would have refused the tree at install time on a user's machine. The producer now flattens links before its own smoke gate.
+
+**Outstanding.** Three of four targets build and verify; the Windows member fails publishing its discovery credential against an external holder, so no cohort has published yet and the version-reference reshape of our component lock cannot be completed against a full set. Two self-inflicted causes of that failure were found and fixed in the supplier during this reconciliation - a credential reader that withheld DELETE sharing, and a by-name re-ACL of the file about to be renamed - and are recorded there.
+
