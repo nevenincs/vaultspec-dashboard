@@ -4,7 +4,9 @@
 // panels (modal, single-open, visited-not-lived-in), it coexists with the
 // editor/graph and holds a running conversation.
 // Local chrome only: no wire access lives here; the
-// session data is the `stores/server/agent` slice.
+// session data is the `stores/server/agent` slice. The pure derivations below
+// take already-read snapshots as arguments for the same reason — they decide what
+// the open panel presents, and fetch nothing themselves.
 //
 // WHETHER the panel is mounted is NOT stored here: the panel occupies the center
 // dock's ONE reserved slot (agent-panel-shell-integration D1), so "open" IS
@@ -21,6 +23,15 @@ import {
   useShellCenterSlot,
 } from "./shellLayout";
 import { clearClarificationRecaps } from "./clarificationRecaps";
+import type { TeamRunStatus } from "../server/agent/a2aTeam";
+import {
+  adaptProviderCondition,
+  type ProviderCondition,
+} from "../server/agent/providerCondition";
+import {
+  relayErrorCode,
+  type RelayTranscriptFrame,
+} from "../server/liveAdapters/a2aRelay";
 
 export type TeamRunScopeAction = "keep" | "clear";
 
@@ -45,6 +56,34 @@ export function scopedTeamRunId(
   return runId !== null && activeScope !== null && bindingScope === activeScope
     ? runId
     : null;
+}
+
+/** How the panel's bound run was REFUSED, or `null` while it has not failed.
+ *
+ *  Lifecycle stays AUTHORITATIVE: only a failed run-status snapshot opens this,
+ *  never a relay frame, so a transient live fault cannot make a still-running run
+ *  look refused. Within a failure the served classification wins; a live failure
+ *  frame observed this session fills in for a snapshot that carries none (the
+ *  same authoritative-first, relay-fills-the-gap reading the run header's roster
+ *  already uses). A failure that classified as nothing at all is the vocabulary's
+ *  floor, which has a presentation of its own — silence would have none.
+ *
+ *  Nothing here reads the served reason. That prose has been observed naming a
+ *  retry step on a run refused for an exhausted balance, so a remedy chosen from
+ *  it would be the wrong remedy. */
+export function teamRunProviderCondition(
+  status: TeamRunStatus | undefined,
+  frames: readonly RelayTranscriptFrame[],
+): ProviderCondition | null {
+  if (status?.status !== "failed") return null;
+  if (status.provider_condition !== undefined) return status.provider_condition;
+  for (let index = frames.length - 1; index >= 0; index -= 1) {
+    const frame = frames[index];
+    const live = frame === undefined ? undefined : relayErrorCode(frame);
+    const condition = adaptProviderCondition(live);
+    if (condition !== undefined) return condition;
+  }
+  return "unknown";
 }
 
 interface AgentPanelState {
