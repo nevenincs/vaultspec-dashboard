@@ -21,6 +21,7 @@ import { Archive, History, Plus, X } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
+import { authoredDisplayText } from "../../platform/localization/displayText";
 import {
   useAgentLifecycleSubscription,
   useSession,
@@ -31,12 +32,14 @@ import {
   recoverableActiveRunId,
   useActiveTeamRuns,
 } from "../../stores/server/agent/a2aTeam";
+import type { ProviderCondition } from "../../stores/server/agent/providerCondition";
 import { useActiveScope } from "../../stores/server/queries";
 import {
   closeAgentPanel,
   setAgentCurrentSession,
   setAgentTeamRun,
   scopedTeamRunId,
+  teamRunProviderCondition,
   teamRunScopeAction,
   useAgentCurrentSessionId,
   useAgentPendingChangesOpen,
@@ -81,7 +84,27 @@ const AGENT = {
   loading: "common:agent.transcript.loading",
   empty: "common:agent.transcript.empty",
   error: "common:agent.transcript.error",
+  failureDetail: "common:agent.runFailure.detail",
 } as const;
+
+/** One remediation per member of the closed refusal vocabulary. The mapping is
+ *  exhaustive by construction, so a member added upstream cannot ship with no way
+ *  to tell the reader what to do about it. */
+const RUN_FAILURE = {
+  network_unreachable: "common:agent.runFailure.networkUnreachable",
+  provider_overloaded: "common:agent.runFailure.providerOverloaded",
+  unauthenticated: "common:agent.runFailure.unauthenticated",
+  throttled: "common:agent.runFailure.throttled",
+  usage_exhausted: "common:agent.runFailure.usageExhausted",
+  credits_exhausted: "common:agent.runFailure.creditsExhausted",
+  budget_exhausted: "common:agent.runFailure.budgetExhausted",
+  invalid_request: "common:agent.runFailure.invalidRequest",
+  unknown: "common:agent.runFailure.unknown",
+} as const satisfies Readonly<Record<ProviderCondition, string>>;
+
+/** Display bound for the served account of a failure. It is opaque prose of no
+ *  promised length, and it sits in docked chrome that must not grow without end. */
+const FAILURE_DETAIL_MAX = 240;
 
 /** The panel header, on the captured reference grammar (D10): the open
  *  conversation's TITLE with its own conversation-actions menu (the
@@ -331,6 +354,52 @@ function AgentRunHeaderSlot() {
   return <TeamRunHeader roster={roster} />;
 }
 
+/** The refused-run slot, docked beside the conversation like the run header: a run
+ *  that was refused is run metadata, and burying it in the scrolling transcript is
+ *  how a reader misses the one thing they can act on.
+ *
+ *  The remediation is chosen from the CLASSIFICATION alone. The served sentence is
+ *  rendered under it as opaque detail and is never read to decide anything: a run
+ *  refused for an exhausted balance has been observed carrying a sentence that
+ *  names a retry step, so a remedy chosen from prose would be the wrong remedy.
+ *
+ *  All nine members share the sanctioned degraded mark rather than each taking an
+ *  expressive glyph of its own (state-mode-uniformity): a reader comparing two
+ *  refusals must not read a glyph change as a severity change. What distinguishes
+ *  them is the remedy, which is the thing that actually differs. */
+function AgentRunFailureSlot() {
+  const resolveMessage = useLocalizedMessageResolver();
+  const progress = useTeamRunProgress();
+  const condition = teamRunProviderCondition(progress.status, progress.frames);
+  if (condition === null) return null;
+  const account = progress.status?.failure_reason ?? "";
+  const detail =
+    account.length > FAILURE_DETAIL_MAX
+      ? `${account.slice(0, FAILURE_DETAIL_MAX)}…`
+      : account;
+  return (
+    <div className="border-b border-rule" data-agent-run-failure={condition}>
+      <StateBlock
+        mode="degraded"
+        message={resolveMessage({ key: RUN_FAILURE[condition] }).message}
+      />
+      {detail.length > 0 && (
+        <p
+          className="px-fg-3 pb-fg-3 text-center text-meta text-ink-faint"
+          data-agent-run-failure-detail
+        >
+          {
+            resolveMessage({
+              key: AGENT.failureDetail,
+              values: { detail: authoredDisplayText(detail) },
+            }).message
+          }
+        </p>
+      )}
+    </div>
+  );
+}
+
 /** The CONTINUE posture's composer slot: docked at the panel bottom beneath the
  *  transcript (research G8 — position encodes posture). The begin posture renders
  *  the same component centered instead, from `AgentBeginView`. */
@@ -396,6 +465,10 @@ export function AgentPanel() {
         {/* C5: live run metadata DOCKS beside the conversation — between the header
             and the transcript in both postures, never scrolled away inside flow. */}
         <AgentRunHeaderSlot />
+        {/* A refusal outlives the posture that produced it: the panel returns to
+            the begin idiom once a failed run leaves nothing to continue, and the
+            reason it stopped is exactly what must survive that. */}
+        <AgentRunFailureSlot />
         {posture === "begin" ? (
           /* Nothing to continue: the composer IS the content, centered under the
              headline (G1/G8). The cross-run bridge still rides above it — a proposal
