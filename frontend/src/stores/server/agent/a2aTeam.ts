@@ -57,6 +57,7 @@ import {
   type ProviderCatalogResult,
   type ProviderCatalogSelection,
 } from "./a2aProviderCatalog";
+import { adaptProviderCondition, type ProviderCondition } from "./providerCondition";
 
 // The provider-catalog half lives in its own module (module-size gate); the ONE
 // import path stays here — every catalog name re-exports unchanged.
@@ -217,6 +218,11 @@ export interface TeamRunStatus {
    *  `clarification-pending` relay frame is a re-read nudge and carries none, which
    *  is what lets a reloaded panel recover the questions from status alone. */
   readonly pending_clarification?: unknown;
+  /** How the run was REFUSED, on the closed shared vocabulary, and the opaque
+   *  human account served beside it. Only the classification may be branched on;
+   *  the prose decides nothing. Both are absent unless the run failed. */
+  readonly provider_condition?: ProviderCondition;
+  readonly failure_reason?: string;
   readonly tiers?: TiersBlock;
 }
 
@@ -665,6 +671,8 @@ export function adaptRunStatus(pass: PassThrough): TeamRunStatus {
           : adaptLegacyRoleAssignments(env.assignments),
     started_at_ms: startedAtMs(env),
     pending_clarification: env.pending_clarification,
+    provider_condition: adaptProviderCondition(env.provider_condition),
+    failure_reason: asStr(env.failure_reason),
     tiers: pass.tiers,
   };
 }

@@ -29,6 +29,7 @@ import {
   type RunReconciliationState,
 } from "./a2aTeam";
 import { adaptRelayFrame } from "../liveAdapters/a2aRelay";
+import { PROVIDER_CONDITIONS } from "./providerCondition";
 
 describe("team run identity + lifecycle authority", () => {
   it("creates a fresh path-safe UUID identity for each deliberate submission", () => {
@@ -828,6 +829,44 @@ describe("adaptRunStatus", () => {
     expect(status.semantic_phase).toBe("adr");
     expect(status.proposal_ids).toEqual(["p1", "p2"]);
     expect(status.last_sequence).toBe(12);
+  });
+
+  it("reads every refusal classification the closed vocabulary contains", () => {
+    for (const condition of PROVIDER_CONDITIONS) {
+      const status = adaptRunStatus({
+        envelope: {
+          run_id: "run-refused",
+          status: "failed",
+          provider_condition: condition,
+          failure_reason: "Reconnecting… 1/5",
+        },
+      });
+      expect(status.provider_condition).toBe(condition);
+      // The prose is carried verbatim and never consulted to reach the line above:
+      // this reason names a retry step on a run the classification says was refused.
+      expect(status.failure_reason).toBe("Reconnecting… 1/5");
+    }
+  });
+
+  it("degrades a served classification outside the closed list to the floor member", () => {
+    const status = adaptRunStatus({
+      envelope: {
+        run_id: "run-refused",
+        status: "failed",
+        provider_condition: "quota_reset_pending",
+      },
+    });
+    // Dropping it would leave a failed run looking unclassified, and forwarding it
+    // would reach a reader that has no presentation for it.
+    expect(status.provider_condition).toBe("unknown");
+  });
+
+  it("leaves a run that did not fail unclassified", () => {
+    const status = adaptRunStatus({
+      envelope: { run_id: "run-live", status: "running", provider_condition: null },
+    });
+    expect(status.provider_condition).toBeUndefined();
+    expect(status.failure_reason).toBeUndefined();
   });
 
   it("retains a legacy profile-backed assignment as read-only run evidence", () => {
