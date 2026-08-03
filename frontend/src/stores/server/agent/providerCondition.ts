@@ -2,8 +2,8 @@
 // that admits it from the wire.
 //
 // A run can be refused for reasons a person can act on: no route to the model,
-// the model over capacity, a rejected sign-in, rate limiting, a spent allowance,
-// no credit left, a self-imposed ceiling, a malformed request. That
+// the model over capacity, a rejected credential, rate limiting, a spent
+// allowance, no credit left, a self-imposed ceiling, a malformed request. That
 // classification is the ONLY thing a surface may branch on. The human account
 // served beside it is opaque prose and has been observed naming a retry step
 // while the classification correctly named the refusal, so any presentation

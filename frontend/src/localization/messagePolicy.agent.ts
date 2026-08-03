@@ -62,8 +62,10 @@ export const AGENT_MESSAGE_POLICY = {
   // actionable recovery clause from, so a member cannot ship with copy that
   // merely restates the refusal. The remedies genuinely differ — a spent balance
   // needs a payment, a self-imposed ceiling only needs raising, a rejected
-  // sign-in needs a credential — which is the whole reason the vocabulary has
-  // nine members instead of one.
+  // credential needs replacing — which is the whole reason the vocabulary has
+  // nine members instead of one. The credential wording is also deliberate: this
+  // product has no user session to return to, so a remedy phrased as returning to
+  // one would send the reader looking for a screen that does not exist.
   "common:agent.runFailure.networkUnreachable": { role: "error-message" },
   "common:agent.runFailure.providerOverloaded": { role: "error-message" },
   "common:agent.runFailure.unauthenticated": { role: "error-message" },

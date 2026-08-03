@@ -378,7 +378,7 @@ export const common = {
       throttled:
         "The model is limiting how fast requests are sent. Wait a moment, then try again.",
       unauthenticated:
-        "This account is not signed in for the chosen model. Sign in again, or switch account.",
+        "The model refused this account’s credential. Update the credential, or choose another account.",
       unknown:
         "The run failed and reported no cause. Check the run’s status, then try again.",
       usageExhausted:
