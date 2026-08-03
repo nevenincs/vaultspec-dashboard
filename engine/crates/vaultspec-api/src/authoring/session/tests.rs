@@ -1,6 +1,8 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
 
+use vaultspec_product::a2a_contract::A2A_PROVIDER_CONDITIONS;
+
 use super::super::actors::{ActorDisplayMetadata, ActorRecordInput};
 use super::super::api::CreateProposalRequest;
 use super::super::model::{ActorId, ActorKind, ChangesetId, IdempotencyKey};
@@ -1243,6 +1245,222 @@ fn failure_reason_bounds_reject_empty_padded_and_oversized() {
     );
     let snap = failed.snapshot.as_ref().unwrap();
     assert_eq!(snap.runs[0].status, RunStatus::Failed);
+}
+
+/// Set up a session with one active run, ready to be settled.
+fn run_awaiting_settlement(store: &mut Store, owner: &ActorRef, tag: &str) -> RunId {
+    register_actor(store, owner);
+    let session = accepted(
+        create_session(
+            store,
+            context(owner, &format!("idem:session:create:{tag}"), 100),
+            session_request("Provider-condition session"),
+        )
+        .unwrap(),
+    );
+    let started = accepted(
+        start_prompt_turn(
+            store,
+            context(owner, &format!("idem:{tag}:turn:1"), 110),
+            session.session_id,
+            turn_request("A prompt whose provider refuses."),
+        )
+        .unwrap(),
+    );
+    started.run_id.unwrap()
+}
+
+fn stored_run(store: &mut Store, run_id: &RunId) -> RunRecord {
+    store
+        .with_read_unit_of_work(CommandKind::ReadContext, |uow| uow.sessions().run(run_id))
+        .unwrap()
+        .expect("the settled run is readable")
+}
+
+#[test]
+fn a_settled_provider_condition_survives_the_store_and_a_reopen() {
+    let (_dir, path, mut store) = temp_store();
+    let owner = actor();
+    let run_id = run_awaiting_settlement(&mut store, &owner, "pcrt");
+
+    // Before settlement the record carries no condition AT ALL — not a null, and
+    // not the floor member. The serialized form is what the store writes to the
+    // record column, so this is also the exact shape of every run recorded
+    // before this field existed.
+    let active = stored_run(&mut store, &run_id);
+    assert_eq!(active.status, RunStatus::Active);
+    assert_eq!(active.provider_condition, None);
+    assert!(
+        !serde_json::to_string(&active)
+            .unwrap()
+            .contains("provider_condition"),
+        "an absent condition is omitted from the record, so reading one back \
+         exercises the same missing-field path a pre-existing record takes"
+    );
+
+    let failed = accepted(
+        complete_run(
+            &mut store,
+            context(&owner, "idem:pcrt:fail", 120),
+            run_id.clone(),
+            CompleteRunRequest {
+                outcome: Some(RunOutcome::Failed),
+                summary: None,
+                // A reason that describes something OTHER than the condition, so
+                // a reader that derived one from the other would land on the
+                // wrong member instead of accidentally agreeing.
+                failure_reason: Some("the worker gave up after three attempts".to_string()),
+                provider_condition: Some("usage_exhausted".to_string()),
+            },
+        )
+        .unwrap(),
+    );
+    assert_eq!(
+        failed.snapshot.as_ref().unwrap().runs[0]
+            .provider_condition
+            .as_deref(),
+        Some("usage_exhausted"),
+        "the settle response already reflects the recorded condition"
+    );
+
+    // The real read path over the persisted record, and again after a reopen:
+    // a client that reconnects after a restart reads the same classification.
+    let read_back = stored_run(&mut store, &run_id);
+    assert_eq!(read_back.status, RunStatus::Failed);
+    assert_eq!(
+        read_back.provider_condition.as_deref(),
+        Some("usage_exhausted")
+    );
+    assert_eq!(
+        read_back.failure_reason.as_deref(),
+        Some("the worker gave up after three attempts"),
+        "the prose reason is preserved unchanged beside the condition, and \
+         neither is derived from the other"
+    );
+
+    drop(store);
+    let mut reopened = Store::open_at(&path).unwrap();
+    let recovered = stored_run(&mut reopened, &run_id);
+    assert_eq!(
+        recovered.provider_condition.as_deref(),
+        Some("usage_exhausted"),
+        "the condition is durable, not an artefact of the settling process"
+    );
+}
+
+#[test]
+fn a_condition_outside_the_vocabulary_is_refused_and_nothing_is_recorded() {
+    let (_dir, _path, mut store) = temp_store();
+    let owner = actor();
+    let run_id = run_awaiting_settlement(&mut store, &owner, "pcbad");
+
+    let rejected = complete_run(
+        &mut store,
+        context(&owner, "idem:pcbad:fail", 120),
+        run_id.clone(),
+        CompleteRunRequest {
+            outcome: Some(RunOutcome::Failed),
+            summary: None,
+            failure_reason: Some("the lane refused".to_string()),
+            provider_condition: Some("quota_exceeded".to_string()),
+        },
+    )
+    .unwrap_err();
+    let StoreError::Session(message) = &rejected else {
+        panic!("an unrecognised condition is a session-domain refusal, got {rejected:?}");
+    };
+    assert!(
+        message.contains("quota_exceeded"),
+        "the refusal names the offending value so the caller can see what it sent: {message}"
+    );
+    for member in A2A_PROVIDER_CONDITIONS {
+        assert!(
+            message.contains(member),
+            "the refusal lists the accepted set so the caller can correct itself; \
+             `{member}` is missing from: {message}"
+        );
+    }
+
+    // The refusal is total: the run keeps running rather than settling with a
+    // reason and no classification, which would be the silent half-write this
+    // whole field exists to prevent.
+    let untouched = stored_run(&mut store, &run_id);
+    assert_eq!(untouched.status, RunStatus::Active);
+    assert_eq!(untouched.failure_reason, None);
+    assert_eq!(untouched.provider_condition, None);
+
+    // Every member of the shared vocabulary is admitted by the same boundary
+    // that refused the value above — including the floor member, which is a real
+    // outcome rather than an error case.
+    for (index, member) in A2A_PROVIDER_CONDITIONS.iter().enumerate() {
+        let (_dir, _path, mut store) = temp_store();
+        let owner = actor();
+        let run_id = run_awaiting_settlement(&mut store, &owner, &format!("pcok{index}"));
+        complete_run(
+            &mut store,
+            context(&owner, &format!("idem:pcok{index}:fail"), 120),
+            run_id.clone(),
+            CompleteRunRequest {
+                outcome: Some(RunOutcome::Failed),
+                summary: None,
+                failure_reason: None,
+                provider_condition: Some((*member).to_string()),
+            },
+        )
+        .unwrap_or_else(|err| panic!("`{member}` is a member and must settle: {err:?}"));
+        assert_eq!(
+            stored_run(&mut store, &run_id)
+                .provider_condition
+                .as_deref(),
+            Some(*member)
+        );
+    }
+}
+
+#[test]
+fn a_completed_run_cannot_carry_a_provider_condition() {
+    let (_dir, _path, mut store) = temp_store();
+    let owner = actor();
+    let run_id = run_awaiting_settlement(&mut store, &owner, "pcok");
+
+    // The value itself is a perfectly good member; what makes this a refusal is
+    // that a run which did not fail has nothing for a condition to describe.
+    let rejected = complete_run(
+        &mut store,
+        context(&owner, "idem:pcok:complete", 120),
+        run_id.clone(),
+        CompleteRunRequest {
+            outcome: Some(RunOutcome::Completed),
+            summary: Some("it finished".to_string()),
+            failure_reason: None,
+            provider_condition: Some("throttled".to_string()),
+        },
+    )
+    .unwrap_err();
+    assert!(
+        matches!(&rejected, StoreError::Session(message) if message.contains("provider_condition")),
+        "the contradiction is refused on its own terms, got {rejected:?}"
+    );
+
+    let settled = accepted(
+        complete_run(
+            &mut store,
+            context(&owner, "idem:pcok:complete:clean", 130),
+            run_id.clone(),
+            CompleteRunRequest {
+                outcome: Some(RunOutcome::Completed),
+                summary: Some("it finished".to_string()),
+                failure_reason: None,
+                provider_condition: None,
+            },
+        )
+        .unwrap(),
+    );
+    assert_eq!(
+        settled.snapshot.as_ref().unwrap().runs[0].status,
+        RunStatus::Completed
+    );
+    assert_eq!(stored_run(&mut store, &run_id).provider_condition, None);
 }
 
 #[test]

@@ -211,9 +211,12 @@ pub struct RunRecord {
     /// reached the record must not take the whole record down on read. This
     /// field exists because a classification was once destroyed in transit, and
     /// an unreadable record is undiagnosable where an odd but readable one is
-    /// not. JSON-only like `failure_reason` — nothing queries a column — and
-    /// `#[serde(default)]` is load-bearing under `deny_unknown_fields`: it is
-    /// what keeps every record written before this field deserializing.
+    /// not. JSON-only like `failure_reason` — nothing queries a column — so
+    /// every record written before this field existed still loads: `deny_unknown_fields`
+    /// governs fields that are PRESENT and unexpected, and an absent optional
+    /// field is already `None`. The `default` is written out to match the
+    /// optional fields beside it, not because the read depends on it; a probe
+    /// removing it left the old-record read passing.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider_condition: Option<String>,
     pub created_at_ms: i64,

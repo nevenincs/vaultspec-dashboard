@@ -57,6 +57,25 @@ export const AGENT_MESSAGE_POLICY = {
   "common:agent.clarification.answerPlaceholder": { role: "label" },
   "common:agent.clarification.failed": { role: "error-message" },
   "common:agent.clarification.recapTitle": { role: "label" },
+  // One remediation per member of the closed refusal vocabulary. They are
+  // `error-message` deliberately: that role is the one the policy requires an
+  // actionable recovery clause from, so a member cannot ship with copy that
+  // merely restates the refusal. The remedies genuinely differ — a spent balance
+  // needs a payment, a self-imposed ceiling only needs raising, a rejected
+  // sign-in needs a credential — which is the whole reason the vocabulary has
+  // nine members instead of one.
+  "common:agent.runFailure.networkUnreachable": { role: "error-message" },
+  "common:agent.runFailure.providerOverloaded": { role: "error-message" },
+  "common:agent.runFailure.unauthenticated": { role: "error-message" },
+  "common:agent.runFailure.throttled": { role: "error-message" },
+  "common:agent.runFailure.usageExhausted": { role: "error-message" },
+  "common:agent.runFailure.creditsExhausted": { role: "error-message" },
+  "common:agent.runFailure.budgetExhausted": { role: "error-message" },
+  "common:agent.runFailure.invalidRequest": { role: "error-message" },
+  "common:agent.runFailure.unknown": { role: "error-message" },
+  // The served account of the failure, shown as subordinate detail. It is never
+  // consulted to choose the remediation above it.
+  "common:agent.runFailure.detail": { role: "status" },
   "common:agent.runHeader.region": { role: "accessibility" },
   "common:agent.runHeader.phase": { role: "label" },
   "common:agent.runHeader.elapsed": { role: "label" },

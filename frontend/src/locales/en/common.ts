@@ -363,6 +363,27 @@ export const common = {
       submit: "Send answer",
       title: "The run needs a decision",
     },
+    runFailure: {
+      budgetExhausted:
+        "The run stopped at the spending limit you set. Change the limit, then try again.",
+      creditsExhausted:
+        "This account has run out of credit. Update your billing to add more credit.",
+      detail: "Reported: {{detail}}",
+      invalidRequest:
+        "The model refused the request as invalid. Change the message or the chosen model, then try again.",
+      networkUnreachable:
+        "The model could not be reached. Check your network connection, then try again.",
+      providerOverloaded:
+        "The model is over capacity right now. Wait a moment, then try again.",
+      throttled:
+        "The model is limiting how fast requests are sent. Wait a moment, then try again.",
+      unauthenticated:
+        "This account is not signed in for the chosen model. Sign in again, or switch account.",
+      unknown:
+        "The run failed and reported no cause. Check the run’s status, then try again.",
+      usageExhausted:
+        "This account has used its allowance for the current period. Wait for the next period, or change your plan.",
+    },
     runHeader: {
       catalogRevision: "Catalog revision",
       controlValue:
