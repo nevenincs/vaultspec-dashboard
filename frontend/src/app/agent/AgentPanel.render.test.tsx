@@ -24,6 +24,7 @@ import { I18nextProvider } from "react-i18next";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createTestLocalizationRuntime } from "../../localization/testing";
+import { common } from "../../locales/en";
 import { createLiveClient, liveScope, liveTransport } from "../../testing/liveClient";
 import {
   AuthoringClient,
@@ -31,7 +32,12 @@ import {
   resetAuthoringStreamCursor,
 } from "../../stores/server/authoring";
 import { AgentClient } from "../../stores/server/agent";
-import { a2aKeys, type ActiveRunsResult } from "../../stores/server/agent/a2aTeam";
+import {
+  a2aKeys,
+  adaptRunStatus,
+  type ActiveRunsResult,
+} from "../../stores/server/agent/a2aTeam";
+import { PROVIDER_CONDITIONS } from "../../stores/server/agent/providerCondition";
 import {
   setAgentPendingChangesOpen,
   setAgentTeamRun,
@@ -293,6 +299,128 @@ describe("AgentPanel transcript states", () => {
       timeout: 10_000,
     });
     expect(document.querySelector("[data-agent-transcript-entries]")).not.toBeNull();
+  });
+});
+
+/** Every member of the closed refusal vocabulary, paired with the copy it must
+ *  render and with a served sentence that CONTRADICTS it — each reason names some
+ *  other member's remedy, and one is the real sentence a live refusal for a spent
+ *  balance carried (it named a retry step, not the refusal).
+ *
+ *  The pairing of member to catalog entry is written out here rather than derived,
+ *  so it is an independent statement of the contract: a panel that mapped a member
+ *  to a neighbouring member's copy would still resolve a real message and would
+ *  still be caught. The contradicting reasons are what make a substring check on
+ *  the served prose fail this suite instead of passing it. */
+const REFUSALS = [
+  ["network_unreachable", common.agent.runFailure.networkUnreachable, "no credit left"],
+  ["provider_overloaded", common.agent.runFailure.providerOverloaded, "not signed in"],
+  ["unauthenticated", common.agent.runFailure.unauthenticated, "rate limit exceeded"],
+  ["throttled", common.agent.runFailure.throttled, "spending limit reached"],
+  ["usage_exhausted", common.agent.runFailure.usageExhausted, "could not be reached"],
+  ["credits_exhausted", common.agent.runFailure.creditsExhausted, "Reconnecting… 1/5"],
+  ["budget_exhausted", common.agent.runFailure.budgetExhausted, "out of credit"],
+  ["invalid_request", common.agent.runFailure.invalidRequest, "over capacity"],
+  ["unknown", common.agent.runFailure.unknown, "the request was invalid"],
+] as const;
+
+/** Bind a refused run and render the panel around it. The snapshot goes through
+ *  the production run-status adapter and into the real cache the panel reads, so
+ *  the served value is admitted exactly as a wire response would be. */
+async function renderRefusedRun(condition: string, reason: string): Promise<void> {
+  const scope = await liveScope();
+  const runId = `run-refused-${condition}`;
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  queryClient.setQueryData(
+    a2aKeys.runStatus(runId),
+    adaptRunStatus({
+      envelope: {
+        run_id: runId,
+        status: "failed",
+        provider_condition: condition,
+        failure_reason: reason,
+      },
+    }),
+  );
+  useAgentPanel.setState({
+    currentSessionId: null,
+    teamRunId: runId,
+    teamRunPrompt: null,
+    teamRunScope: scope,
+  });
+  renderPanel(queryClient);
+}
+
+describe("AgentPanel refused-run remediation", () => {
+  it("covers the whole closed vocabulary, with no two members sharing a remedy", () => {
+    // A member that ships unrendered is exactly what a representative sample
+    // misses, so the table below is checked against the vocabulary itself.
+    expect(REFUSALS.map(([condition]) => condition)).toEqual([...PROVIDER_CONDITIONS]);
+    const remedies = REFUSALS.map(([, remedy]) => remedy);
+    expect(new Set(remedies).size).toBe(remedies.length);
+  });
+
+  it.each(REFUSALS)(
+    "renders the %s remedy and ignores a reason that contradicts it",
+    async (condition, remedy, reason) => {
+      await renderRefusedRun(condition, reason);
+      const slot = await waitFor(
+        () => {
+          const el = document.querySelector<HTMLElement>(
+            `[data-agent-run-failure="${condition}"]`,
+          );
+          expect(el).not.toBeNull();
+          return el!;
+        },
+        { timeout: 10_000 },
+      );
+      expect(slot.textContent).toContain(remedy);
+      // The served sentence is shown as detail, and every remedy it points at
+      // stays absent: nothing here reads it to decide what to offer.
+      expect(slot.textContent).toContain(reason);
+      for (const [other, otherRemedy] of REFUSALS) {
+        if (other !== condition) expect(screen.queryByText(otherRemedy)).toBeNull();
+      }
+    },
+  );
+
+  it("presents a value outside the closed list as the floor member", async () => {
+    // The list is validated upstream, but this parses a network response: an
+    // unrecognised value must not reach a reader raw or vanish silently.
+    await renderRefusedRun("quota_reset_pending", "a condition nothing here knows");
+    await waitFor(
+      () =>
+        expect(
+          document.querySelector('[data-agent-run-failure="unknown"]'),
+        ).not.toBeNull(),
+      { timeout: 10_000 },
+    );
+    expect(screen.getByText(common.agent.runFailure.unknown)).toBeTruthy();
+  });
+
+  it("stays silent for a run that did not fail", async () => {
+    const scope = await liveScope();
+    const runId = "run-still-running";
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    queryClient.setQueryData(
+      a2aKeys.runStatus(runId),
+      adaptRunStatus({ envelope: { run_id: runId, status: "running" } }),
+    );
+    useAgentPanel.setState({
+      currentSessionId: null,
+      teamRunId: runId,
+      teamRunPrompt: null,
+      teamRunScope: scope,
+    });
+    renderPanel(queryClient);
+    await waitFor(() =>
+      expect(document.querySelector("[data-team-run]")).not.toBeNull(),
+    );
+    expect(document.querySelector("[data-agent-run-failure]")).toBeNull();
   });
 });
 
