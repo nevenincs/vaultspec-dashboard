@@ -1,4 +1,4 @@
-<img src="docs/assets/logo.svg" width="150" alt="vaultspec-dashboard logo">
+<img src="docs/assets/logo.png" width="150" alt="vaultspec-dashboard logo">
 
 # vaultspec-dashboard
 
