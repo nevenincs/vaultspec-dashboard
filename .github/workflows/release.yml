@@ -191,7 +191,16 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          if [ -n "${HOME:-}" ] && mkdir -p "$HOME/.config" 2>/dev/null; then
+          # Probe the EXACT path the installer needs, not its parent.
+          # `mkdir -p` on an existing directory returns 0 whatever its
+          # permissions, and /home/runner/.config DOES exist on the container -
+          # which is why the failure names `.config/fish` and not `.config`. So
+          # `mkdir -p "$HOME/.config"` succeeds, the redirect is skipped, and
+          # `Install dist` dies on the same line as v0.1.5 and v0.1.6.
+          # cargo-dist-installer.sh v0.32.0 line 957 runs exactly this mkdir, so
+          # probe and prediction cannot disagree. Creating it early is harmless:
+          # the installer's own mkdir -p is then a no-op.
+          if [ -n "${HOME:-}" ] && mkdir -p "$HOME/.config/fish/conf.d" 2>/dev/null; then
             echo "HOME is writable at $HOME"
           else
             writable="$RUNNER_TEMP/home"
