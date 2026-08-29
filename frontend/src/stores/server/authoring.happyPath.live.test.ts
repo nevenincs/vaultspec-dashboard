@@ -316,7 +316,17 @@ describe("full authoring happy path (live)", () => {
     }
 
     // Core is operable → the apply MUST really apply (a recorded applied receipt).
-    expect(applied.kind).toBe("ok");
+    // The served denial reason rides the assertion message: this branch is gated
+    // on core being REACHABLE, which is not the same claim as core being able to
+    // apply, so when the two diverge on a machine the reason is the only thing
+    // that says which. Without it the failure reads `expected 'denied' to be
+    // 'ok'` and names nothing.
+    expect(
+      applied.kind,
+      applied.kind === "denied"
+        ? `apply denied: ${applied.reason ?? "(no reason served)"}`
+        : undefined,
+    ).toBe("ok");
     if (applied.kind === "ok") {
       expect(applied.data.child_outcome).toBe("applied");
       expect(applied.data.receipt).toBeTruthy();
