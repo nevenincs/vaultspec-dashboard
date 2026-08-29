@@ -55,12 +55,21 @@ async function createLiveSession(actorToken: string): Promise<string> {
   return body.data.session_id;
 }
 
-// A prose research doc (distinct from the reject flow's target) — prose stays
-// schema-valid through submit validation + real set-body, and only THIS test
-// applies to it (in its own throwaway changeset).
-const TARGET_STEM = "2026-01-04-beta-research";
+// A prose research doc owned by THIS suite alone — prose stays schema-valid
+// through submit validation + real set-body.
+//
+// Exclusivity is the point, and it is why this is not the beta doc. The apply
+// below is denied outright when any live proposal already covers an
+// intersecting base range of the same document ("only one can apply against
+// the shared base"), and three suites had adopted beta: this one,
+// `ProposalCard.live` and `AutonomyControl.live`. Each releases its draft
+// best-effort - deliberately, so a teardown hiccup cannot mask the arc under
+// test - so any one of them silently leaving a draft live denied this apply.
+// A document nothing else touches removes the coupling instead of relying on
+// three separate cleanups all succeeding.
+const TARGET_STEM = "2026-01-07-gamma-research";
 const TARGET_NODE_ID = `doc:${TARGET_STEM}`;
-const TARGET_PATH = ".vault/research/2026-01-04-beta-research.md";
+const TARGET_PATH = ".vault/research/2026-01-07-gamma-research.md";
 
 let client: AuthoringClient;
 let baseRevision: string;
