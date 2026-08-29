@@ -16,7 +16,10 @@ on:
 
 concurrency:
   group: engine-ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Same reasoning as quality-gates.yml: on `main`, which takes direct pushes,
+  # this run is the gate, and cancelling it leaves a `cancelled` conclusion that
+  # is not red anywhere. Fifteen of the last hundred `main` runs ended that way.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   engine:
