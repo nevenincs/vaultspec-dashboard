@@ -55,12 +55,21 @@ async function createLiveSession(actorToken: string): Promise<string> {
   return body.data.session_id;
 }
 
-// A prose research doc (distinct from the reject flow's target) — prose stays
-// schema-valid through submit validation + real set-body, and only THIS test
-// applies to it (in its own throwaway changeset).
-const TARGET_STEM = "2026-01-04-beta-research";
+// A prose research doc owned by THIS suite alone — prose stays schema-valid
+// through submit validation + real set-body.
+//
+// Exclusivity is the point, and it is why this is not the beta doc. The apply
+// below is denied outright when any live proposal already covers an
+// intersecting base range of the same document ("only one can apply against
+// the shared base"), and three suites had adopted beta: this one,
+// `ProposalCard.live` and `AutonomyControl.live`. Each releases its draft
+// best-effort - deliberately, so a teardown hiccup cannot mask the arc under
+// test - so any one of them silently leaving a draft live denied this apply.
+// A document nothing else touches removes the coupling instead of relying on
+// three separate cleanups all succeeding.
+const TARGET_STEM = "2026-01-06-gamma-research";
 const TARGET_NODE_ID = `doc:${TARGET_STEM}`;
-const TARGET_PATH = ".vault/research/2026-01-04-beta-research.md";
+const TARGET_PATH = ".vault/research/2026-01-06-gamma-research.md";
 
 let client: AuthoringClient;
 let baseRevision: string;
@@ -316,7 +325,17 @@ describe("full authoring happy path (live)", () => {
     }
 
     // Core is operable → the apply MUST really apply (a recorded applied receipt).
-    expect(applied.kind).toBe("ok");
+    // The served denial reason rides the assertion message: this branch is gated
+    // on core being REACHABLE, which is not the same claim as core being able to
+    // apply, so when the two diverge on a machine the reason is the only thing
+    // that says which. Without it the failure reads `expected 'denied' to be
+    // 'ok'` and names nothing.
+    expect(
+      applied.kind,
+      applied.kind === "denied"
+        ? `apply denied: ${applied.reason ?? "(no reason served)"}`
+        : undefined,
+    ).toBe("ok");
     if (applied.kind === "ok") {
       expect(applied.data.child_outcome).toBe("applied");
       expect(applied.data.receipt).toBeTruthy();
