@@ -67,9 +67,9 @@ async function createLiveSession(actorToken: string): Promise<string> {
 // test - so any one of them silently leaving a draft live denied this apply.
 // A document nothing else touches removes the coupling instead of relying on
 // three separate cleanups all succeeding.
-const TARGET_STEM = "2026-01-07-gamma-research";
+const TARGET_STEM = "2026-01-06-gamma-research";
 const TARGET_NODE_ID = `doc:${TARGET_STEM}`;
-const TARGET_PATH = ".vault/research/2026-01-07-gamma-research.md";
+const TARGET_PATH = ".vault/research/2026-01-06-gamma-research.md";
 
 let client: AuthoringClient;
 let baseRevision: string;
