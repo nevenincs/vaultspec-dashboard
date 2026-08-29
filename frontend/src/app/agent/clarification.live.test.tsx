@@ -135,8 +135,21 @@ describe("the captured disclosure payload", () => {
       expect(screen.getByRole("radio", { name: option })).toBeTruthy();
     }
     expect(document.querySelectorAll("[data-clarification-option]").length).toBe(3);
-    // The choice question must NOT have produced an input of its own.
-    expect(document.querySelector("[data-clarification-input='provider']")).toBeNull();
+    // The bounded set renders as BUTTONS, and carries ONE n+1 free-text row so an
+    // answer that is not on the list is still sayable (`0bd58fb9e5` - "a bounded
+    // option set must never trap someone whose answer is not on it"). That row is
+    // an ESCAPE HATCH beside the options, never a replacement for them: this test
+    // fails if the choice ever degrades into a bare text box, which is what it was
+    // written to prevent. It previously asserted the row's absence, and had done so
+    // since the day before the row was introduced.
+    const escapeHatch = document.querySelector("[data-clarification-input='provider']");
+    expect(escapeHatch).not.toBeNull();
+    expect(escapeHatch?.tagName).toBe("INPUT");
+    // The options remain the primary affordance - the escape hatch does not stand
+    // in for any of them.
+    expect(
+      document.querySelectorAll("[data-clarification-input='provider']").length,
+    ).toBe(1);
   });
 
   it("renders a single-line input for the text question", () => {
