@@ -63,11 +63,29 @@ jobs:
       - name: Every target selector has an online runner
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # A PAT with `administration: read` if one is configured; the default
+          # GITHUB_TOKEN otherwise. The default token CANNOT read
+          # `actions/runners` - that endpoint needs admin - so without the PAT
+          # this check is unobservable and says so rather than guessing.
+          GH_TOKEN: ${{ secrets.FLEET_PREFLIGHT_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
-          set -euo pipefail
-          runners=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runners"             --jq '.runners[] | [.status, ([.labels[].name] | map(ascii_downcase) | join(","))] | @tsv')
-          [ -n "${runners}" ] || { echo "::error::no self-hosted runners are registered"; exit 1; }
+          # NOT `set -e`. An unobservable preflight must not fail the release:
+          # the `gh api` below returns 403 under the default GITHUB_TOKEN, and
+          # under `set -e` that aborted the step, skipped the attach job, and
+          # refused v0.1.6 for a permissions gap that has nothing to do with the
+          # fleet. A check that cannot tell "no runner" from "cannot see
+          # runners" must not be allowed to speak for the first.
+          set -uo pipefail
+          if ! runners=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runners" --jq '.runners[] | [.status, ([.labels[].name] | map(ascii_downcase) | join(","))] | @tsv' 2>&1); then
+            echo "::warning::preflight cannot read the runner list: ${runners}"
+            echo "::warning::The default GITHUB_TOKEN cannot read actions/runners. Set FLEET_PREFLIGHT_TOKEN to a PAT with administration:read to enable this check."
+            echo "::warning::SKIPPING - unobservable is not the same as unserviceable, and refusing a release on a blind check is worse than not checking."
+            exit 0
+          fi
+          if [ -z "${runners}" ]; then
+            echo "::error::no self-hosted runners are registered for this repository"
+            exit 1
+          fi
 
           selectors=(
             "self-hosted,linux,x64"
