@@ -83,7 +83,7 @@ describe("resolveFirstRunOnboardingState", () => {
 describe("FirstRunOnboardingBody", () => {
   it("renders the welcome card with the add-project affordance", () => {
     render(<FirstRunOnboardingBody onAddProject={vi.fn()} />);
-    expect(screen.getByText("Welcome to vaultspec")).toBeTruthy();
+    expect(screen.getByText("Welcome to Vaultspec")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Add project" })).toBeTruthy();
   });
 
