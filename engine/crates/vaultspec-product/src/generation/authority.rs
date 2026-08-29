@@ -152,7 +152,7 @@ impl DirectoryAuthority {
             is_directory: rustix::fs::FileType::from_raw_mode(stat.st_mode)
                 == rustix::fs::FileType::Directory,
             owner: stat.st_uid,
-            mode: stat.st_mode & 0o777,
+            mode: u32::from(stat.st_mode) & 0o777,
         })
     }
 
@@ -182,7 +182,7 @@ impl DirectoryAuthority {
             is_directory: rustix::fs::FileType::from_raw_mode(stat.st_mode)
                 == rustix::fs::FileType::Directory,
             owner: stat.st_uid,
-            mode: stat.st_mode & 0o777,
+            mode: u32::from(stat.st_mode) & 0o777,
         })
     }
 
