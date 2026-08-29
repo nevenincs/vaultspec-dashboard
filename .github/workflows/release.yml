@@ -181,6 +181,48 @@ jobs:
           mkdir -p engine/crates/vaultspec-api/assets
           cp -r frontend/dist engine/crates/vaultspec-api/assets/spa
         shell: "bash"
+      # `Install dist` writes into $HOME, and on a containerised runner the
+      # image's HOME belongs to another user: the aarch64-unknown-linux-gnu leg
+      # of v0.1.5 and v0.1.6 both died on `mkdir: cannot create directory
+      # '/home/runner/.config/fish': Permission denied` before building
+      # anything. Only redirect when HOME is genuinely unwritable, so an
+      # ordinary runner keeps its own caches.
+      - name: Give the job a writable HOME (containerised runners only)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          if [ -n "${HOME:-}" ] && mkdir -p "$HOME/.config" 2>/dev/null; then
+            echo "HOME is writable at $HOME"
+          else
+            writable="$RUNNER_TEMP/home"
+            mkdir -p "$writable"
+            echo "HOME=$writable" >> "$GITHUB_ENV"
+            echo "::warning::HOME (${HOME:-unset}) is not writable on this runner - redirecting to $writable for this job"
+          fi
+      # The compile cache is wired as a RUSTC_WRAPPER at the runner level, so
+      # cargo routes even its `rustc -vV` probe through it and the FIRST cargo
+      # invocation dies if it cannot answer. engine-ci.yml has carried this
+      # backstop since a squatted port broke the gate; the release lane needs it
+      # for the same reason - a compile cache must never be able to block a
+      # release. Probe it as cargo does; if it cannot answer, drop it and build
+      # uncached rather than not building.
+      - name: Verify the compile cache cannot block the release
+        shell: bash
+        run: |
+          set +e
+          if [ -z "${RUSTC_WRAPPER:-}" ]; then
+            echo "No RUSTC_WRAPPER on this runner - nothing to verify."
+            exit 0
+          fi
+          probe=$("$RUSTC_WRAPPER" "$(rustup which rustc)" -vV 2>&1)
+          rc=$?
+          if [ "$rc" -ne 0 ]; then
+            echo "$probe"
+            echo "::warning::Compile cache unreachable via $RUSTC_WRAPPER (exit $rc) - continuing WITHOUT it. The build is slower and complete."
+            echo "RUSTC_WRAPPER=" >> "$GITHUB_ENV"
+          else
+            echo "Compile cache reachable via $RUSTC_WRAPPER"
+          fi
       - name: Install dist
         run: ${{ matrix.install_dist.run }}
       # Get the dist-manifest
