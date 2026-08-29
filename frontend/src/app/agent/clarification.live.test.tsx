@@ -135,8 +135,14 @@ describe("the captured disclosure payload", () => {
       expect(screen.getByRole("radio", { name: option })).toBeTruthy();
     }
     expect(document.querySelectorAll("[data-clarification-option]").length).toBe(3);
-    // The choice question must NOT have produced an input of its own.
-    expect(document.querySelector("[data-clarification-input='provider']")).toBeNull();
+    // The choice question DOES carry one input - the n+1 row, so a bounded set
+    // never traps an answer that is not on it - but it must sit INSIDE the
+    // radiogroup beside the options, never in place of them. The degradation
+    // this file exists to catch is caught above: options dropped leaves no
+    // radiogroup and no option rows at all, so both lookups fail first.
+    const escapeRow = document.querySelector("[data-clarification-input='provider']");
+    expect(escapeRow).not.toBeNull();
+    expect(group.contains(escapeRow)).toBe(true);
   });
 
   it("renders a single-line input for the text question", () => {
