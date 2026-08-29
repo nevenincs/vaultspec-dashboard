@@ -8,7 +8,7 @@
 # so release-please treats it as noise.
 #
 # Recovery note: if a post-release PR merge clobbers the bump commit (a
-# long-lived branch whose bucket/vaultspec.json predates the bump is merged
+# long-lived branch whose manifest commit predates the bump is merged
 # without rebasing), the bucket silently regresses. Recover by triggering this
 # workflow via workflow_dispatch with the plan JSON from the release run's
 # "plan" artifact (copy the `manifest` output field).
@@ -50,19 +50,20 @@ jobs:
     needs: gate
     runs-on: [self-hosted, Linux, X64]
     steps:
-      # The ORG-WIDE distribution repository. Scoop manifests and Homebrew
-      # formulae belong to the account, not to each product, so a user
-      # bucket-adds ONCE, ever - not once per product. cadrumo has published
-      # this way since July; core and rag retarget in vaultspec-core#351 and
-      # vaultspec-rag#405. This was the last repo still writing into its own
-      # tree and pushing to its own default branch on every release.
+      # The channel root is an ORGANISATION resource, not a per-repo one. A
+      # package manager resolves ONE bucket for all of nevenincs, so a manifest
+      # committed to this repository's own `bucket/` is published nowhere a
+      # user's Scoop can see. Check out the org distribution repo and commit
+      # there. The deploy key authenticates that push; the checkout below is
+      # the only writable handle this job has on the channel root.
       - uses: actions/checkout@v6
         with:
-          repository: ${{ github.repository_owner }}/homebrew-tap
+          repository: nevenincs/homebrew-tap
           ref: main
           path: channels
           ssh-key: ${{ secrets.CHANNEL_ROOT_DEPLOY_KEY }}
-      - name: Write bucket/vaultspec.json in the distribution repository
+      - name: Bump the org bucket manifest to the released version
+        shell: bash
         env:
           PLAN: ${{ inputs.plan }}
         run: |
@@ -72,15 +73,22 @@ jobs:
           # Bump to the COMPLETE product archive (the whole offline
           # tree), never the binary-only vaultspec-cli archive.
           ASSET="vaultspec-${VERSION}-x86_64-pc-windows-msvc.zip"
+          # The manifest is generated from scratch below, so its prose lives
+          # here rather than surviving in a committed file nobody re-reads.
+          DESCRIPTION="The complete vaultspec dashboard product: the dashboard, the copied external updater, the bundled A2A runtime, and the signed release manifest, licenses, and SBOM - installed as one offline-complete tree. Only the vaultspec dashboard command is shimmed onto PATH; the companion files stay in the install directory."
           URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${ASSET}"
           HASH=$(curl --proto '=https' --tlsv1.2 -sSfL "${URL}.sha256" | cut -d' ' -f1)
-          # Checked separately, not as `test A && test B`. Under `set -e`
-          # every command in an && list except the LAST is exempt, so the
-          # first check there is inert - a failure short-circuits and
-          # execution continues. That exact shape published
-          # vaultspec-core-v0.1.60 with empty hashes out of a green run.
-          if [ -z "$VERSION" ]; then echo "::error::no version derived from the plan tag"; exit 1; fi
-          if [ -z "$HASH" ]; then echo "::error::no sidecar digest at ${URL}.sha256"; exit 1; fi
+          # One check per line, deliberately. Written as
+          # `test -n "$A" && test -n "$B"`, this guard does NOT trip `set -e`:
+          # bash exempts every command in an && list except the one following
+          # the final &&, so a failure in any earlier position is ignored.
+          # That exact shape let vaultspec-core-v0.1.60 publish a Scoop
+          # manifest with empty hashes out of a green run. The digest
+          # comparison below would also catch an empty HASH here, but a guard
+          # that does not guard is worth removing rather than leaning on the
+          # backstop that happens to sit behind it.
+          : "${VERSION:?refusing to bump: no version parsed from the tag}"
+          : "${HASH:?refusing to bump: no digest fetched from the sidecar}"
           # Verify the published digest: download the archive and confirm its own
           # SHA-256 matches the sibling .sha256, so a corrupt or mismatched asset
           # never lands in the manifest.
@@ -97,54 +105,57 @@ jobs:
           # Guard: refuse to bump the manifest to a version older than what is
           # already committed. This catches the case where a stale branch merge
           # clobbered a prior bump and this job is re-run for an older release.
-          cd channels
-          MANIFEST=bucket/vaultspec.json
-          # GENERATE, do not mutate. The old job read `.version` from a
-          # manifest that has never existed - the distribution repo holds a
-          # .gitkeep and nothing else - so it died on the first jq and has
-          # never once succeeded. A first publication must be able to create
-          # the file it publishes.
-          PREV=0.0.0
-          [ -f "$MANIFEST" ] && PREV=$(jq -r '.version // "0.0.0"' "$MANIFEST")
-          NEWEST=$( { echo "$PREV"; echo "$VERSION"; } | sort -V | tail -1 )
-          # Refuse a backward bump: a package manager resolves these pointers,
-          # so regressing one un-publishes a working version for everyone.
-          if [ "$PREV" != "$VERSION" ] && [ "$NEWEST" = "$PREV" ]; then
-            echo "::error::bucket is at ${PREV}, refusing to bump backward to ${VERSION}"
-            exit 1
+          # No manifest is committed until this job first succeeds (see
+          # bucket/README.md), so an absent file is a first publication rather
+          # than a regression and must not be read as version "null".
+          if [ -f channels/bucket/vaultspec.json ]; then
+            CURRENT_VERSION=$(jq -r '.version' channels/bucket/vaultspec.json)
+            if [ "$(printf '%s\n' "$CURRENT_VERSION" "$VERSION" | sort -V | tail -1)" = "$CURRENT_VERSION" ] && \
+               [ "$CURRENT_VERSION" != "$VERSION" ]; then
+              echo "bucket is at ${CURRENT_VERSION}, refusing to bump backward to ${VERSION}"
+              exit 1
+            fi
           fi
-          mkdir -p bucket
-          HOMEPAGE="https://github.com/nevenincs/vaultspec-dashboard"
-          jq -n --arg v "$VERSION" --arg u "$URL" --arg h "$HASH" --arg d "$DESCRIPTION" --arg p "$HOMEPAGE" '{version:$v,description:$d,homepage:$p,license:"MIT",url:$u,hash:$h,bin:[["vaultspec.exe","vaultspec"]]}' > "$MANIFEST"
-          # Stage only THIS product's file, and BEFORE asking whether anything
-          # changed. The repo serves every product, so a repo-wide add would
-          # sweep up a sibling's pointer if two releases raced; and `git diff`
-          # reports only tracked paths, so on the first publication - exactly
-          # the case here - it sees no change and exits zero having published
-          # nothing.
-          git add -- "$MANIFEST"
-          if git diff --cached --quiet -- "$MANIFEST"; then
+          # Generated whole with `jq -n`, not rewritten in place. An in-place
+          # edit needs a committed file to read, which no longer exists before
+          # the first publication, and it is how a stale field survives a bump
+          # unnoticed - the failure mode this repository shipped for four
+          # releases.
+          # The channel root may carry no bucket/ yet; a first publication must
+          # be able to create the directory it publishes into.
+          mkdir -p channels/bucket
+          jq -n --arg v "$VERSION" --arg u "$URL" --arg h "$HASH" \
+            --arg home "https://github.com/${GITHUB_REPOSITORY}" \
+            --arg desc "$DESCRIPTION" \
+            '{
+              version: $v,
+              description: $desc,
+              homepage: $home,
+              license: "MIT",
+              url: $u,
+              hash: $h,
+              bin: "bin/vaultspec.exe",
+              checkver: "github",
+              autoupdate: {
+                url: ($home + "/releases/download/v$version/vaultspec-$version-x86_64-pc-windows-msvc.zip"),
+                hash: { url: "$url.sha256" }
+              }
+            }' > channels/bucket/vaultspec.json
+          cd channels
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Stage FIRST, then ask whether anything changed. `git diff` reports
+          # only TRACKED paths, so before the first publication - when the
+          # manifest does not yet exist in the channel root - it sees no change
+          # and this job exits zero having published nothing. Staging first
+          # makes the first publication visible to the check.
+          git add -- bucket/vaultspec.json
+          if git diff --cached --quiet -- bucket/vaultspec.json; then
             echo "manifest already at ${VERSION}; nothing to bump"
             exit 0
           fi
-          # Identity passed to this one commit rather than persisted: this
-          # runner's checkout is reused by later jobs on the same box.
-          git -c user.name="github-actions[bot]" -c user.email="github-actions[bot]@users.noreply.github.com" commit -m "chore(scoop): point vaultspec at ${TAG}"
-          # Bounded rebase-retry. The branch is shared by every product now, so
-          # a racing commit is a sibling publishing its own pointer rather than
-          # an unrelated push; per-product staging keeps a rebase from carrying
-          # someone else's file.
-          attempt=1
-          until git push origin main; do
-            if [ "$attempt" -ge 3 ]; then
-              echo "::error::channel pointer push failed after 3 attempts"
-              exit 1
-            fi
-            echo "push rejected (attempt ${attempt}/3); rebasing onto origin/main"
-            git fetch origin main
-            git rebase origin/main
-            attempt=$((attempt + 1))
-          done
+          git commit -m "chore(scoop): bump vaultspec-dashboard manifest to ${TAG}"
+          git push origin main
       - name: Reclaim runner disk (always)
         if: always()
         shell: bash
