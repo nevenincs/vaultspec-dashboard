@@ -2,6 +2,50 @@
 # `github-build-setup`): the release binary is built with the embed-spa
 # feature, which compiles frontend/dist into the executable - so the SPA
 # production bundle must exist before cargo runs (dashboard-packaging D2).
+- name: Give the job a writable HOME (containerised runners only)
+  if: runner.os == 'Linux'
+  shell: bash
+  run: |
+    # `Install dist` runs an installer that writes into $HOME, and on a
+    # containerised runner the image's HOME belongs to another user: the
+    # aarch64-unknown-linux-gnu leg of v0.1.5 died on
+    # `mkdir: cannot create directory '/home/runner/.config/fish': Permission
+    # denied` before a single artifact was built. Only redirect when HOME is
+    # genuinely unwritable, so a normal runner keeps its own caches.
+    if [ -n "${HOME:-}" ] && mkdir -p "$HOME/.config" 2>/dev/null; then
+      echo "HOME is writable at $HOME"
+    else
+      writable="$RUNNER_TEMP/home"
+      mkdir -p "$writable"
+      echo "HOME=$writable" >> "$GITHUB_ENV"
+      echo "::warning::HOME (${HOME:-unset}) is not writable on this runner - redirecting to $writable for this job"
+    fi
+- name: Verify the compile cache cannot block the release
+  shell: bash
+  run: |
+    # Same backstop the gate carries in engine-ci.yml, for the same reason: the
+    # wrapper is wired at the runner level, so cargo routes even its `rustc -vV`
+    # probe through it and the FIRST cargo invocation dies if it cannot answer.
+    # The release lane lacked this, so when the Windows runner's
+    # the wrapper binary went missing from the shared cargo bin directory,
+    # `cargo metadata` failed and v0.1.5 shipped no Windows artifact at all.
+    # A compile cache must
+    # never be able to block a release either - drop it, warn, and build
+    # uncached rather than not building.
+    set +e
+    if [ -z "${RUSTC_WRAPPER:-}" ]; then
+      echo "No RUSTC_WRAPPER on this runner - nothing to verify."
+      exit 0
+    fi
+    probe=$("$RUSTC_WRAPPER" "$(rustup which rustc)" -vV 2>&1)
+    rc=$?
+    if [ "$rc" -ne 0 ]; then
+      echo "$probe"
+      echo "::warning::Compile cache unreachable via $RUSTC_WRAPPER (exit $rc) - continuing WITHOUT it. The build is slower and complete."
+      echo "RUSTC_WRAPPER=" >> "$GITHUB_ENV"
+    else
+      echo "Compile cache reachable via $RUSTC_WRAPPER"
+    fi
 - name: Ensure WiX Toolset is on PATH (MSI build, Windows only)
   if: runner.os == 'Windows'
   shell: pwsh
