@@ -42,7 +42,69 @@ permissions:
   contents: write
 
 jobs:
+  # Refuse a release build whose runners cannot serve it.
+  #
+  # Two of this matrix's four targets land on the power-gated MacBook, which
+  # serves runners only on AC. A selector with no ONLINE runner does not fail -
+  # it QUEUES, unbounded by timeout-minutes - so without this the release
+  # appears to be progressing for up to a day and then reports failed with no
+  # assets attached. That is the same silent shape as the six weeks v0.1.4 spent
+  # answering as `releases/latest` with nothing on it.
+  #
+  # It does not fight the gate: stopping runners on battery is correct, and a
+  # running job is never killed. It refuses to spend a day discovering it.
+  #
+  # Hosted, deliberately - a preflight that needs the fleet cannot report that
+  # the fleet is down.
+  preflight:
+    name: Preflight runners
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every target selector has an online runner
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          runners=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runners"             --jq '.runners[] | [.status, ([.labels[].name] | map(ascii_downcase) | join(","))] | @tsv')
+          [ -n "${runners}" ] || { echo "::error::no self-hosted runners are registered"; exit 1; }
+
+          selectors=(
+            "self-hosted,linux,x64"
+            "self-hosted,windows,x64"
+            "self-hosted,linux,arm64"
+            "self-hosted,macos,arm64"
+          )
+
+          failed=0
+          for want in "${selectors[@]}"; do
+            online=0; registered=0
+            while IFS=$'	' read -r status labels; do
+              missing=0
+              IFS=',' read -ra parts <<< "${want}"
+              for part in "${parts[@]}"; do
+                case ",${labels}," in *",${part},"*) ;; *) missing=1; break ;; esac
+              done
+              [ "${missing}" -eq 0 ] || continue
+              registered=$((registered + 1))
+              [ "${status}" = "online" ] && online=$((online + 1))
+            done <<< "${runners}"
+
+            if [ "${online}" -gt 0 ]; then
+              echo "ok        [${want}] -> ${online} online"
+            elif [ "${registered}" -eq 0 ]; then
+              echo "::error::[${want}] is carried by no registered runner." >&2
+              failed=1
+            else
+              echo "::error::[${want}] matches ${registered} runner(s), none online - usually the power-gated host on battery. Re-run on AC." >&2
+              failed=1
+            fi
+          done
+
+          [ "${failed}" -eq 0 ] || { echo "::error::preflight refused a release that would queue rather than run" >&2; exit 1; }
+
   build-product-tree:
+    needs: preflight
     name: Compose ${{ matrix.target }}
     strategy:
       fail-fast: false
