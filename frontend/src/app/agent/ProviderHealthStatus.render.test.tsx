@@ -48,7 +48,7 @@ describe("ProviderHealthStatus", () => {
       </I18nextProvider>,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Provider health" }));
+    fireEvent.click(screen.getByRole("button", { name: "Model source health" }));
 
     const lane = document.querySelector<HTMLElement>(
       '[data-provider-health-provider="provider-issued-id"]',
