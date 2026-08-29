@@ -8,7 +8,7 @@
 # so release-please treats it as noise.
 #
 # Recovery note: if a post-release PR merge clobbers the bump commit (a
-# long-lived branch whose bucket/vaultspec.json predates the bump is merged
+# long-lived branch whose manifest commit predates the bump is merged
 # without rebasing), the bucket silently regresses. Recover by triggering this
 # workflow via workflow_dispatch with the plan JSON from the release run's
 # "plan" artifact (copy the `manifest` output field).
@@ -50,10 +50,19 @@ jobs:
     needs: gate
     runs-on: [self-hosted, Linux, X64]
     steps:
+      # The channel root is an ORGANISATION resource, not a per-repo one. A
+      # package manager resolves ONE bucket for all of nevenincs, so a manifest
+      # committed to this repository's own `bucket/` is published nowhere a
+      # user's Scoop can see. Check out the org distribution repo and commit
+      # there. The deploy key authenticates that push; the checkout below is
+      # the only writable handle this job has on the channel root.
       - uses: actions/checkout@v6
         with:
+          repository: nevenincs/homebrew-tap
           ref: main
-      - name: Bump bucket/vaultspec.json to the released version
+          path: channels
+          ssh-key: ${{ secrets.CHANNEL_ROOT_DEPLOY_KEY }}
+      - name: Bump the org bucket manifest to the released version
         shell: bash
         env:
           PLAN: ${{ inputs.plan }}
@@ -99,8 +108,8 @@ jobs:
           # No manifest is committed until this job first succeeds (see
           # bucket/README.md), so an absent file is a first publication rather
           # than a regression and must not be read as version "null".
-          if [ -f bucket/vaultspec.json ]; then
-            CURRENT_VERSION=$(jq -r '.version' bucket/vaultspec.json)
+          if [ -f channels/bucket/vaultspec.json ]; then
+            CURRENT_VERSION=$(jq -r '.version' channels/bucket/vaultspec.json)
             if [ "$(printf '%s\n' "$CURRENT_VERSION" "$VERSION" | sort -V | tail -1)" = "$CURRENT_VERSION" ] && \
                [ "$CURRENT_VERSION" != "$VERSION" ]; then
               echo "bucket is at ${CURRENT_VERSION}, refusing to bump backward to ${VERSION}"
@@ -112,6 +121,9 @@ jobs:
           # the first publication, and it is how a stale field survives a bump
           # unnoticed - the failure mode this repository shipped for four
           # releases.
+          # The channel root may carry no bucket/ yet; a first publication must
+          # be able to create the directory it publishes into.
+          mkdir -p channels/bucket
           jq -n --arg v "$VERSION" --arg u "$URL" --arg h "$HASH" \
             --arg home "https://github.com/${GITHUB_REPOSITORY}" \
             --arg desc "$DESCRIPTION" \
@@ -128,15 +140,21 @@ jobs:
                 url: ($home + "/releases/download/v$version/vaultspec-$version-x86_64-pc-windows-msvc.zip"),
                 hash: { url: "$url.sha256" }
               }
-            }' > bucket/vaultspec.json
-          if git diff --quiet -- bucket/vaultspec.json; then
+            }' > channels/bucket/vaultspec.json
+          cd channels
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Stage FIRST, then ask whether anything changed. `git diff` reports
+          # only TRACKED paths, so before the first publication - when the
+          # manifest does not yet exist in the channel root - it sees no change
+          # and this job exits zero having published nothing. Staging first
+          # makes the first publication visible to the check.
+          git add -- bucket/vaultspec.json
+          if git diff --cached --quiet -- bucket/vaultspec.json; then
             echo "manifest already at ${VERSION}; nothing to bump"
             exit 0
           fi
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add bucket/vaultspec.json
-          git commit -m "chore(scoop): bump manifest to ${TAG}"
+          git commit -m "chore(scoop): bump vaultspec-dashboard manifest to ${TAG}"
           git push origin main
       - name: Reclaim runner disk (always)
         if: always()
