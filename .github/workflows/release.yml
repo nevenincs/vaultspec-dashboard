@@ -207,6 +207,23 @@ jobs:
             mkdir -p "$writable"
             echo "HOME=$writable" >> "$GITHUB_ENV"
             echo "::warning::HOME (${HOME:-unset}) is not writable on this runner - redirecting to $writable for this job"
+            # A redirected HOME must not take the toolchain with it. rustup and
+            # cargo live under the ORIGINAL home, and dist resolves cargo through
+            # them, so moving HOME alone makes the build fail later with
+            # `cargo, required to run this task, is missing` - one step further
+            # on than the failure this redirect exists to fix, which is a worse
+            # place to discover it. Pin both homes to where the toolchain
+            # actually is, and keep its bin dir on PATH, unless the runner has
+            # already set them.
+            if [ -z "${CARGO_HOME:-}" ] && [ -d "${HOME:-}/.cargo" ]; then
+              echo "CARGO_HOME=$HOME/.cargo" >> "$GITHUB_ENV"
+            fi
+            if [ -z "${RUSTUP_HOME:-}" ] && [ -d "${HOME:-}/.rustup" ]; then
+              echo "RUSTUP_HOME=$HOME/.rustup" >> "$GITHUB_ENV"
+            fi
+            if [ -d "${CARGO_HOME:-$HOME/.cargo}/bin" ]; then
+              echo "${CARGO_HOME:-$HOME/.cargo}/bin" >> "$GITHUB_PATH"
+            fi
           fi
       # The compile cache is wired as a RUSTC_WRAPPER at the runner level, so
       # cargo routes even its `rustc -vV` probe through it and the FIRST cargo
