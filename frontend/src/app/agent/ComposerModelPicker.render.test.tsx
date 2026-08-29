@@ -129,10 +129,10 @@ describe("ComposerModelPicker dialog focus", () => {
       </I18nextProvider>,
     );
 
-    const model = screen.getByRole("button", { name: /No current provider model/ });
+    const model = screen.getByRole("button", { name: /No current model/ });
     expect(model.hasAttribute("disabled")).toBe(true);
 
-    fireEvent.click(screen.getByRole("button", { name: "Provider health" }));
+    fireEvent.click(screen.getByRole("button", { name: "Model source health" }));
 
     expect(screen.getByText("Not selectable")).toBeTruthy();
     expect(screen.getByText("Unavailable")).toBeTruthy();

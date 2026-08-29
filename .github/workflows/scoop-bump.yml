@@ -64,9 +64,22 @@ jobs:
           # Bump to the COMPLETE product archive (the whole offline
           # tree), never the binary-only vaultspec-cli archive.
           ASSET="vaultspec-${VERSION}-x86_64-pc-windows-msvc.zip"
+          # The manifest is generated from scratch below, so its prose lives
+          # here rather than surviving in a committed file nobody re-reads.
+          DESCRIPTION="The complete vaultspec dashboard product: the dashboard, the copied external updater, the bundled A2A runtime, and the signed release manifest, licenses, and SBOM - installed as one offline-complete tree. Only the vaultspec dashboard command is shimmed onto PATH; the companion files stay in the install directory."
           URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${ASSET}"
           HASH=$(curl --proto '=https' --tlsv1.2 -sSfL "${URL}.sha256" | cut -d' ' -f1)
-          test -n "$VERSION" && test -n "$HASH"
+          # One check per line, deliberately. Written as
+          # `test -n "$A" && test -n "$B"`, this guard does NOT trip `set -e`:
+          # bash exempts every command in an && list except the one following
+          # the final &&, so a failure in any earlier position is ignored.
+          # That exact shape let vaultspec-core-v0.1.60 publish a Scoop
+          # manifest with empty hashes out of a green run. The digest
+          # comparison below would also catch an empty HASH here, but a guard
+          # that does not guard is worth removing rather than leaning on the
+          # backstop that happens to sit behind it.
+          : "${VERSION:?refusing to bump: no version parsed from the tag}"
+          : "${HASH:?refusing to bump: no digest fetched from the sidecar}"
           # Verify the published digest: download the archive and confirm its own
           # SHA-256 matches the sibling .sha256, so a corrupt or mismatched asset
           # never lands in the manifest.
@@ -83,16 +96,39 @@ jobs:
           # Guard: refuse to bump the manifest to a version older than what is
           # already committed. This catches the case where a stale branch merge
           # clobbered a prior bump and this job is re-run for an older release.
-          CURRENT_VERSION=$(jq -r '.version' bucket/vaultspec.json)
-          if [ "$(printf '%s\n' "$CURRENT_VERSION" "$VERSION" | sort -V | tail -1)" = "$CURRENT_VERSION" ] && \
-             [ "$CURRENT_VERSION" != "$VERSION" ]; then
-            echo "bucket is at ${CURRENT_VERSION}, refusing to bump backward to ${VERSION}"
-            exit 1
+          # No manifest is committed until this job first succeeds (see
+          # bucket/README.md), so an absent file is a first publication rather
+          # than a regression and must not be read as version "null".
+          if [ -f bucket/vaultspec.json ]; then
+            CURRENT_VERSION=$(jq -r '.version' bucket/vaultspec.json)
+            if [ "$(printf '%s\n' "$CURRENT_VERSION" "$VERSION" | sort -V | tail -1)" = "$CURRENT_VERSION" ] && \
+               [ "$CURRENT_VERSION" != "$VERSION" ]; then
+              echo "bucket is at ${CURRENT_VERSION}, refusing to bump backward to ${VERSION}"
+              exit 1
+            fi
           fi
-          jq --arg v "$VERSION" --arg u "$URL" --arg h "$HASH" \
-            '.version = $v | .url = $u | .hash = $h' \
-            bucket/vaultspec.json > bucket/vaultspec.json.tmp
-          mv bucket/vaultspec.json.tmp bucket/vaultspec.json
+          # Generated whole with `jq -n`, not rewritten in place. An in-place
+          # edit needs a committed file to read, which no longer exists before
+          # the first publication, and it is how a stale field survives a bump
+          # unnoticed - the failure mode this repository shipped for four
+          # releases.
+          jq -n --arg v "$VERSION" --arg u "$URL" --arg h "$HASH" \
+            --arg home "https://github.com/${GITHUB_REPOSITORY}" \
+            --arg desc "$DESCRIPTION" \
+            '{
+              version: $v,
+              description: $desc,
+              homepage: $home,
+              license: "MIT",
+              url: $u,
+              hash: $h,
+              bin: "bin/vaultspec.exe",
+              checkver: "github",
+              autoupdate: {
+                url: ($home + "/releases/download/v$version/vaultspec-$version-x86_64-pc-windows-msvc.zip"),
+                hash: { url: "$url.sha256" }
+              }
+            }' > bucket/vaultspec.json
           if git diff --quiet -- bucket/vaultspec.json; then
             echo "manifest already at ${VERSION}; nothing to bump"
             exit 0
