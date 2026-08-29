@@ -70,11 +70,31 @@ jobs:
         # failing. otherwise `sh` won't catch that `curl` returned non-0
         shell: bash
         run: "curl --proto '=https' --tlsv1.2 -LsSf https://github.com/axodotdev/cargo-dist/releases/download/v0.32.0/cargo-dist-installer.sh | sh"
+      # The installer puts `dist` in $CARGO_HOME/bin, and this fleet's runners set
+      # CARGO_HOME to a shared cache (/home/hello/.ci-shared/cargo), so the
+      # generated `path: ~/.cargo/bin/dist` matched nothing. `if-no-files-found`
+      # defaults to `warn`, so the upload produced no artifact SILENTLY and the
+      # failure surfaced two jobs later as
+      # `Artifact not found for name: cargo-dist-cache` in build-global-artifacts
+      # — which blocks `host`, and therefore blocks every asset upload.
+      # Stage it at a fixed path first so the upload cannot depend on where the
+      # toolchain happens to live.
+      - name: Stage dist for caching
+        shell: bash
+        run: |
+          set -euo pipefail
+          src="${CARGO_HOME:-$HOME/.cargo}/bin/dist"
+          test -x "$src" || { echo "::error::dist not found at $src"; exit 1; }
+          mkdir -p "$RUNNER_TEMP/dist-cache"
+          cp "$src" "$RUNNER_TEMP/dist-cache/dist"
+          echo "staged $src"
       - name: Cache dist
         uses: actions/upload-artifact@v7
         with:
           name: cargo-dist-cache
-          path: ~/.cargo/bin/dist
+          path: ${{ runner.temp }}/dist-cache/dist
+          # Never let this go missing quietly again.
+          if-no-files-found: error
       # sure would be cool if github gave us proper conditionals...
       # so here's a doubly-nested ternary-via-truthiness to try to provide the best possible
       # functionality based on whether this is a pull_request, and whether it's from a fork.
