@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.6](https://github.com/nevenincs/vaultspec-dashboard/compare/v0.1.5...v0.1.6) (2026-08-29)
+
+
+### Bug Fixes
+
+* **product:** widen st_mode before masking so the macOS legs compile ([#40](https://github.com/nevenincs/vaultspec-dashboard/issues/40)) ([ff75a70](https://github.com/nevenincs/vaultspec-dashboard/commit/ff75a70ae66e861f1e291eabaabe296fc5e24f1a))
+
 ## [0.1.5](https://github.com/nevenincs/vaultspec-dashboard/compare/v0.1.4...v0.1.5) (2026-08-29)
 
 
