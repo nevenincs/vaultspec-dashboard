@@ -29,6 +29,20 @@ function liveAuthoringClient(): AuthoringClient {
   return new AuthoringClient({ baseUrl: "", fetchImpl: liveTransport });
 }
 
+/** An outcome rendered for ASSERTION: `"ok"`, or the refusing kind carrying the
+ *  reason the served envelope already provides. Asserting on this rather than on
+ *  `.kind` is exactly as strict - only an `ok` outcome yields `"ok"` - but a
+ *  failure names its own cause instead of reporting a bare `expected 'denied' to
+ *  be 'ok'`, which is all six weeks of red CI on this file ever produced. A
+ *  denial IS a value here (see `AuthoringCommandOutcome`), and its `reason` is
+ *  the diagnostic; discarding it is what made this suite unfixable from its logs.
+ */
+function outcome(result: AuthoringCommandOutcome): string {
+  if (result.kind === "ok") return "ok";
+  if (result.kind === "in_flight") return "in_flight";
+  return `${result.kind}: ${result.reason ?? "(no reason served)"}`;
+}
+
 const run = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 
 /** Create a durable authoring session over the wire (a proposal's `session_id`
@@ -145,7 +159,7 @@ describe("full authoring happy path (live)", () => {
       replaceProposal(sessionId, changesetId),
       { actorToken: authorToken },
     );
-    expect(created.kind).toBe("ok");
+    expect(outcome(created)).toBe("ok");
     const queued = await client.projectProposal(changesetId);
 
     const submitted = await client.submitForReview(
@@ -156,7 +170,7 @@ describe("full authoring happy path (live)", () => {
       },
       { actorToken: authorToken },
     );
-    expect(submitted.kind).toBe("ok");
+    expect(outcome(submitted)).toBe("ok");
     if (submitted.kind !== "ok") throw new Error("submit did not open the approval");
     const submitData = submitted.data as {
       proposal_id?: string;
@@ -183,7 +197,7 @@ describe("full authoring happy path (live)", () => {
       },
       { actorToken: reviewerToken },
     );
-    expect(requested.kind).toBe("ok");
+    expect(outcome(requested)).toBe("ok");
 
     // The EditProposal arc returned the changeset to draft under the reviewer's
     // identity — the writer's revision cycle.
@@ -252,7 +266,7 @@ describe("full authoring happy path (live)", () => {
         actorToken: authorToken,
       },
     );
-    expect(created.kind).toBe("ok");
+    expect(outcome(created)).toBe("ok");
     const queued = await client.projectProposal(changesetId);
     expect(queued?.proposal.changeset_id).toBe(changesetId);
 
@@ -265,7 +279,7 @@ describe("full authoring happy path (live)", () => {
       },
       { actorToken: authorToken },
     );
-    expect(submitted.kind).toBe("ok");
+    expect(outcome(submitted)).toBe("ok");
     if (submitted.kind !== "ok") throw new Error("submit did not open the approval");
     const submitData = submitted.data as {
       proposal_id?: string;
@@ -291,7 +305,7 @@ describe("full authoring happy path (live)", () => {
       },
       { actorToken: reviewerToken },
     );
-    expect(approved.kind).toBe("ok");
+    expect(outcome(approved)).toBe("ok");
     const afterApprove = await client.projectProposal(changesetId);
     expect(afterApprove?.proposal.status).toBe("approved");
 
@@ -316,7 +330,7 @@ describe("full authoring happy path (live)", () => {
     }
 
     // Core is operable → the apply MUST really apply (a recorded applied receipt).
-    expect(applied.kind).toBe("ok");
+    expect(outcome(applied)).toBe("ok");
     if (applied.kind === "ok") {
       expect(applied.data.child_outcome).toBe("applied");
       expect(applied.data.receipt).toBeTruthy();
@@ -336,7 +350,7 @@ describe("full authoring happy path (live)", () => {
       },
       { actorToken: reviewerToken },
     );
-    expect(rolledBack.kind).toBe("ok");
+    expect(outcome(rolledBack)).toBe("ok");
     if (rolledBack.kind === "ok") {
       const rollbackId = rolledBack.data.rollback_changeset_id;
       expect(typeof rollbackId).toBe("string");
