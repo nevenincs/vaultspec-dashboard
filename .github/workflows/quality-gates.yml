@@ -22,7 +22,19 @@ permissions:
 
 concurrency:
   group: quality-gates-${{ github.ref }}
-  cancel-in-progress: true
+  # Superseding a run is right on a branch and wrong on the default one.
+  #
+  # `main` takes direct pushes, so for such a push this workflow IS the gate.
+  # Cancelling it on the next push destroys that gate, and the damage is silent:
+  # a cancelled run reports as `cancelled`, not `failed`, so it is not red in
+  # the Actions list and nothing downstream reacts to it. FIFTY of the last
+  # hundred `main` runs ended that way - half the default branch's history
+  # carries no verdict at all, which is most of why this workflow's condition
+  # went unnoticed for six weeks.
+  #
+  # On any other ref a newer commit really does make the in-flight run
+  # obsolete, so keep cancelling there.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   spellcheck:
