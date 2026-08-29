@@ -416,6 +416,87 @@ jobs:
           rm -rf "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
           df -h . 2>/dev/null | tail -1
 
+  # Hand-added; not produced by `dist generate-ci`. Re-apply if that regenerates
+  # this file.
+  #
+  # release-please publishes the GitHub Release as soon as its PR merges, and
+  # this workflow attaches the artifacts afterwards. So any failure between
+  # those two points leaves a published, non-draft, asset-less release serving
+  # as `releases/latest` - which is where every badge, install instruction and
+  # package-manager manifest points. v0.1.4 sat that way for six weeks because
+  # five TypeScript errors failed the SPA bundle on every build leg, `host`
+  # skipped, and nothing said so.
+  #
+  # Draft-until-attached is not available as a fix: GitHub does not create the
+  # tag ref for a draft release, and this workflow triggers on that tag push, so
+  # drafting would deadlock the release rather than protect it.
+  #
+  # This job runs on every terminal outcome and makes the two states honest -
+  # publish only what actually carries artifacts, and demote what does not so
+  # `latest` falls back to the previous good release instead of advertising an
+  # empty one.
+  verify-release-assets:
+    name: Verify the release carries artifacts
+    needs:
+      - plan
+      - host
+    if: ${{ always() && needs.plan.outputs.publishing == 'true' }}
+    runs-on: [self-hosted, Linux, X64]
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TAG: ${{ needs.plan.outputs.tag }}
+      HOST_RESULT: ${{ needs.host.result }}
+      # Whether this version is *meant* to be a prerelease. Demotion below
+      # reuses the prerelease flag as a "not latest" marker, so promotion must
+      # consult the plan rather than assume every release wants to be latest -
+      # otherwise a genuine -rc tag gets promoted into `latest` by this job.
+      PLANNED_PRERELEASE: ${{ fromJson(needs.plan.outputs.val).announcement_is_prerelease }}
+    steps:
+      - name: Require artifacts on the published release
+        shell: bash
+        run: |
+          set -euo pipefail
+          assets=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --json assets --jq '.assets | length')
+          echo "release ${TAG} carries ${assets} asset(s); host=${HOST_RESULT}"
+
+          if [ "$HOST_RESULT" = "success" ] && [ "$assets" -gt 0 ]; then
+            exit 0
+          fi
+
+          # Demote so `releases/latest` resolves to the last release that has
+          # artifacts. A prerelease keeps the tag, the notes and the URL intact
+          # and reachable - it only stops this one answering as `latest`.
+          if [ "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+                  --json isPrerelease --jq '.isPrerelease')" != "true" ]; then
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --prerelease
+            echo "::notice::demoted ${TAG} to a prerelease so latest skips it"
+          fi
+
+          echo "::error::${TAG} has ${assets} assets (host=${HOST_RESULT}). A \
+          release with no artifacts must not serve as latest; it has been \
+          demoted to a prerelease. Fix the build and re-run this workflow for \
+          this tag - the last step promotes it back once artifacts attach."
+          exit 1
+
+      - name: Promote a repaired release back to latest
+        if: ${{ needs.host.result == 'success' && !fromJson(needs.plan.outputs.val).announcement_is_prerelease }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # A re-run after a fixed build must undo an earlier demotion, or the
+          # repaired release stays invisible to `latest` forever. Only reached
+          # when host succeeded, the asset check above passed, and the plan says
+          # this version was meant to be a full release.
+          test "$PLANNED_PRERELEASE" = "false"
+          if [ "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+                  --json isPrerelease --jq '.isPrerelease')" = "true" ]; then
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --prerelease=false
+            echo "::notice::promoted ${TAG} back to a full release"
+          fi
+
   custom-scoop-bump:
     needs:
       - plan
