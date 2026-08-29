@@ -42,7 +42,69 @@ permissions:
   contents: write
 
 jobs:
+  # Refuse a release build whose runners cannot serve it.
+  #
+  # Two of this matrix's four targets land on the power-gated MacBook, which
+  # serves runners only on AC. A selector with no ONLINE runner does not fail -
+  # it QUEUES, unbounded by timeout-minutes - so without this the release
+  # appears to be progressing for up to a day and then reports failed with no
+  # assets attached. That is the same silent shape as the six weeks v0.1.4 spent
+  # answering as `releases/latest` with nothing on it.
+  #
+  # It does not fight the gate: stopping runners on battery is correct, and a
+  # running job is never killed. It refuses to spend a day discovering it.
+  #
+  # Hosted, deliberately - a preflight that needs the fleet cannot report that
+  # the fleet is down.
+  preflight:
+    name: Preflight runners
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every target selector has an online runner
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          runners=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runners"             --jq '.runners[] | [.status, ([.labels[].name] | map(ascii_downcase) | join(","))] | @tsv')
+          [ -n "${runners}" ] || { echo "::error::no self-hosted runners are registered"; exit 1; }
+
+          selectors=(
+            "self-hosted,linux,x64"
+            "self-hosted,windows,x64"
+            "self-hosted,linux,arm64"
+            "self-hosted,macos,arm64"
+          )
+
+          failed=0
+          for want in "${selectors[@]}"; do
+            online=0; registered=0
+            while IFS=$'	' read -r status labels; do
+              missing=0
+              IFS=',' read -ra parts <<< "${want}"
+              for part in "${parts[@]}"; do
+                case ",${labels}," in *",${part},"*) ;; *) missing=1; break ;; esac
+              done
+              [ "${missing}" -eq 0 ] || continue
+              registered=$((registered + 1))
+              [ "${status}" = "online" ] && online=$((online + 1))
+            done <<< "${runners}"
+
+            if [ "${online}" -gt 0 ]; then
+              echo "ok        [${want}] -> ${online} online"
+            elif [ "${registered}" -eq 0 ]; then
+              echo "::error::[${want}] is carried by no registered runner." >&2
+              failed=1
+            else
+              echo "::error::[${want}] matches ${registered} runner(s), none online - usually the power-gated host on battery. Re-run on AC." >&2
+              failed=1
+            fi
+          done
+
+          [ "${failed}" -eq 0 ] || { echo "::error::preflight refused a release that would queue rather than run" >&2; exit 1; }
+
   build-product-tree:
+    needs: preflight
     name: Compose ${{ matrix.target }}
     strategy:
       fail-fast: false
@@ -458,3 +520,92 @@ jobs:
       version: ${{ needs.resolve-version.outputs.value }}
       channels: 'scoop winget'
       prior_version: ${{ needs.resolve-version.outputs.prior }}
+
+  # ATTACH. Without this job the complete product tree is built, arch-guarded,
+  # composed, self-verified, SBOM'd and digested - and then written only to an
+  # Actions artifact bucket, which expires. Every earlier release therefore
+  # carried no complete-product archive at all, which is also why scoop-bump has
+  # never succeeded: it points at `vaultspec-<version>-x86_64-pc-windows-msvc.zip`
+  # ON THE RELEASE, an asset nothing has ever uploaded there.
+  #
+  # `needs` covers the whole build matrix plus both verification jobs, so a
+  # partial cohort cannot be published: `self-verify` and `cohort-digest` each
+  # depend on all four members, and attaching before they pass would put an
+  # unverified member on a release that `verify-release-assets` would then
+  # report as healthy.
+  attach-to-release:
+    name: Attach the product tree to the release
+    needs: [build-product-tree, self-verify, cohort-digest, resolve-version]
+    runs-on: [self-hosted, Linux, X64]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: members
+
+      # One aggregated SHA256SUMS beside the per-asset sidecars, in the same
+      # sha256sum-compatible grammar vaultspec-core and vaultspec-rag publish.
+      # The per-archive `.sha256` files hold a bare digest with no filename
+      # column (the installers fetch them individually and compare), so the
+      # filename is reattached here rather than concatenating them.
+      - name: Aggregate checksums
+        id: gather
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          find members -type f \
+            \( -name 'vaultspec-*.tar.gz' -o -name 'vaultspec-*.zip' \
+               -o -name 'vaultspec-*.sha256' -o -name 'release-*.json' \
+               -o -name 'cohort-descriptor.json' \) \
+            -exec cp -t dist/ {} +
+
+          cd dist
+          : > SHA256SUMS
+          for archive in vaultspec-*.tar.gz vaultspec-*.zip; do
+            [ -e "$archive" ] || continue
+            digest=$(cut -d' ' -f1 < "${archive}.sha256")
+            if [ -z "${digest}" ]; then
+              echo "::error::no digest recorded for ${archive}; refusing to publish an unverifiable asset" >&2
+              exit 1
+            fi
+            printf '%s  %s\n' "${digest}" "${archive}" >> SHA256SUMS
+          done
+
+          # A release set with no archive is the failure this job exists to
+          # prevent, so it fails loudly rather than uploading a manifest of
+          # nothing.
+          count=$(grep -c . SHA256SUMS || true)
+          if [ "${count}" -eq 0 ]; then
+            echo "::error::no product archives were produced; nothing to attach" >&2
+            exit 1
+          fi
+          echo "count=${count}" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Product release assets (${count} archives)"
+            echo '```'
+            cat SHA256SUMS
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload to the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.resolve-version.outputs.value }}
+        run: |
+          set -euo pipefail
+          tag="v${VERSION}"
+          # release-please publishes the GitHub Release when its PR merges, so
+          # the release normally exists by now. A dispatch run against a tag
+          # with no release object would otherwise fail deep inside `upload`
+          # with a less obvious message.
+          if ! gh release view "${tag}" >/dev/null 2>&1; then
+            echo "::error::no release exists for ${tag}; nothing to attach to" >&2
+            exit 1
+          fi
+          gh release upload "${tag}" dist/* --clobber
+          echo "attached ${{ steps.gather.outputs.count }} archive(s) to ${tag}"
