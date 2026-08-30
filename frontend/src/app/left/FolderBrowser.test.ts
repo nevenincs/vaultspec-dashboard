@@ -92,6 +92,11 @@ describe("deriveFolderBrowserView", () => {
     expect(view.state).toBe("loading");
     expect(view.currentPath).toBeNull();
     expect(view.rows).toEqual([]);
+    // The trail is the single "roots" crumb while loading. Breadcrumb renders
+    // the LAST item as a span rather than a button, so a one-crumb trail shows
+    // zero buttons - which is why a caller counting them must wait for the
+    // listing rather than reading the trail as soon as the dialog is up.
+    expect(view.breadcrumbs).toHaveLength(1);
   });
 
   it("renders the error state honestly, never a thrown crash", () => {
