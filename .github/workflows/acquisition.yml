@@ -30,6 +30,20 @@ name: Acquisition
 on:
   release:
     types: [published]
+  # WEEKLY, because the answer can change without a release. Nothing in this
+  # repository was scheduled before this - no workflow used `schedule` at all -
+  # so every check here answered only for the commit that triggered it, and a
+  # release that stopped being installable after it was published had nothing
+  # watching. Three ways that happens without a commit: the release is yanked or
+  # an asset renamed, so the download 404s; a container base image moves and the
+  # floor we test against is no longer the floor we thought; or a published asset
+  # is replaced in place. Both sibling projects run this weekly for the same
+  # reason.
+  #
+  # Monday early, so a failure is waiting at the start of the week rather than
+  # arriving during it.
+  schedule:
+    - cron: "17 6 * * 1"
   workflow_dispatch:
     inputs:
       tag:
