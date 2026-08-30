@@ -581,29 +581,57 @@ jobs:
                -o -name 'cohort-descriptor.json' \) \
             -exec cp -t dist/ {} +
 
+          # THE INSTALLERS SHIP WITH THE TREES THEY INSTALL. They come from the
+          # checkout, not from a build artifact, because nothing builds them -
+          # and until now nothing published them either, so the release carried
+          # archives with no documented way to place one. `dist-workspace.toml`
+          # disables dist's own binary-only installers in favour of these two;
+          # that swap was made in config years of releases ago and the second
+          # half of it, publishing the replacements, was never wired.
+          #
+          # Attached from the SAME job that attaches the archives, which is what
+          # keeps them honest: an installer resolves the newest release and
+          # fetches `vaultspec-<version>-<target>` out of it, so a release
+          # carrying an installer and no archive would serve a script that 404s.
+          # Uploading both here means neither can appear without the other.
+          cp packaging/install.sh packaging/install.ps1 dist/
+
           cd dist
+          # Sidecars for the installers, minted here because they are the only
+          # assets with no build step to mint them. Every published asset then
+          # carries a `.sha256` in one grammar, and the loop below needs no
+          # special case for the two that would otherwise lack one.
+          for installer in install.sh install.ps1; do
+            sha256sum "${installer}" | cut -d' ' -f1 > "${installer}.sha256"
+          done
+
           : > SHA256SUMS
-          for archive in vaultspec-*.tar.gz vaultspec-*.zip; do
-            [ -e "$archive" ] || continue
-            digest=$(cut -d' ' -f1 < "${archive}.sha256")
+          for asset in vaultspec-*.tar.gz vaultspec-*.zip install.sh install.ps1; do
+            [ -e "$asset" ] || continue
+            digest=$(cut -d' ' -f1 < "${asset}.sha256")
             if [ -z "${digest}" ]; then
-              echo "::error::no digest recorded for ${archive}; refusing to publish an unverifiable asset" >&2
+              echo "::error::no digest recorded for ${asset}; refusing to publish an unverifiable asset" >&2
               exit 1
             fi
-            printf '%s  %s\n' "${digest}" "${archive}" >> SHA256SUMS
+            printf '%s  %s\n' "${digest}" "${asset}" >> SHA256SUMS
           done
 
           # A release set with no archive is the failure this job exists to
           # prevent, so it fails loudly rather than uploading a manifest of
-          # nothing.
+          # nothing. Counted over the ARCHIVES alone, deliberately: the two
+          # installers are copied from the checkout and are therefore always
+          # present, so a count over every line of SHA256SUMS would read 2 on
+          # exactly the run where the whole build matrix produced nothing - and
+          # this guard would pass on the failure it exists to catch.
           count=$(grep -c . SHA256SUMS || true)
-          if [ "${count}" -eq 0 ]; then
+          archives=$(ls vaultspec-*.tar.gz vaultspec-*.zip 2>/dev/null | grep -c . || true)
+          if [ "${archives}" -eq 0 ]; then
             echo "::error::no product archives were produced; nothing to attach" >&2
             exit 1
           fi
           echo "count=${count}" >> "$GITHUB_OUTPUT"
           {
-            echo "### Product release assets (${count} archives)"
+            echo "### Product release assets (${archives} archives, ${count} verified files)"
             echo '```'
             cat SHA256SUMS
             echo '```'

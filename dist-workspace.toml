@@ -1,5 +1,33 @@
 [workspace]
 members = ["cargo:engine"]
+# WHAT THE RELEASE IS ALLOWED TO PUBLISH. Without this list dist walks the whole
+# engine workspace and archives every crate that produces a binary, which is how
+# v0.1.8 came to carry 36 assets covering four separate "products":
+#
+#   vaultspec-cli             the dashboard itself - the only one a user wants
+#   vaultspec-updater         a COMPONENT of the product tree, not a product;
+#                             the installers place it out of the tree, and
+#                             shipping it loose invites installing it alone
+#   vaultspec-release-verify  a wrapper whose main() discards its result and
+#                             exits 2 printing REFUSED, for every input, by
+#                             design while signed distribution is deferred
+#   vaultspec-product         product_build, product_certify and cohort_digest -
+#                             the MAINTAINER TOOLING THAT COMPOSES A RELEASE,
+#                             published under a name that reads like the product
+#
+# The last one is the reason this list exists. `vaultspec-product` is the crate
+# that builds the product, so its archive was named `vaultspec-product-<target>`
+# and sat on the release looking like the thing itself, ~800KB of build tooling
+# beside an 8-12MB dashboard. Nobody chose to publish it; nobody excluded it
+# either, because the default is to publish everything that compiles.
+#
+# An allowlist rather than `dist = false` on each crate: it states the release
+# surface in ONE place a reader can check against the release page, and it lands
+# above both `dist = true` and Cargo's `publish = false` in dist's precedence, so
+# a new binary crate is unpublished until this line says otherwise. Verified
+# against the pinned 0.32.0 binary in both directions - the allowlist suppresses
+# a crate carrying `dist = true`, and admits one carrying `publish = false`.
+packages = ["vaultspec-cli"]
 
 # Config for 'dist'
 [dist]
