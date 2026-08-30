@@ -1035,7 +1035,20 @@ pub(crate) fn validate_portable_path(field: &str, path: &str) -> Result<()> {
         return invalid(field, "path must contain 1..=32 segments");
     }
     for segment in segments {
-        validate_portable_segment(field, segment, true)?;
+        // Name the whole path, not only the offending segment. The segment
+        // says WHAT is unportable; it does not say where the file came from,
+        // and a composed tree is tens of thousands of files deep. A rejection
+        // reading only `unsafe portable path segment "Lorem ipsum.txt"` sends
+        // the reader hunting for the emitter instead of straight to it - which
+        // is what happened when that exact segment failed the compose step on
+        // all four targets and the file was in neither repository's tree.
+        validate_portable_segment(field, segment, true).map_err(|error| match error {
+            ManifestError::InvalidField { field, detail } => ManifestError::InvalidField {
+                field,
+                detail: format!("{detail} in path {path:?}"),
+            },
+            other => other,
+        })?;
     }
     Ok(())
 }
