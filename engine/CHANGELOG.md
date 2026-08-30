@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.8](https://github.com/nevenincs/vaultspec-dashboard/compare/v0.1.7...v0.1.8) (2026-08-30)
+
+
+### Bug Fixes
+
+* **release:** host the guard, which must work when the fleet does not ([#51](https://github.com/nevenincs/vaultspec-dashboard/issues/51)) ([fe4f6cd](https://github.com/nevenincs/vaultspec-dashboard/commit/fe4f6cd1c846ed7e518b9f6efba4bc43805fc7d1))
+
 ## [0.1.7](https://github.com/nevenincs/vaultspec-dashboard/compare/v0.1.6...v0.1.7) (2026-08-30)
 
 
