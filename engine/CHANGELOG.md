@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.9](https://github.com/nevenincs/vaultspec-dashboard/compare/v0.1.8...v0.1.9) (2026-08-30)
+
+
+### Features
+
+* **ci:** acquire the published binary and prove the loader accepts it ([#63](https://github.com/nevenincs/vaultspec-dashboard/issues/63)) ([d42ae8d](https://github.com/nevenincs/vaultspec-dashboard/commit/d42ae8d203cff1f879099cba7d2945356c54f4fd))
+
+
+### Bug Fixes
+
+* **product:** name the whole path when a composed file is not portable ([#59](https://github.com/nevenincs/vaultspec-dashboard/issues/59)) ([4e908a4](https://github.com/nevenincs/vaultspec-dashboard/commit/4e908a4e7965f18ea1975b10483239589ce6f09b))
+* **release:** pin the Linux glibc floor instead of inheriting it ([#60](https://github.com/nevenincs/vaultspec-dashboard/issues/60)) ([89e08b8](https://github.com/nevenincs/vaultspec-dashboard/commit/89e08b87d1b2898afc83fe9b710cf2a671430dbb))
+
 ## [0.1.8](https://github.com/nevenincs/vaultspec-dashboard/compare/v0.1.7...v0.1.8) (2026-08-30)
 
 
