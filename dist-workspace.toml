@@ -115,6 +115,18 @@ post-announce-jobs = ["./scoop-bump"]
   # environment is a downloaded, executed input, and two builds of one toolchain
   # can differ in ways a floor check does not measure.
   #
+  # THE SPA BUILD RUNS IN HERE TOO, and it fits with nothing to spare. The
+  # build hook installs Node 22 and runs `npm ci` inside this image, and every
+  # JavaScript action the job uses is executed by the runner's own bundled node.
+  # Measured by running all of them in both images: Node 20, 22 and 24, and the
+  # runner's node20 and node24, each report a maximum requirement of exactly
+  # GLIBC_2.28 and load cleanly. That is the image's ceiling met precisely -
+  # there is NO headroom. A future Node release that moves to a 2.31 floor stops
+  # working here with no warning and no config change on our side, and the
+  # failure will look like a broken runner rather than an expired baseline.
+  # Moving to a newer manylinux is the fix when that happens; the floor guard
+  # will hold the README to whatever is chosen.
+  #
   # `host` is set EXPLICITLY on both, and is not decoration. It defaults to a
   # hardcoded x86_64-unknown-linux-musl, and dist prefers the container's host
   # over the runner's when it decides what the build machine is - so an aarch64
