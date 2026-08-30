@@ -4,26 +4,56 @@
   "bump-patch-for-minor-pre-major": true,
   "include-component-in-tag": false,
   "changelog-sections": [
-    { "type": "feat", "section": "Features" },
-    { "type": "fix", "section": "Bug Fixes" },
-    { "type": "perf", "section": "Performance" },
-    { "type": "docs", "section": "Documentation", "hidden": true },
-    { "type": "chore", "section": "Miscellaneous", "hidden": true },
-    { "type": "ci", "section": "CI", "hidden": true },
-    { "type": "refactor", "section": "Refactoring", "hidden": true },
-    { "type": "test", "section": "Tests", "hidden": true }
+    {
+      "type": "feat",
+      "section": "Features"
+    },
+    {
+      "type": "fix",
+      "section": "Bug Fixes"
+    },
+    {
+      "type": "perf",
+      "section": "Performance"
+    },
+    {
+      "type": "docs",
+      "section": "Documentation",
+      "hidden": true
+    },
+    {
+      "type": "chore",
+      "section": "Miscellaneous",
+      "hidden": true
+    },
+    {
+      "type": "ci",
+      "section": "CI",
+      "hidden": true
+    },
+    {
+      "type": "refactor",
+      "section": "Refactoring",
+      "hidden": true
+    },
+    {
+      "type": "test",
+      "section": "Tests",
+      "hidden": true
+    }
   ],
   "packages": {
-    "engine": {
+    ".": {
       "release-type": "simple",
       "package-name": "vaultspec-dashboard",
       "extra-files": [
         {
           "type": "toml",
-          "path": "Cargo.toml",
+          "path": "engine/Cargo.toml",
           "jsonpath": "$.workspace.package.version"
         }
-      ]
+      ],
+      "changelog-path": "engine/CHANGELOG.md"
     }
   }
 }
