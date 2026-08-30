@@ -157,6 +157,59 @@ jobs:
           rm -rf "${RUNNER_TEMP:-/tmp}"/actionlint "${RUNNER_TEMP:-/tmp}"/actionlint_*.tar.gz 2>/dev/null || true
           df -h . 2>/dev/null | tail -1
 
+  guards:
+    # The repository-health guards under `dev/guards` — and, until this job
+    # existed, the one part of the local gate that CI never ran. They are
+    # reachable as `just lint guards` and `just test guards`, both of which
+    # expand to the same pytest invocation, and NO workflow in .github/ invoked
+    # either: a grep of this directory for `pytest`, `dev/guards`, `just lint`
+    # and `just test` returned the frontend job and nothing else. So the
+    # invariants they assert — that every justfile recipe dispatches into
+    # `dev/`, that the recipes and `dev/toolchain.py`'s target table describe
+    # the same commands, that the src/dev/harness import fence holds, that
+    # dependencies are declared and tooling lives in its stated home — held
+    # only on a machine where somebody had typed the command. On every push and
+    # every pull request they asserted nothing.
+    #
+    # That is worse than not having them, because the tree cites them as
+    # settled. The justfile's own header tells a reader that a shell branch
+    # reintroduced into a recipe body "fails the build rather than quietly
+    # working on one machine"; no build was checking, so the sentence was an
+    # assurance nothing backed. A guard that runs nowhere is a test file.
+    #
+    # The gate is INVOKED through `just`, never restated as a bare
+    # `pytest dev/guards` — the same rule as the frontend job below, and here
+    # it is load-bearing twice over. test_dispatch_conformance.py asserts that
+    # the justfile and the toolchain table agree, so a step reaching past both
+    # to call pytest directly would be verifying a dispatch layer it had just
+    # gone around, and would keep reporting success after the recipe it claims
+    # to exercise was renamed or deleted.
+    #
+    # `just bootstrap` is required rather than defensive: the guards run under
+    # `uv run --no-sync`, which deliberately will not provision `.venv`, so
+    # without the sync there is no pytest to spawn and the step dies at
+    # "program not found" instead of reporting on a guard. Nothing here builds
+    # — the guards read the tree and import `dev.*` — so this job needs neither
+    # Node nor a Rust toolchain and stays one of the cheap ones.
+    name: Repo guards (just lint guards · pytest)
+    runs-on: [self-hosted, Linux, X64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: extractions/setup-just@v2
+      - uses: astral-sh/setup-uv@v6
+      - name: Provision the dev toolchain
+        run: just bootstrap
+      - name: Guards (just lint guards)
+        run: just lint guards
+      - name: Reclaim runner disk (always)
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          df -h . 2>/dev/null | tail -1
+          rm -rf "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
+          df -h . 2>/dev/null | tail -1
+
   frontend:
     name: Frontend (just lint frontend · vitest)
     runs-on: [self-hosted, Linux, X64]
