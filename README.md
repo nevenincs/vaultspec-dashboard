@@ -120,41 +120,47 @@ done.
 
 | Channel                           | Platforms    | Who installs and updates it                    | Status        |
 | --------------------------------- | ------------ | ---------------------------------------------- | ------------- |
-| Shell script                      | macOS, Linux | This project's installer and updater           | Supported     |
-| PowerShell script                 | Windows      | This project's installer and updater           | Supported     |
-| MSI                               | Windows      | Windows Installer, with this project's updater | Supported     |
+| Shell script                      | macOS, Linux | This project's installer and updater           | Not built     |
+| PowerShell script                 | Windows      | This project's installer and updater           | Not built     |
+| MSI                               | Windows      | Windows Installer, with this project's updater | Not built     |
 | Scoop                             | Windows      | Scoop                                          | Pending proof |
 | WinGet                            | Windows      | WinGet                                         | Pending proof |
 | `cargo install`, `cargo binstall` | —            | —                                              | Not supported |
+
+*Not built* means the release does not currently carry that artifact at all.
+`dist-workspace.toml` sets `installers = []`, disabling dist's generated shell,
+PowerShell and MSI installers in favour of product-owned replacements that do
+not exist yet. These three were previously listed as *supported*: the shell and
+PowerShell URLs below have never resolved — v0.1.3, the last release to carry
+installers, published them as `vaultspec-cli-installer.sh` and
+`.ps1`, and no MSI has ever been built for any release. Use the release
+binaries directly until the product-owned installers ship.
 
 A channel marked *pending proof* must still prove install, upgrade, downgrade, repair,
 and uninstall on a clean machine before it counts as supported. Until it does, prefer a
 supported channel.
 
-**Shell script** (macOS and Linux). Name the release you want:
-
-```sh
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/nevenincs/vaultspec-dashboard/releases/latest/download/install.sh | sh -s -- --version <version>
-```
-
-**PowerShell script** (Windows):
-
-```powershell
-powershell -ExecutionPolicy Bypass -c "& ([scriptblock]::Create((irm https://github.com/nevenincs/vaultspec-dashboard/releases/latest/download/install.ps1))) -Version <version>"
-```
-
-**MSI** (Windows). Download `vaultspec-<version>-x86_64-pc-windows-msvc.msi` from
-[Releases](https://github.com/nevenincs/vaultspec-dashboard/releases) and run it. The
-package carries every product file and removes what it installed on uninstall.
+**Shell script, PowerShell script and MSI** are *not built* — see the note above.
+The commands that used to appear here fetched
+`releases/latest/download/install.sh` and `install.ps1`, which return 404 and
+always have. Download the platform archive from
+[Releases](https://github.com/nevenincs/vaultspec-dashboard/releases) and run
+the binary directly in the meantime.
 
 **Scoop** (Windows):
 
 ```console
-scoop bucket add vaultspec https://github.com/nevenincs/vaultspec-dashboard
-scoop install vaultspec/vaultspec
+scoop bucket add nevenincs https://github.com/nevenincs/homebrew-tap
+scoop install nevenincs/vaultspec-dashboard
 ```
 
-The `bucket/` directory in this repository is a self-hosted Scoop bucket.
+The bucket is the ORGANISATION tap `nevenincs/homebrew-tap`, which serves
+`bucket/` for Scoop and `Formula/` for Homebrew across every nevenincs product -
+a package manager resolves one bucket per organisation, not one per repository.
+The `bucket/` directory that used to live in this repository is no longer the
+published source. This channel stays *pending proof* until a release actually
+publishes a manifest there; `vaultspec-core` and `vaultspec-rag` are present
+today and this product is not.
 
 **WinGet** (Windows): `winget install vaultspec.vaultspec` installs the same MSI.
 
