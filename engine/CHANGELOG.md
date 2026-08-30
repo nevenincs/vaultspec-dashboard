@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.7](https://github.com/nevenincs/vaultspec-dashboard/compare/v0.1.6...v0.1.7) (2026-08-30)
+
+
+### Bug Fixes
+
+* **release:** a blind preflight must not refuse a release ([#43](https://github.com/nevenincs/vaultspec-dashboard/issues/43)) ([a923a2a](https://github.com/nevenincs/vaultspec-dashboard/commit/a923a2a711781baf4c54fb0969bc165d036a8f7f))
+* **release:** keep the toolchain reachable, and stop the dist cache failing silently ([#47](https://github.com/nevenincs/vaultspec-dashboard/issues/47)) ([0f8efbf](https://github.com/nevenincs/vaultspec-dashboard/commit/0f8efbf9c724962d72cdcc961dd82591da6afcb6))
+* **release:** probe the path the installer needs, not its parent ([#45](https://github.com/nevenincs/vaultspec-dashboard/issues/45)) ([83ede0b](https://github.com/nevenincs/vaultspec-dashboard/commit/83ede0b980f9fca6be92f1960761822545d006d5))
+* **release:** put the build backstops in the workflow that actually runs ([#44](https://github.com/nevenincs/vaultspec-dashboard/issues/44)) ([4fd595b](https://github.com/nevenincs/vaultspec-dashboard/commit/4fd595bb09cb925f7efcd60535620d5492edde5a))
+* **release:** scope release-please to the repo, like core and rag ([#48](https://github.com/nevenincs/vaultspec-dashboard/issues/48)) ([8bdbfe7](https://github.com/nevenincs/vaultspec-dashboard/commit/8bdbfe73073ba734d9d118c800045f10afbfcd22))
+
 ## [0.1.6](https://github.com/nevenincs/vaultspec-dashboard/compare/v0.1.5...v0.1.6) (2026-08-29)
 
 
