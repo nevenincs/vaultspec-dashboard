@@ -162,7 +162,10 @@ describe("CategoryLegend behavior", () => {
       ),
     );
     fireEvent.click(item("adr"));
-    await waitFor(() => expect(item("adr").getAttribute("aria-pressed")).toBe("true"));
+    await waitFor(
+      () => expect(item("adr").getAttribute("aria-pressed")).toBe("true"),
+      ENGINE_WAIT,
+    );
     expect(item("adr").title).toBe(
       en.graph.legend.actions.removeDocumentTypeFilter.replace(
         "{{documentType}}",
@@ -175,14 +178,18 @@ describe("CategoryLegend behavior", () => {
     expect(item("plan").getAttribute("aria-pressed")).toBe("false");
 
     fireEvent.click(item("plan"));
-    await waitFor(() => expect(item("plan").getAttribute("aria-pressed")).toBe("true"));
+    await waitFor(
+      () => expect(item("plan").getAttribute("aria-pressed")).toBe("true"),
+      ENGINE_WAIT,
+    );
     expect(dashboardPatchCount).toBe(2);
 
     const reset = document.querySelector<HTMLElement>("[data-category-legend-reset]");
     expect(reset).toBeTruthy();
     fireEvent.click(reset!);
-    await waitFor(() =>
-      expect(document.querySelector("[data-category-legend-reset]")).toBeNull(),
+    await waitFor(
+      () => expect(document.querySelector("[data-category-legend-reset]")).toBeNull(),
+      ENGINE_WAIT,
     );
     expect(dashboardPatchCount).toBe(3);
     expect(item("adr").className).toContain("opacity-100");
