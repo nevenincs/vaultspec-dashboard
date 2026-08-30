@@ -529,7 +529,20 @@ jobs:
       - plan
       - host
     if: ${{ always() && needs.plan.outputs.publishing == 'true' }}
-    runs-on: [self-hosted, Linux, X64]
+    # HOSTED. This job's whole purpose is to demote a release whose build just
+    # failed - and a build fails most often when the fleet is congested or
+    # down, which is exactly when a self-hosted job will not be scheduled.
+    #
+    # v0.1.7 proved it. Every Compose leg failed, and this guard then sat
+    # QUEUED for over an hour behind the single Linux/X64 runner it shares with
+    # the build, while the empty release went on serving as `latest`. It had to
+    # be demoted by hand - the guard's one job, done by a person because the
+    # guard could not get a machine.
+    #
+    # Nothing here needs a fleet capability: the job calls `gh release view`
+    # and `gh release edit` and nothing else. The preflight in
+    # product-release.yml is hosted for this same reason.
+    runs-on: ubuntu-latest
     permissions:
       contents: write
     env:
