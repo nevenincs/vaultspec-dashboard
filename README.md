@@ -105,11 +105,22 @@ against this worktree. Its lifecycle fields may be newer than the latest release
 vaultspec-dashboard supports four platforms:
 
 - macOS on Apple silicon
-- glibc-based Linux on arm64
-- glibc-based Linux on x64
+- Linux on arm64, glibc 2.39 or newer
+- Linux on x64, glibc 2.39 or newer
 - Windows on x64
 
 Intel macOS isn't supported.
+
+Both Linux binaries require **glibc 2.39 or newer**, measured from the published
+release assets rather than promised. That covers Ubuntu 24.04+ and Debian 13+. It
+does not cover Ubuntu 22.04, Debian 12, RHEL 8 or 9, Rocky, Alma, or Amazon Linux
+2023: on those the binary does not start, and the loader names a missing symbol
+version rather than saying the distribution is too old, which reads like a corrupt
+download. `ldd --version` reports what a machine has.
+
+The floor is not currently declared or enforced by the build, so it is whatever
+the build host provides and can move between releases without notice. Issue #56
+tracks pinning it.
 
 The routes below target the latest published GitHub Release. Development on `main` may
 contain lifecycle changes that haven't been released yet.
