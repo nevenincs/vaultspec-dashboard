@@ -217,22 +217,10 @@ describe("localized add project dialog", () => {
       expect((row as HTMLButtonElement).disabled).toBe(true);
       fireEvent.click(row);
     }
-    // The breadcrumb carries no buttons until the folder listing lands:
-    // deriveBreadcrumbs(null) yields the single "roots" crumb in the loading and
-    // error states, and Breadcrumb renders the last item as a span rather than a
-    // button, so an in-flight listing presents zero of them. The wait above
-    // covers the typed path RESOLVING, which is a different request, so this
-    // assertion needs its own or it reads the trail mid-load.
-    await waitFor(
-      () =>
-        expect(
-          dialog.querySelectorAll("nav[aria-label='Breadcrumb'] button").length,
-        ).toBeGreaterThan(0),
-      ENGINE_WAIT,
-    );
     const ancestors = dialog.querySelectorAll<HTMLButtonElement>(
       "nav[aria-label='Breadcrumb'] button",
     );
+    expect(ancestors.length).toBeGreaterThan(0);
     for (const ancestor of ancestors) {
       expect(ancestor.disabled).toBe(true);
       fireEvent.click(ancestor);
