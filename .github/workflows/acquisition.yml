@@ -89,9 +89,23 @@ jobs:
     # `verify-release-assets` in release.yml is what reports an empty release.
     # The schedule and manual dispatch are unaffected, which is what keeps a
     # deliberate look at a known-bad release available.
+    #
+    # AND ONLY FOR A TAG'S RUN. `workflow_run` fires for EVERY Release run,
+    # including the ones dist executes on pull-request branches, which publish
+    # nothing. On v0.1.10 that is exactly what happened: the Release run for
+    # branch `fix/breadcrumb-waits-for-the-listing` completed at 05:22:46, this
+    # workflow started at 05:22:48, and it then hunted for assets on v0.1.10
+    # whose upload job did not even START until 05:55. All six Linux legs failed
+    # on `never appeared ... (last HTTP 404, 21 attempts over 10m)` -- a red that
+    # says nothing about the release and everything about which run woke it.
+    #
+    # A tag-triggered run carries the tag in `head_branch`, so requiring the `v`
+    # prefix keeps the producer-finished design while discarding the runs that
+    # produce no release. Schedule and manual dispatch are unaffected.
     if: >-
       github.event_name != 'workflow_run'
-      || github.event.workflow_run.conclusion == 'success'
+      || (github.event.workflow_run.conclusion == 'success'
+          && startsWith(github.event.workflow_run.head_branch, 'v'))
     strategy:
       fail-fast: false
       matrix:
