@@ -10,7 +10,6 @@ import {
   render,
   screen,
   waitFor,
-  within,
 } from "@testing-library/react";
 import { I18nextProvider } from "react-i18next";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -156,10 +155,9 @@ describe("localized add project dialog", () => {
 
   it("keeps pending copy active through a real rejected registration", async () => {
     const runtime = createTestLocalizationRuntime();
-    const client = createMenuTestQueryClient();
     render(
       <I18nextProvider i18n={runtime}>
-        <MenuTestProviders client={client}>
+        <MenuTestProviders client={createMenuTestQueryClient()}>
           <AddProjectDialog />
         </MenuTestProviders>
       </I18nextProvider>,
@@ -172,23 +170,8 @@ describe("localized add project dialog", () => {
     });
     fireEvent.change(pathInput, { target: { value: availablePath } });
     fireEvent.keyDown(pathInput, { key: "Enter" });
-    // SETTLED, not merely enabled. The confirm is
-    // `disabled={submitting || target === null || target.length === 0}`, and
-    // `target` is `null` for as long as `level.isPlaceholderData` holds - which
-    // it does through every refetch of the folder listing. So the button flips
-    // back to disabled mid-flight, and a click that lands in that window is
-    // swallowed in silence: `submitting` never becomes true, the pending copy
-    // never renders, and no error is raised either.
-    //
-    // That is exactly the state CI reported, twice, with identical detail:
-    //   dialog open; buttons: ... | Pick folder [disabled]; status: (none)
-    // Idle label, so `submitting` is false; disabled, so `target` is empty; and
-    // no status, so nothing was ever rejected. The click did nothing at all.
-    //
-    // Waiting for the query cache to go quiet first means `isPlaceholderData`
-    // is settled when the click lands. The enabled assertion below is kept -
-    // this adds a precondition, it does not relax one.
-    await waitFor(() => expect(client.isFetching()).toBe(0), ENGINE_WAIT);
+    // The confirm label is static ("Pick folder"); the typed path resolving is
+    // signalled by the button becoming enabled, so wait on that before clicking.
     await waitFor(
       () =>
         expect(
@@ -200,56 +183,21 @@ describe("localized add project dialog", () => {
     fireEvent.click(screen.getByRole("button", { name: confirmName }));
     const dialog = screen.getByRole("dialog");
     // AWAITED, not read in the same tick as the click. The confirm relabels to
-    // the pending copy when the registration mutation starts.
+    // the pending copy when the registration mutation starts, and that is a
+    // state change the click SCHEDULES rather than one it completes - so a
+    // synchronous read races the re-render and fails with the confirm still
+    // reading its idle label. It did, on run 33363935433: "Unable to find an
+    // accessible element with the role button and name 'Adding project...'",
+    // with "Pick folder" still in the printed roles.
     //
-    // AWAITING IS NOT ENOUGH, and I said otherwise once. An await covers "the
-    // label has not rendered yet"; it cannot cover "the label is never
-    // observable", and on run 33379547938 this failed WITH the await in place.
-    // The roles dump is no help on its own either: the confirm reads its idle
-    // label "Pick folder" BOTH before the mutation starts and after it settles,
-    // so the printed tree cannot tell those two apart. That ambiguity is what I
-    // resolved the wrong way.
-    //
-    // So the failure now REPORTS WHAT IT KNOWS instead of leaving the next
-    // reader to infer it: which buttons the dialog actually offers at that
-    // moment, whether the confirm is disabled, and any status text on screen.
-    // The assertion is unchanged - the pending copy must still appear, within
-    // the same budget - only the error is richer.
-    const addingLabel = runtime.t("projects:addDialog.actions.adding");
-    let adding: HTMLButtonElement;
-    try {
-      adding = (await screen.findByRole(
-        "button",
-        { name: addingLabel },
-        ENGINE_WAIT,
-      )) as HTMLButtonElement;
-    } catch {
-      const open = screen.queryByRole("dialog");
-      const buttons = open
-        ? within(open)
-            .queryAllByRole("button")
-            .map((button) => {
-              const name =
-                button.getAttribute("aria-label") ?? button.textContent?.trim() ?? "";
-              const off = (button as HTMLButtonElement).disabled ? " [disabled]" : "";
-              return `${name || "(unnamed)"}${off}`;
-            })
-        : [];
-      const status = open
-        ? within(open)
-            .queryAllByRole("status")
-            .concat(within(open).queryAllByRole("alert"))
-            .map((node) => node.textContent?.trim() ?? "")
-            .filter(Boolean)
-        : [];
-      throw new Error(
-        `never observed the pending confirm "${addingLabel}". dialog ${
-          open ? "open" : "ABSENT"
-        }; buttons: ${buttons.join(" | ") || "(none)"}; status: ${
-          status.join(" | ") || "(none)"
-        }`,
-      );
-    }
+    // This asserts exactly what the synchronous read asserted - the pending
+    // copy IS present, and everything below is locked while it is - without
+    // also requiring it to have rendered before the next statement runs.
+    const adding = (await screen.findByRole(
+      "button",
+      { name: runtime.t("projects:addDialog.actions.adding") },
+      ENGINE_WAIT,
+    )) as HTMLButtonElement;
     const cancel = screen.getByRole("button", {
       name: runtime.t("common:actions.cancel"),
     }) as HTMLButtonElement;
