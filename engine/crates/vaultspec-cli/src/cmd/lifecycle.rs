@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 
 use rag_client::client::{LoopbackTransport, RagTransport};
 use serde_json::{Value, json};
+use vaultspec_product::channels::owner::ManagerOwner;
 use vaultspec_product::handoff::{
     RelaunchSpec, UpdaterDescriptor, copy_updater_out, write_handoff_descriptor,
 };
@@ -231,10 +232,26 @@ pub fn restart() -> Result<Value, String> {
 /// is reached from an execute-intent handoff, not from this recovery-and-
 /// relaunch one.
 ///
-/// A copy that carries no updater beside it is not a complete product
-/// installation and is refused with its channel's own remediation.
+/// Two copies carry no update authority here, and both are refused before any
+/// file is touched. A copy a package manager OWNS updates through that manager:
+/// it placed the files and its records describe them, so rewriting them in
+/// place would leave the manager disagreeing with the disk. And a copy carrying
+/// no updater beside it is not a complete product installation at all.
+///
+/// The manager check runs FIRST, and must. A manager install ships the complete
+/// tree, updater included, so the sibling-updater test PASSES on exactly the
+/// copies that have to be refused; on its own it would let the transaction
+/// proceed against manager-owned files.
 pub fn update() -> Result<Value, String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    if let Some(owner) = ManagerOwner::detect(&exe) {
+        return Ok(json!({
+            "handed_off": false,
+            "manager": owner.label(),
+            "update_command": owner.update_command(),
+            "reason": owner.refusal(),
+        }));
+    }
     let release_updater = exe.with_file_name(UPDATER_NAME);
     if !release_updater.is_file() {
         return Ok(json!({
