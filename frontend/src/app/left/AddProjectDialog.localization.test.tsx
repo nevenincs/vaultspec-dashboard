@@ -182,9 +182,22 @@ describe("localized add project dialog", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: confirmName }));
     const dialog = screen.getByRole("dialog");
-    const adding = screen.getByRole("button", {
-      name: runtime.t("projects:addDialog.actions.adding"),
-    }) as HTMLButtonElement;
+    // AWAITED, not read in the same tick as the click. The confirm relabels to
+    // the pending copy when the registration mutation starts, and that is a
+    // state change the click SCHEDULES rather than one it completes - so a
+    // synchronous read races the re-render and fails with the confirm still
+    // reading its idle label. It did, on run 33363935433: "Unable to find an
+    // accessible element with the role button and name 'Adding project...'",
+    // with "Pick folder" still in the printed roles.
+    //
+    // This asserts exactly what the synchronous read asserted - the pending
+    // copy IS present, and everything below is locked while it is - without
+    // also requiring it to have rendered before the next statement runs.
+    const adding = (await screen.findByRole(
+      "button",
+      { name: runtime.t("projects:addDialog.actions.adding") },
+      ENGINE_WAIT,
+    )) as HTMLButtonElement;
     const cancel = screen.getByRole("button", {
       name: runtime.t("common:actions.cancel"),
     }) as HTMLButtonElement;
