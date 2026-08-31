@@ -195,3 +195,24 @@ jobs:
             exit 1
           fi
           echo "::warning::vaultspec --version exited non-zero for a non-loader reason; acquisition covers the loader only"
+
+      # HAND THE WORKSPACE BACK. These legs run a container on the shared
+      # self-hosted runner, so every file the job touches ends up owned by the
+      # container's root. The next job scheduled on that machine is a normal
+      # non-root checkout, and it cannot clean what it does not own: it dies in
+      # `actions/checkout` with `EACCES: permission denied, unlink
+      # .../engine/target/...` and then `fatal: not a git repository`.
+      #
+      # That is not hypothetical. The v0.1.9 acquisition run left the workspace
+      # root-owned at 23:58 and unrelated jobs on the same runner failed that
+      # way from 00:40 — three checks on a workflow-only PR, none of them caused
+      # by its diff.
+      #
+      # `--reference=/__w` copies the owner the runner itself uses rather than
+      # naming a uid, so it is correct on any host in the fleet. `always()`
+      # because a failed leg poisons the workspace exactly as a passing one does,
+      # and `|| true` because failing to tidy up must not turn a green
+      # acquisition red.
+      - name: Return the workspace to the runner's user
+        if: always()
+        run: chown -R --reference=/__w "$GITHUB_WORKSPACE" || true
