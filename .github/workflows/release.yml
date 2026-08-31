@@ -161,6 +161,18 @@ jobs:
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
             echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
           fi
+      - name: Trust the checkout inside the build container
+        if: ${{ matrix.container }}
+        shell: bash
+        run: |
+          # The two Linux legs build inside a manylinux image as root, against a
+          # workspace the runner created as another user. Git refuses to operate on a
+          # tree it considers dubiously owned, and while actions/checkout marks its
+          # own clone safe, the build reaches git again afterwards - the version
+          # stamp and cargo's own metadata both do - so mark it once for the job.
+          # Guarded on `matrix.container` and not `runner.os == 'Linux'`: the
+          # uncontainerised legs run as their own user and need no such override.
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: "Ensure WiX Toolset is on PATH (MSI build, Windows only)"
         if: "runner.os == 'Windows'"
         run: |
@@ -320,6 +332,21 @@ jobs:
           rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
           if [ "${{ job.status }}" = "failure" ]; then
             rm -rf target engine/target 2>/dev/null || true
+          fi
+          # HAND THE TREE BACK. Since the Linux legs build inside a pinned
+          # manylinux image, everything cargo writes is owned by the container's
+          # root. The removal above only happens when the job FAILED, so a
+          # SUCCESSFUL leg leaves engine/target root-owned - and the next job on
+          # this shared machine is an ordinary non-root checkout that cannot
+          # clean what it does not own. It dies in `actions/checkout` with
+          # `EACCES: permission denied, unlink .../engine/target/...` and then
+          # `fatal: not a git repository`.
+          #
+          # `--reference=/__w` copies the owner the runner itself uses rather
+          # than naming a uid, and /__w exists only on a containerised job, so
+          # this is a no-op on a normal runner.
+          if [ -d /__w ]; then
+            chown -R --reference=/__w "$GITHUB_WORKSPACE" 2>/dev/null || true
           fi
           df -h . 2>/dev/null | tail -1
       # Hand-set for the self-hosted fleet; re-apply if `dist generate-ci` regenerates this file.

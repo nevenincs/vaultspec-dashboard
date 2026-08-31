@@ -13,6 +13,16 @@ import { authoringClient } from "../stores/server/authoring";
 import { agentClient, a2aTeamClient } from "../stores/server/agent";
 import { liveTransport } from "./liveClient";
 
+// A failure dump that stops before the component under test is not evidence.
+// @testing-library/dom truncates `prettyDOM` at `DEBUG_PRINT_LIMIT || 7000`
+// characters, and this app's dialogs and panels exceed that well before the
+// element an assertion names: a folder-picker failure printed the overlay, the
+// header and part of the places rail, then ` ...`, with the folder browser the
+// assertion was about never reaching the log. Every such run costs a round trip
+// to reproduce, and reading the truncation as "the element is absent" is a
+// mistake the dump invites. 40000 covers one dialog subtree whole.
+process.env.DEBUG_PRINT_LIMIT ??= "40000";
+
 engineClient.useTransport(liveTransport);
 // Bind the authoring client to the same live transport so render tests that fire
 // mutations through usePlanStepTick speak to the real engine (authoring-surface D1).
