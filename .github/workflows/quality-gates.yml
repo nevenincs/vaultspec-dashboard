@@ -41,6 +41,12 @@ jobs:
     name: Spell check (typos)
     runs-on: [self-hosted, Linux, X64]
     steps:
+      # Before checkout, because checkout is the step the EACCES lands on.
+      # `|| true` so a workspace that has never been checked out - where the
+      # script does not exist yet - simply skips it.
+      - name: Reclaim the workspace from a job that may not have finished
+        shell: bash
+        run: bash .github/scripts/reclaim-workspace.sh || true
       - uses: actions/checkout@v4
       - uses: crate-ci/typos@master
       - name: Reclaim runner disk (always)
@@ -97,6 +103,12 @@ jobs:
     name: Workflow lint (actionlint)
     runs-on: [self-hosted, Linux, X64]
     steps:
+      # Before checkout, because checkout is the step the EACCES lands on.
+      # `|| true` so a workspace that has never been checked out - where the
+      # script does not exist yet - simply skips it.
+      - name: Reclaim the workspace from a job that may not have finished
+        shell: bash
+        run: bash .github/scripts/reclaim-workspace.sh || true
       - uses: actions/checkout@v4
       - name: Run actionlint
         shell: bash
@@ -194,6 +206,12 @@ jobs:
     name: Repo guards (just lint guards · pytest)
     runs-on: [self-hosted, Linux, X64]
     steps:
+      # Before checkout, because checkout is the step the EACCES lands on.
+      # `|| true` so a workspace that has never been checked out - where the
+      # script does not exist yet - simply skips it.
+      - name: Reclaim the workspace from a job that may not have finished
+        shell: bash
+        run: bash .github/scripts/reclaim-workspace.sh || true
       - uses: actions/checkout@v4
       - uses: extractions/setup-just@v2
       - uses: astral-sh/setup-uv@v6
@@ -214,6 +232,12 @@ jobs:
     name: Frontend (just lint frontend · vitest)
     runs-on: [self-hosted, Linux, X64]
     steps:
+      # Before checkout, because checkout is the step the EACCES lands on.
+      # `|| true` so a workspace that has never been checked out - where the
+      # script does not exist yet - simply skips it.
+      - name: Reclaim the workspace from a job that may not have finished
+        shell: bash
+        run: bash .github/scripts/reclaim-workspace.sh || true
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
@@ -296,6 +320,12 @@ jobs:
     name: Engine TS conformance (live serve · EngineClient)
     runs-on: [self-hosted, Linux, X64]
     steps:
+      # Before checkout, because checkout is the step the EACCES lands on.
+      # `|| true` so a workspace that has never been checked out - where the
+      # script does not exist yet - simply skips it.
+      - name: Reclaim the workspace from a job that may not have finished
+        shell: bash
+        run: bash .github/scripts/reclaim-workspace.sh || true
       - uses: actions/checkout@v4
       # Pin to the repo toolchain (see the frontend job's note).
       - name: Read pinned toolchain
@@ -401,6 +431,12 @@ jobs:
     runs-on: [self-hosted, Linux, X64]
     if: github.event_name == 'pull_request'
     steps:
+      # Before checkout, because checkout is the step the EACCES lands on.
+      # `|| true` so a workspace that has never been checked out - where the
+      # script does not exist yet - simply skips it.
+      - name: Reclaim the workspace from a job that may not have finished
+        shell: bash
+        run: bash .github/scripts/reclaim-workspace.sh || true
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -492,6 +528,12 @@ jobs:
     name: Supply chain (cargo-deny · uv audit · npm audit)
     runs-on: [self-hosted, Linux, X64]
     steps:
+      # Before checkout, because checkout is the step the EACCES lands on.
+      # `|| true` so a workspace that has never been checked out - where the
+      # script does not exist yet - simply skips it.
+      - name: Reclaim the workspace from a job that may not have finished
+        shell: bash
+        run: bash .github/scripts/reclaim-workspace.sh || true
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - name: cargo-deny (native — no Docker on the self-hosted runner)
@@ -548,6 +590,12 @@ jobs:
     name: Release inputs (lock · schema · product builder)
     runs-on: [self-hosted, Linux, X64]
     steps:
+      # Before checkout, because checkout is the step the EACCES lands on.
+      # `|| true` so a workspace that has never been checked out - where the
+      # script does not exist yet - simply skips it.
+      - name: Reclaim the workspace from a job that may not have finished
+        shell: bash
+        run: bash .github/scripts/reclaim-workspace.sh || true
       - uses: actions/checkout@v4
       - name: Read pinned toolchain
         id: toolchain
