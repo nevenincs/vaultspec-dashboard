@@ -243,6 +243,13 @@ jobs:
         id: toolchain
         shell: bash
         run: echo "channel=$(grep -m1 '^channel' engine/rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+      # Absorb a transient `socket hang up`: the action does not retry, and a
+      # dropped connection here aborts the job before the suite starts, which
+      # reads exactly like a test failure. rustup's install is idempotent, so
+      # a successful warm makes the action's own fetch a no-op.
+      - name: Warm the pinned toolchain, retrying a dropped connection
+        shell: bash
+        run: bash .github/scripts/warm-toolchain.sh "${{ steps.toolchain.outputs.channel }}" || true
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ steps.toolchain.outputs.channel }}
@@ -302,6 +309,13 @@ jobs:
         id: toolchain
         shell: bash
         run: echo "channel=$(grep -m1 '^channel' engine/rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+      # Absorb a transient `socket hang up`: the action does not retry, and a
+      # dropped connection here aborts the job before the suite starts, which
+      # reads exactly like a test failure. rustup's install is idempotent, so
+      # a successful warm makes the action's own fetch a no-op.
+      - name: Warm the pinned toolchain, retrying a dropped connection
+        shell: bash
+        run: bash .github/scripts/warm-toolchain.sh "${{ steps.toolchain.outputs.channel }}" || true
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ steps.toolchain.outputs.channel }}
@@ -493,6 +507,13 @@ jobs:
     runs-on: [self-hosted, Linux, X64]
     steps:
       - uses: actions/checkout@v4
+      # Absorb a transient `socket hang up`: the action does not retry, and a
+      # dropped connection here aborts the job before the suite starts, which
+      # reads exactly like a test failure. rustup's install is idempotent, so
+      # a successful warm makes the action's own fetch a no-op.
+      - name: Warm the pinned toolchain, retrying a dropped connection
+        shell: bash
+        run: bash .github/scripts/warm-toolchain.sh "stable" || true
       - uses: dtolnay/rust-toolchain@stable
       - name: cargo-deny (native — no Docker on the self-hosted runner)
         shell: bash
@@ -553,6 +574,13 @@ jobs:
         id: toolchain
         shell: bash
         run: echo "channel=$(grep -m1 '^channel' engine/rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+      # Absorb a transient `socket hang up`: the action does not retry, and a
+      # dropped connection here aborts the job before the suite starts, which
+      # reads exactly like a test failure. rustup's install is idempotent, so
+      # a successful warm makes the action's own fetch a no-op.
+      - name: Warm the pinned toolchain, retrying a dropped connection
+        shell: bash
+        run: bash .github/scripts/warm-toolchain.sh "${{ steps.toolchain.outputs.channel }}" || true
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ steps.toolchain.outputs.channel }}
