@@ -324,7 +324,7 @@ jobs:
             --a2a-runtime "$a2a_runtime" \
             --lock "${PWD}/packaging/a2a-component.lock.json" \
             --sbom "${PWD}/out/sbom.cdx.json" \
-            --license "vaultspec-a2a:MIT:${PWD}/LICENSE" \
+            --license vaultspec-a2a MIT "${PWD}/LICENSE" \
             > build-spec.json
           "${ENGINE_TARGET_DIR}/release/product_build" build-spec.json
           echo "GEN_ROOT=${gen_root}" >> "$GITHUB_ENV"
