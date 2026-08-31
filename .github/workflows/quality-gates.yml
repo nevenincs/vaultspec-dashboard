@@ -562,6 +562,17 @@ jobs:
           set -euo pipefail
           python3 -c "import json; json.load(open('packaging/a2a-component.lock.json'))"
           python3 -c "import json; json.load(open('schemas/release-set-manifest.json'))"
+      # The committed lock must agree with the manifest. Nothing else in this
+      # file passes `--locked`, so without this step cargo silently refreshes
+      # the lock in memory and every build succeeds over a tree that is not
+      # reproducible. That is how the drift became recurring: release-please
+      # bumps `[workspace.package] version` in engine/Cargo.toml and does not
+      # regenerate engine/Cargo.lock, and no instrument was positioned to see
+      # it. `cargo metadata` resolves without building, so this is cheap and
+      # fails fast, on the release PR itself.
+      - name: The committed Cargo.lock agrees with Cargo.toml
+        run: cargo metadata --locked --format-version 1 > /dev/null
+        working-directory: engine
       - name: Product builder, manifest verifiers, and lock/capsule/release pins
         run: cargo test -p vaultspec-product
         working-directory: engine
