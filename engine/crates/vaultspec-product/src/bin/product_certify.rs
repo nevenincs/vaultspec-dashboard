@@ -36,6 +36,10 @@ const EMBEDDED_COMPONENT_LOCK: &str =
 
 /// The member manifest a composed product tree carries at its root.
 const RELEASE_MANIFEST: &str = "release.json";
+/// Hard ceiling on the member manifest bytes the certifier will read when it
+/// asks the tree what it declares. The document is one JSON object plus a digest
+/// per installed file, so this is generous by orders of magnitude.
+const MAX_MEMBER_MANIFEST_BYTES: u64 = 64 * 1024 * 1024;
 
 /// Every case certified.
 const EXIT_OK: i32 = 0;
@@ -209,10 +213,17 @@ impl std::fmt::Display for EvidenceGap {
     }
 }
 
-/// A case that could not be certified: either the evidence was unavailable or
-/// the property did not hold. The two are never collapsed.
+/// A case that did not certify: the property does not apply to this artifact at
+/// all, the evidence to drive it was unavailable, or the property did not hold.
+/// The three are never collapsed - "there is nothing here to certify" is a
+/// different statement from "the thing that should be here is missing", which is
+/// a different statement again from "it is here and it is wrong".
 #[derive(Debug)]
 enum CaseError {
+    /// The artifact does not carry the component this case is ABOUT, and its own
+    /// member manifest says so. Nothing is missing and nothing failed: the
+    /// property has no subject in this build, so the run is not held back by it.
+    NotApplicable(String),
     Unavailable(EvidenceGap),
     Failed(String),
 }
@@ -220,6 +231,10 @@ enum CaseError {
 impl CaseError {
     fn failed(detail: impl Into<String>) -> Self {
         Self::Failed(detail.into())
+    }
+
+    fn not_applicable(detail: impl Into<String>) -> Self {
+        Self::NotApplicable(detail.into())
     }
 }
 
@@ -381,6 +396,10 @@ fn run(args: impl Iterator<Item = String>) -> i32 {
 
     let artifact = match Artifact::open(&invocation) {
         Ok(artifact) => artifact,
+        Err(CaseError::NotApplicable(detail)) => {
+            eprintln!("product-certify: artifact staging is not applicable: {detail}");
+            return EXIT_FAILED;
+        }
         Err(CaseError::Unavailable(gap)) => {
             eprintln!("product-certify: evidence unavailable: {gap}");
             return EXIT_EVIDENCE;
@@ -393,9 +412,14 @@ fn run(args: impl Iterator<Item = String>) -> i32 {
 
     let mut unavailable = 0usize;
     let mut failed = 0usize;
+    let mut not_applicable = 0usize;
     for case in &invocation.selected {
         match (case.run)(&artifact) {
             Ok(evidence) => println!("certified\t{}\t{evidence}", case.id),
+            Err(CaseError::NotApplicable(detail)) => {
+                not_applicable += 1;
+                println!("not-applicable\t{}\t{detail}", case.id);
+            }
             Err(CaseError::Unavailable(gap)) => {
                 unavailable += 1;
                 println!("evidence-unavailable\t{}\t{gap}", case.id);
@@ -416,6 +440,11 @@ fn run(args: impl Iterator<Item = String>) -> i32 {
             "product-certify: {unavailable} case(s) could not be driven against real evidence"
         );
         return EXIT_EVIDENCE;
+    }
+    if not_applicable > 0 {
+        eprintln!(
+            "product-certify: {not_applicable} case(s) have no subject in this artifact and were not certified"
+        );
     }
     EXIT_OK
 }

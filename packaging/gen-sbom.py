@@ -19,9 +19,14 @@ and fail the cohort for a reason that has nothing to do with the product. Every
 list is sorted; identity comes from `--version` and `--commit`.
 
 Reads: engine/Cargo.lock (TOML), frontend/package-lock.json (npm lockfile v2/v3),
-and the a2a checkout's uv.lock (TOML). A missing or unparseable lockfile is
-fatal: an SBOM that silently omits an ecosystem is worse than no SBOM, because
-it is indistinguishable from one that legitimately has nothing to report.
+and — when `--uv-lock` is passed — the a2a checkout's uv.lock (TOML). A lockfile
+that was DECLARED but is missing or unparseable is fatal: an SBOM that silently
+omits an ecosystem is worse than no SBOM, because it is indistinguishable from
+one that legitimately has nothing to report. `--uv-lock` is optional precisely
+so that the two cases stay distinguishable: a build that resolves no Python
+ecosystem passes no flag and the document honestly reports none, while a build
+that names a uv.lock and cannot read it still fails here rather than emitting a
+Rust-and-npm document dressed as the whole tree.
 """
 
 from __future__ import annotations
@@ -132,19 +137,27 @@ def main() -> int:
     p.add_argument("--commit", required=True, help="product commit sha")
     p.add_argument("--cargo-lock", required=True, type=Path)
     p.add_argument("--npm-lock", required=True, type=Path)
-    p.add_argument("--uv-lock", required=True, type=Path)
+    p.add_argument(
+        "--uv-lock",
+        default=None,
+        type=Path,
+        help="optional: the a2a checkout's uv.lock, when the build resolves one",
+    )
     p.add_argument("--out", required=True, type=Path)
     args = p.parse_args()
 
     # Fail on absence BEFORE parsing, naming the flag: the same lesson
     # assemble-build-spec.py records -- a missing declared input must surface
-    # here, where the flag it came from is still known.
+    # here, where the flag it came from is still known. DECLARED is the word
+    # that carries the weight: an unpassed `--uv-lock` declares nothing and is
+    # legal, while a passed one that is not on disk is the failure this check
+    # exists for.
     missing = [
         (flag, path)
         for flag, path in (
             ("--cargo-lock", args.cargo_lock),
             ("--npm-lock", args.npm_lock),
-            ("--uv-lock", args.uv_lock),
+            *((("--uv-lock", args.uv_lock),) if args.uv_lock is not None else ()),
         )
         if not path.is_file()
     ]
@@ -154,11 +167,9 @@ def main() -> int:
         print("gen-sbom: refusing to emit a partial SBOM", file=sys.stderr)
         return 2
 
-    components = (
-        cargo_components(args.cargo_lock)
-        + npm_components(args.npm_lock)
-        + uv_components(args.uv_lock)
-    )
+    components = cargo_components(args.cargo_lock) + npm_components(args.npm_lock)
+    if args.uv_lock is not None:
+        components += uv_components(args.uv_lock)
     if not components:
         print("gen-sbom: no components resolved from any lockfile", file=sys.stderr)
         return 2

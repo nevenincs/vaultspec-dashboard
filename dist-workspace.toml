@@ -37,8 +37,8 @@ cargo-dist-version = "0.32.0"
 ci = "github"
 # No Cargo Dist installers: Dist's generated shell/PowerShell/MSI installers are
 # BINARY-ONLY — they place the `vaultspec` binary but not the complete offline
-# product tree (dashboard + external updater + the bundled A2A runtime onedir +
-# manifests + licenses + SBOM + receipt). The product-owned installers replace
+# product tree (dashboard + external updater + release manifest + licenses +
+# SBOM). The product-owned installers replace
 # them: `packaging/install.sh`, `packaging/install.ps1`, and the complete MSI
 # built from `engine/crates/vaultspec-cli/wix/main.wxs`. Dist is retained ONLY
 # for target planning, checksums, and GitHub release hosting.
@@ -68,9 +68,8 @@ install-updater = false
 features = ["embed-spa"]
 # Steps injected into every build job BEFORE cargo runs: the embed-spa build
 # compiles frontend/dist into the binary, so the SPA bundle must exist first
-# (build order, dashboard-packaging D2). The same hook restores the pinned A2A
-# source checkout and locked freeze environment the bundled runtime is built
-# from, so composition needs no network at install time.
+# (build order, dashboard-packaging D2). That SPA build is the whole of what the
+# hook does; nothing else is staged before cargo.
 github-build-setup = "../release-build-setup.yml"
 # release.yml is hand-managed and dist must not re-verify it. Two things live in
 # that file which dist cannot express and would therefore delete on regeneration:
@@ -93,10 +92,10 @@ create-release = false
 post-announce-jobs = ["./scoop-bump"]
 
   # Artifact builds run on the shared self-hosted fleet. Each target selects a
-  # runner of its OWN architecture, which is not a preference: the freeze step
-  # RUNS the interpreter it bundles, so there is no cross-compile path for the
-  # bundled runtime and a target built elsewhere would be mislabelled rather than
-  # merely slow.
+  # runner of its OWN architecture, which is not a preference: every leg is a
+  # NATIVE build (see the explicit `host` on the Linux legs below, which keeps
+  # dist off a cargo-zigbuild cross-compile), so a target built on a machine of
+  # another architecture would be mislabelled rather than merely slow.
   #
   # Two of these are auto-assigned OS labels, and two are custom labels, which is
   # an asymmetry worth explaining rather than tidying away. The fleet registers ONE

@@ -199,7 +199,7 @@ fn declared_file(artifact: &Artifact) -> Result<PathBuf, CaseError> {
 /// the sealed release authority, so a run without it reports that gap rather than
 /// claiming a receipt nobody committed.
 pub(crate) fn case_staged_migration(artifact: &Artifact) -> CaseResult {
-    let runtime = artifact.a2a_runtime()?;
+    let runtime = artifact.required_a2a_runtime()?;
     let paths = artifact.product_paths_named("migration")?;
     let guard = hold_installation(&paths, "certify-migration")?;
     let outcome = drive_staged_migration(&paths, &guard, &artifact.tree_root, &runtime);
@@ -762,7 +762,7 @@ pub(crate) fn drive_removal(paths: &ProductPaths) -> CaseResult {
 /// that on an isolated host.
 pub(crate) fn case_offline_default_provider_run(artifact: &Artifact) -> CaseResult {
     require_network_removed()?;
-    let runtime = artifact.a2a_runtime()?;
+    let runtime = artifact.required_a2a_runtime()?;
     let paths = artifact.product_paths_named("offline-run")?;
     let cwd = artifact.workspace.join("certify-offline-cwd");
     std::fs::create_dir_all(&cwd)

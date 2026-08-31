@@ -44,6 +44,9 @@ pub enum ProductBuildError {
     SelfVerify(ManifestError),
     /// The emitted manifest could not be serialized.
     Serialize(String),
+    /// The composed member carries bundled a2a evidence but no trusted component
+    /// lock was supplied to pin the source it was built from.
+    UnpinnedA2aSource,
     /// A bounded I/O error while scanning the composed tree.
     Io(String),
     /// The composed tree exceeds the fixed installed-file-count ceiling.
@@ -86,6 +89,10 @@ impl std::fmt::Display for ProductBuildError {
                 )
             }
             Self::Serialize(detail) => write!(f, "member manifest serialization failed: {detail}"),
+            Self::UnpinnedA2aSource => write!(
+                f,
+                "composed member carries bundled a2a evidence but no trusted component lock pins its source"
+            ),
             Self::Io(detail) => write!(f, "composed-tree scan io error: {detail}"),
             Self::TreeTooLarge => write!(f, "composed tree exceeds the installed-file ceiling"),
             Self::FileTooLarge { path } => {
@@ -295,7 +302,11 @@ pub struct ComposedMember {
     pub dashboard: DashboardArtifact,
     pub updater_version: String,
     pub updater: ComposedArtifact,
-    pub a2a_component: A2aComponentEvidence,
+    /// The bundled a2a evidence, present only when the tree carries the runtime.
+    /// A tree built without it omits `a2a_component` from the emitted manifest
+    /// outright: an empty or zeroed block would read as a runtime the build
+    /// failed to place rather than one it never claimed.
+    pub a2a_component: Option<A2aComponentEvidence>,
     pub licenses: Vec<LicenseArtifact>,
     pub sbom: SbomArtifact,
     /// Every immutable installed regular file except `release_manifest_path`, by
@@ -442,11 +453,29 @@ pub struct RuntimeSource {
     pub entrypoint_relative: String,
 }
 
+/// The bundled a2a source: the frozen onedir and the dashboard-owned component
+/// lock that pins the source it was built from.
+///
+/// ONE nested source rather than two sibling fields, so "a runtime with no lock"
+/// — a placed runtime whose declared source pin nothing independently
+/// authorizes — is not expressible. A build that ships no bundled runtime omits
+/// this whole object; a build that ships one carries both halves.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct A2aSources {
+    pub runtime: RuntimeSource,
+    pub component_lock: SourceArtifact,
+}
+
 /// The complete set of pre-built inputs one target's product tree is composed
 /// from. The binaries, the built onedir, and the component lock are all produced
 /// upstream (the dashboard/updater builds and the pipeline's freeze step); the
 /// composer places them, computes the installed-byte evidence, and emits the
 /// manifest.
+///
+/// The bundled a2a source is OPTIONAL. A tree composed without it is a complete
+/// product tree that simply carries no frozen runtime, and its member manifest
+/// omits `a2a_component` rather than declaring an empty one.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BuildSources {
@@ -459,8 +488,14 @@ pub struct BuildSources {
     pub dashboard: SourceArtifact,
     pub updater_version: String,
     pub updater: SourceArtifact,
-    pub a2a_runtime: RuntimeSource,
-    pub component_lock: SourceArtifact,
+    /// The bundled a2a runtime and its component lock, or nothing.
+    ///
+    /// `#[serde(default)]` is what makes the key omissible at all: this struct
+    /// denies unknown fields, and without the default an absent `a2a` would be a
+    /// spec parse error rather than an honest declaration that the tree carries
+    /// no bundled runtime.
+    #[serde(default)]
+    pub a2a: Option<A2aSources>,
     pub licenses: Vec<LicenseSource>,
     pub sbom: SourceArtifact,
     pub sbom_format: String,
@@ -476,28 +511,38 @@ pub struct BuildSources {
 /// self-verify the manifest through the manifest verifier, and finally prove the
 /// written manifest describes exactly the tree. The generation-layout is produced
 /// directly (the installer later places it and the generation-writer adopts it);
-/// the bundled runtime is placed as a directory of ordinary regular files, never
-/// as an archive and never extracted at install. Returns the emitted manifest
-/// bytes.
+/// the bundled runtime, when one is supplied, is placed as a directory of
+/// ordinary regular files, never as an archive and never extracted at install.
+/// With no bundled runtime there is nothing to place and nothing to pin, so
+/// `lock` is `None` and the emitted manifest carries no `a2a_component`.
+/// Returns the emitted manifest bytes.
 pub fn compose_product_tree(
     generation_root: &Path,
     sources: &BuildSources,
-    lock: &ComponentLock,
+    lock: Option<&ComponentLock>,
 ) -> Result<String, ProductBuildError> {
     // PLACE every input at its fixed destination.
-    let placements = [
-        &sources.dashboard,
-        &sources.updater,
-        &sources.component_lock,
-        &sources.sbom,
-    ];
+    let placements = [&sources.dashboard, &sources.updater, &sources.sbom];
     for artifact in placements {
         place(generation_root, &artifact.source, &artifact.dest_relative)?;
     }
     for license in &sources.licenses {
         place(generation_root, &license.source, &license.dest_relative)?;
     }
-    let runtime_files = place_runtime(generation_root, &sources.a2a_runtime)?;
+    // The lock is placed only alongside the runtime it pins: a tree with no
+    // bundled runtime carries no source for the lock to pin, so shipping the
+    // lock there would put a pin in the tree with nothing pinned to it.
+    let placed_a2a = match &sources.a2a {
+        Some(a2a) => {
+            place(
+                generation_root,
+                &a2a.component_lock.source,
+                &a2a.component_lock.dest_relative,
+            )?;
+            Some((a2a, place_runtime(generation_root, &a2a.runtime)?))
+        }
+        None => None,
+    };
 
     // SCAN the placed tree (before the manifest is written) for installed bytes.
     let scanned = scan_composed_tree(generation_root)?;
@@ -524,15 +569,18 @@ pub fn compose_product_tree(
         },
         updater_version: sources.updater_version.clone(),
         updater: by_path(&sources.updater.dest_relative)?,
-        a2a_component: A2aComponentEvidence {
-            component_lock: evidence(&by_path(&sources.component_lock.dest_relative)?),
-            runtime: BundledRuntimeEvidence {
-                root: sources.a2a_runtime.dest_relative.clone(),
-                // Proven placed by the scan, not asserted: an entrypoint the freeze
-                // recipe did not emit fails here rather than at first launch.
-                entrypoint: by_path(&runtime_entrypoint_path(&sources.a2a_runtime))?.path,
-                file_count: runtime_files,
-            },
+        a2a_component: match placed_a2a {
+            Some((a2a, runtime_files)) => Some(A2aComponentEvidence {
+                component_lock: evidence(&by_path(&a2a.component_lock.dest_relative)?),
+                runtime: BundledRuntimeEvidence {
+                    root: a2a.runtime.dest_relative.clone(),
+                    // Proven placed by the scan, not asserted: an entrypoint the freeze
+                    // recipe did not emit fails here rather than at first launch.
+                    entrypoint: by_path(&runtime_entrypoint_path(&a2a.runtime))?.path,
+                    file_count: runtime_files,
+                },
+            }),
+            None => None,
         },
         licenses: sources
             .licenses
@@ -681,18 +729,30 @@ fn evidence(artifact: &ComposedArtifact) -> EvidenceArtifact {
 /// builder defect — fails here rather than shipping.
 pub fn emit_member_manifest(
     member: &ComposedMember,
-    lock: &ComponentLock,
+    lock: Option<&ComponentLock>,
 ) -> Result<String, ProductBuildError> {
+    // Bundled evidence without a lock to pin it would emit a source pin the
+    // caller invented. There is no such manifest: refuse rather than fabricate.
+    if member.a2a_component.is_some() && lock.is_none() {
+        return Err(ProductBuildError::UnpinnedA2aSource);
+    }
     let manifest = build_member(member, lock);
     let raw = serde_json::to_string(&manifest)
         .map_err(|error| ProductBuildError::Serialize(error.to_string()))?;
     // Prove the emitted bytes verify under the production authority (pin-skew,
     // floating selectors, target mismatch, self-authorizing lock all rejected).
-    ReleaseSetManifest::parse_and_verify(&raw, lock).map_err(ProductBuildError::SelfVerify)?;
+    // With no bundled runtime there is no source pin to join, so the structural
+    // half stands alone rather than being joined to an unrelated lock.
+    let parsed = ReleaseSetManifest::parse(&raw).map_err(ProductBuildError::SelfVerify)?;
+    if let Some(lock) = lock {
+        parsed
+            .verify_against_lock(lock)
+            .map_err(ProductBuildError::SelfVerify)?;
+    }
     Ok(raw)
 }
 
-fn build_member(member: &ComposedMember, lock: &ComponentLock) -> Member {
+fn build_member(member: &ComposedMember, lock: Option<&ComponentLock>) -> Member {
     Member {
         schema_version: SCHEMA_VERSION,
         target: member.target.triple().to_owned(),
@@ -722,22 +782,29 @@ fn build_member(member: &ComposedMember, lock: &ComponentLock) -> Member {
             size: member.updater.size,
             digest: member.updater.digest.clone(),
         },
-        a2a_component: A2aComponentOut {
-            commit: lock.a2a_source.commit.clone(),
-            release_identity: ReleaseIdentityOut {
-                name: lock.a2a_source.release_identity.name.clone(),
-                version: lock.a2a_source.release_identity.version.clone(),
-            },
-            component_lock: EvidenceOut {
-                path: member.a2a_component.component_lock.path.clone(),
-                digest: member.a2a_component.component_lock.digest.clone(),
-            },
-            runtime: BundledRuntimeOut {
-                root: member.a2a_component.runtime.root.clone(),
-                entrypoint: member.a2a_component.runtime.entrypoint.clone(),
-                file_count: member.a2a_component.runtime.file_count,
-            },
-        },
+        // The source pin still comes from the trusted `lock`, never from the
+        // caller: the composed member carries placed-byte evidence only, and the
+        // pair is emitted together or not at all.
+        a2a_component: member
+            .a2a_component
+            .as_ref()
+            .zip(lock)
+            .map(|(evidence, lock)| A2aComponentOut {
+                commit: lock.a2a_source.commit.clone(),
+                release_identity: ReleaseIdentityOut {
+                    name: lock.a2a_source.release_identity.name.clone(),
+                    version: lock.a2a_source.release_identity.version.clone(),
+                },
+                component_lock: EvidenceOut {
+                    path: evidence.component_lock.path.clone(),
+                    digest: evidence.component_lock.digest.clone(),
+                },
+                runtime: BundledRuntimeOut {
+                    root: evidence.runtime.root.clone(),
+                    entrypoint: evidence.runtime.entrypoint.clone(),
+                    file_count: evidence.runtime.file_count,
+                },
+            }),
         licenses: member
             .licenses
             .iter()
@@ -767,7 +834,11 @@ struct Member {
     release_manifest: ReleaseManifestRef,
     dashboard: DashboardOut,
     updater: UpdaterOut,
-    a2a_component: A2aComponentOut,
+    /// Omitted entirely when the tree carries no bundled runtime. This is the
+    /// one field the member manifest may leave out: every other field describes
+    /// something the tree always has.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    a2a_component: Option<A2aComponentOut>,
     licenses: Vec<LicenseOut>,
     sbom: SbomOut,
     file_digests: BTreeMap<String, String>,

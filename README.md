@@ -69,13 +69,17 @@ channel places the same set:
 | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `vaultspec`                               | The dashboard executable: engine, API, live event stream, and web interface in one native Rust binary. Run `vaultspec serve` from a managed worktree. The command prints a local URL. |
 | `vaultspec-updater`                       | A separate executable that installs a new release while the dashboard is stopped, so an update never rewrites files the running application holds open.                               |
-| The A2A runtime                           | A self-contained build of [vaultspec-a2a](https://github.com/nevenincs/vaultspec-a2a), the headless agent-to-agent orchestrator, including its own private Python interpreter.        |
-| Manifest, licenses, and bill of materials | The digest of every installed file, the pinned source identity of the A2A runtime, third-party license texts, and the software bill of materials (SBOM).                              |
+| Manifest, licenses, and bill of materials | The digest of every installed file, third-party license texts, and the software bill of materials (SBOM).                                                                             |
 
-This project builds the A2A runtime itself: it freezes one pinned revision of the
-vaultspec-a2a source into a self-contained directory and ships that directory inside the
-release. You don't install Python, and nothing downloads on first run. The tree is
-complete on its own, so the network is needed only to fetch the release.
+That list is the whole tree. No agent-to-agent runtime is bundled, and its absence is a
+decision rather than an omission: the dashboard resolves that runtime from
+`~/.vaultspec/a2a/generations/` in your home directory, never from its own install
+directory, and no shipped operation populates that location yet — adoption is declared
+but not implemented. Bundling one would therefore have added roughly 269 MB, the
+overwhelming majority of the download, for a directory the dashboard never reads. It
+returns to the release when adoption is implemented; until then the agent-to-agent
+capabilities are unavailable rather than half-present. Nothing downloads on first run
+either way, so the network is needed only to fetch the release.
 
 After placing the tree, every installer checks it against the release manifest with the
 shipped verifier, `vaultspec verify-release`. A tree that fails that check is a failed
@@ -219,7 +223,7 @@ in your project's Git repository, and per-user application state stays in `.vaul
 your home directory.
 
 > **Not supported: `cargo install` and `cargo binstall`.** Either would place only the
-> `vaultspec` binary, without the updater, the A2A runtime, the release manifest, or the
+> `vaultspec` binary, without the updater, the release manifest, or the
 > verification, update, and removal guarantees that depend on them. `vaultspec-cli` stays
 > off crates.io until a Cargo channel can carry the complete product. Use a channel from
 > the table instead.

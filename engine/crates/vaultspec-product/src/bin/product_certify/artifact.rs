@@ -18,8 +18,8 @@ use crate::RESTRICT_WALL;
 use crate::command::{CommandFailure, CommandLimits, run_bounded};
 use crate::{
     CaseError, DIGEST_CHUNK_BYTES, EMBEDDED_COMPONENT_LOCK, EXTRACT_OUTPUT_CAP, EXTRACT_WALL,
-    EvidenceGap, Invocation, MAX_ARCHIVE_BYTES, RELEASE_MANIFEST, describe_code, display,
-    exe_suffix,
+    EvidenceGap, Invocation, MAX_ARCHIVE_BYTES, MAX_MEMBER_MANIFEST_BYTES, RELEASE_MANIFEST,
+    describe_code, display, exe_suffix,
 };
 
 // The staged artifact
@@ -116,15 +116,75 @@ impl Artifact {
         }
     }
 
+    /// Whether this artifact's own member manifest declares a bundled a2a
+    /// runtime at all.
+    ///
+    /// Read from the installed manifest rather than inferred from a missing
+    /// file, because the two conditions mean opposite things: a manifest that
+    /// OMITS `a2a_component` describes a product built without the runtime, and
+    /// a manifest that DECLARES one over a tree that does not carry it describes
+    /// a broken install. Only the first is a reason to skip a runtime case.
+    pub(crate) fn declares_a2a_component(&self) -> Result<bool, CaseError> {
+        let manifest = self.tree_root.join(RELEASE_MANIFEST);
+        let size = std::fs::metadata(&manifest)
+            .map_err(|error| {
+                CaseError::failed(format!(
+                    "cannot read {RELEASE_MANIFEST} at {}: {error}",
+                    display(&manifest)
+                ))
+            })?
+            .len();
+        if size > MAX_MEMBER_MANIFEST_BYTES {
+            return Err(CaseError::failed(format!(
+                "{RELEASE_MANIFEST} is {size} bytes, above the {MAX_MEMBER_MANIFEST_BYTES}-byte bound"
+            )));
+        }
+        let raw = std::fs::read_to_string(&manifest).map_err(|error| {
+            CaseError::failed(format!("cannot read {RELEASE_MANIFEST}: {error}"))
+        })?;
+        let value: serde_json::Value = serde_json::from_str(&raw).map_err(|error| {
+            CaseError::failed(format!("{RELEASE_MANIFEST} is invalid: {error}"))
+        })?;
+        Ok(value.get("a2a_component").is_some())
+    }
+
+    /// The installed frozen A2A runtime a runtime case must drive, or the reason
+    /// there is nothing to drive.
+    ///
+    /// A product built WITHOUT the bundled runtime has no subject for such a
+    /// case, and says so in its own manifest: the case reports NOT APPLICABLE
+    /// and the run is not held back. A product that declares the runtime and
+    /// does not carry it is a real gap and still reports one.
+    pub(crate) fn required_a2a_runtime(&self) -> Result<PathBuf, CaseError> {
+        match self.a2a_runtime() {
+            Ok(path) => Ok(path),
+            Err(gap) => {
+                if self.declares_a2a_component()? {
+                    Err(gap.into())
+                } else {
+                    Err(CaseError::not_applicable(format!(
+                        "not applicable: no bundled runtime - {RELEASE_MANIFEST} declares no a2a_component, so this product carries no frozen A2A runtime to drive ({gap})"
+                    )))
+                }
+            }
+        }
+    }
+
     /// Bind a case to the real published artifact before it drives anything.
     ///
     /// A runtime case reasons about the installation the artifact establishes,
     /// so it must not certify a property against product state alone: without
     /// the real installed components there is no installation to certify, and
     /// the case reports its evidence unavailable instead.
+    ///
+    /// The bundled A2A runtime is deliberately NOT bound here. It is optional in
+    /// a composed product tree, so requiring it would turn every case that
+    /// merely needs a real installation into a case that needs a runtime; the
+    /// cases that genuinely drive one resolve it through
+    /// [`Self::required_a2a_runtime`], which distinguishes a product that never
+    /// carried one from an install that lost it.
     pub(crate) fn bind_to_real_components(&self) -> Result<(), CaseError> {
         self.dashboard()?;
-        self.a2a_runtime()?;
         Ok(())
     }
 

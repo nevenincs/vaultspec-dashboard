@@ -644,13 +644,17 @@ pub(super) fn verify_artifact_joins(
         manifest,
         observed,
     )?;
-    verify_digest_join(
-        "component lock",
-        &manifest.a2a_component.component_lock.path,
-        &manifest.a2a_component.component_lock.digest,
-        manifest,
-        observed,
-    )?;
+    // Joined only where it is declared: a member with no bundled runtime pins no
+    // component lock and the tree carries none, so there is no join to make.
+    if let Some(a2a) = &manifest.a2a_component {
+        verify_digest_join(
+            "component lock",
+            &a2a.component_lock.path,
+            &a2a.component_lock.digest,
+            manifest,
+            observed,
+        )?;
+    }
     verify_sized_join(
         "sbom",
         &manifest.sbom.path,
@@ -805,12 +809,17 @@ pub(super) fn read_installed_bounded(
 /// where the platform records modes, and the declared file count equals the number
 /// of installed files under the root, so a truncated or empty onedir cannot pass as
 /// a smaller tree that still verifies.
+///
+/// It takes the DECLARED runtime, not the whole member manifest: a member that
+/// declares no bundled runtime has no subtree to prove, and unwrapping is the
+/// caller's decision — a consumer that needs a runtime refuses outright rather
+/// than calling this with nothing.
 pub(super) fn verify_bundled_runtime(
-    release: &RawReleaseSetManifest,
+    runtime: &BundledRuntime,
+    file_digests: &BTreeMap<String, String>,
     observed: &BTreeMap<String, ObservedFile>,
 ) -> Result<()> {
-    let runtime = &release.a2a_component.runtime;
-    if !release.file_digests.contains_key(&runtime.entrypoint) {
+    if !file_digests.contains_key(&runtime.entrypoint) {
         return Err(ManifestError::MissingFile(format!(
             "bundled-runtime entrypoint {} is absent from file_digests",
             runtime.entrypoint

@@ -4,8 +4,9 @@
 # uninstall), with per-user product scope, manager-owned upgrade, and the
 # manager-owned rollback WinGet provides. The InstallerSha256 + ProductCode are
 # release-time facts (the MSI must exist) — placeholders here, reconciled when the
-# complete-MSI release publishes (gated on the product-release CI, which builds the
-# bundled A2A runtime from its pinned source). NEVER points at the binary-only archive.
+# complete-MSI release publishes. The tree that MSI carries is the dashboard, its
+# external updater, the release manifest, licenses, and the SBOM; no agent-to-agent
+# runtime is bundled. NEVER points at the binary-only archive.
 PackageIdentifier: vaultspec.vaultspec
 PackageVersion: 0.1.2
 InstallerType: wix

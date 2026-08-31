@@ -7,24 +7,23 @@
 # (dist-workspace.toml S73); this workflow produces the offline-complete product
 # artifacts Dist's binary-only installers do not.
 #
-# Per target it builds the dashboard + copied updater, BUILDS the pinned A2A
-# frozen onedir from source (2026-07-24 a2a-product-provisioning decision, D3:
-# checkout the pinned a2a commit, restore its locked freeze environment, run
-# a2a's in-repo build entry, which also smoke-tests the frozen dispatch
-# surface), and runs `product-build` to compose + self-verify the tree through
-# the S06 authority. The tree is archived as
-# `vaultspec-<version>-<target>.{tar.gz,zip}` + a sibling `.sha256`.
+# Per target it builds the dashboard + copied updater and runs `product-build`
+# to compose + self-verify the tree through the S06 authority. The tree is
+# archived as `vaultspec-<version>-<target>.{tar.gz,zip}` + a sibling `.sha256`.
 #
 # VERIFICATION REALITY: authored here; the real proof is a release-CI run on a
 # clean runner (the self-verify job below), not a local green.
 #
-# The compose step admits the frozen onedir as an ordinary build source: the
-# lock is a source pin, there is no capsule manifest to cross-verify, and the
-# onedir's files are digest-covered by the member manifest exactly like every
-# other installed file. Compose still fails loudly if the freeze step left no
-# onedir behind - it will never compose a tree with no runtime in it.
-# PyInstaller cannot cross-compile: the freeze leg requires a
-# native-architecture runner per target.
+# The A2A runtime is deliberately NOT built or bundled here. The compose step
+# below carries the reason and the condition that brings it back; read it there
+# before adding a freeze leg to this workflow.
+#
+# Runners are selected by OS *and* architecture, and the architecture half is
+# there for scheduling determinism alone: both self-hosted Linux runners carry
+# the auto-assigned `Linux` label, so an OS-only selector places the two Linux
+# targets nondeterministically. Nothing here is architecture-bound any more —
+# every build is a cargo build for an explicit `--target`, which succeeds from
+# any host — so no leg requires a native-architecture runner.
 
 name: Product Release
 
@@ -158,16 +157,23 @@ jobs:
           - { target: x86_64-unknown-linux-gnu, os: Linux, arch: X64, host: linux-x64, ext: tar.gz }
           - { target: aarch64-unknown-linux-gnu, os: Linux, arch: ARM64, host: apple-silicon, ext: tar.gz }
           - { target: aarch64-apple-darwin, os: macOS, arch: ARM64, host: apple-silicon, ext: tar.gz }
-    # Selection is by OS *and* architecture. Two Linux runners are registered
-    # and both carry the auto-assigned `Linux` label, so an OS-only selection
-    # would send the two Linux targets to machines nondeterministically. The
-    # arch guard below would catch that and fail the job loudly — but a guard
-    # that fires on every other release is not a working pipeline, and the
-    # correct fix is to schedule onto the right machine in the first place.
+    # Selection is by OS *and* architecture, and DETERMINISTIC SCHEDULING is the
+    # whole of the reason. Two Linux runners are registered and both carry the
+    # auto-assigned `Linux` label, so an OS-only selection would send the two
+    # Linux targets to machines nondeterministically — the same target landing
+    # on a different box run to run, and two legs able to collide on one.
+    #
+    # It is no longer a correctness requirement. It was, while this job froze a
+    # PyInstaller onedir per target: that cannot cross-compile, so an
+    # x86_64-scheduled aarch64 leg produced a mislabelled artifact. Nothing in
+    # this job is architecture-bound now — the cargo builds cross-compile from
+    # whatever host they land on — so a mis-scheduled leg would build correctly,
+    # just not where it was meant to. Keep the label anyway; scheduling that is
+    # reproducible is worth having on its own.
     runs-on: [self-hosted, "${{ matrix.os }}", "${{ matrix.arch }}"]
     # The two ARM legs share one physical machine — the macOS runner and a colima
     # Linux VM on the same Apple Silicon laptop — so scheduling them together
-    # runs two native freezes against 8 GiB of RAM, 6 GiB of which is reserved by
+    # runs two full builds against 8 GiB of RAM, 6 GiB of which is reserved by
     # the VM, on a host measured at 7.0 of 8.2 GB of swap in use while idle. This
     # is the heaviest of the four-target matrices; serialise that pair.
     #
@@ -234,78 +240,6 @@ jobs:
           cargo build --release --target ${{ matrix.target }} \
             -p vaultspec-cli -p vaultspec-updater --bin vaultspec --bin vaultspec-updater
           cargo build --release -p vaultspec-product --bin product_build
-      - name: Resolve pinned A2A commit
-        id: a2a
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "commit=$(jq -r '.a2a_source.commit' packaging/a2a-component.lock.json)" >> "$GITHUB_OUTPUT"
-      - name: Checkout pinned A2A source
-        uses: actions/checkout@v4
-        with:
-          repository: nevenincs/vaultspec-a2a
-          ref: ${{ steps.a2a.outputs.commit }}
-          path: a2a-src
-          persist-credentials: false
-      # Not `astral-sh/setup-uv`: that Node action aborts during teardown on the
-      # Windows runner with a libuv assertion AFTER reporting success, failing
-      # the job it just did the work for. This matrix has a Windows leg, so it
-      # would hit that on every release. uv is provisioned on the fleet; require
-      # it rather than installing it, and fail loudly if a runner lacks it.
-      - name: Require uv on the runner
-        shell: bash
-        run: |
-          set -euo pipefail
-          if ! command -v uv >/dev/null 2>&1; then
-            echo "::error::uv is not on PATH for this runner; the frozen runtime cannot be built without it" >&2
-            exit 1
-          fi
-          uv --version
-      # PyInstaller freezes for the architecture it RUNS on; it cannot
-      # cross-compile. The dashboard and updater are cargo cross-builds and will
-      # happily produce aarch64 binaries on an x86_64 box, but the runtime frozen
-      # beside them would be x86_64. That composes cleanly and verifies cleanly —
-      # the digests are honest about the bytes present — and then fails on real
-      # hardware. A mislabelled artifact is worse than an absent one, because
-      # nothing downstream catches it: every check verifies the tree against
-      # itself. So refuse here rather than ship a tree that lies about what it
-      # contains.
-      #
-      # The matrix above schedules every target onto a runner of its own
-      # architecture, so this guard passes on all four legs and prints the
-      # match. Keep it anyway: it is a check on the SCHEDULING, which is the
-      # part that drifts. Both Linux runners answer to the auto-assigned
-      # `Linux` label, so a single dropped architecture label is enough to
-      # re-open the mislabelling this step exists to prevent.
-      - name: Refuse to freeze for an architecture this runner is not
-        shell: bash
-        run: |
-          set -euo pipefail
-          case "${{ matrix.target }}" in
-            aarch64-*) want=arm64 ;;
-            x86_64-*)  want=x64 ;;
-            *) echo "::error::unhandled target ${{ matrix.target }}" >&2; exit 1 ;;
-          esac
-          case "$(uname -m)" in
-            aarch64|arm64) have=arm64 ;;
-            x86_64|amd64)  have=x64 ;;
-            *) have="$(uname -m)" ;;
-          esac
-          if [ "$want" != "$have" ]; then
-            echo "::error::${{ matrix.target }} needs a $want runner; this one is $have. The frozen runtime cannot be cross-compiled, so continuing would bundle a $have runtime inside an artifact labelled $want." >&2
-            exit 1
-          fi
-          echo "runner architecture $have matches ${{ matrix.target }}"
-      - name: Build + smoke the pinned A2A onedir
-        shell: bash
-        working-directory: a2a-src
-        run: |
-          set -euo pipefail
-          uv python install 3.13
-          uv sync --locked --no-default-groups --group freeze
-          uv run --no-sync --frozen python scripts/build_binary.py --dist dist/binary
-          # The build entry smoke-tests the frozen dispatch surface (version,
-          # help, run-module allowlist refusal) before this step reports green.
       - name: Compose + self-verify the product tree
         shell: bash
         run: |
@@ -314,31 +248,45 @@ jobs:
           target="${{ matrix.target }}"
           suffix=""; [ "${{ matrix.ext }}" = "zip" ] && suffix=".exe"
           gen_root="${PWD}/out/generations/0001"
-          # The onedir the freeze step above produced, admitted as an ordinary
-          # build source: a directory of regular files the builder places and
-          # scans for real installed-byte evidence, digest-covered by the member
-          # manifest like every other installed file. Fail loudly if the freeze
-          # step did not actually leave it here, rather than composing a tree
-          # with no runtime in it.
-          a2a_runtime="${PWD}/a2a-src/dist/binary/vaultspec-a2a"
-          test -d "$a2a_runtime" || {
-            echo "::error::the frozen A2A onedir is absent at ${a2a_runtime}; the freeze step did not produce it" >&2
-            exit 1
-          }
-          # The full-tree SBOM, generated here from the three lockfiles that
-          # define this build: the engine's Cargo.lock, the frontend's
-          # package-lock.json, and the a2a checkout's uv.lock. It is emitted per
-          # target but is byte-identical across all four by construction (no
-          # wall clock, sorted output), so `cohort-digest` still agrees. It
-          # lands under out/ beside the generation root rather than in the
-          # tracked packaging/ tree: it is a build product, and a generated file
-          # sitting in a source directory is one `git add -A` from being committed.
+          # The full-tree SBOM, generated here from the two lockfiles that
+          # define this build: the engine's Cargo.lock and the frontend's
+          # package-lock.json. It is emitted per target but is byte-identical
+          # across all four by construction (no wall clock, sorted output), so
+          # `cohort-digest` still agrees. It lands under out/ beside the
+          # generation root rather than in the tracked packaging/ tree: it is a
+          # build product, and a generated file sitting in a source directory is
+          # one `git add -A` from being committed.
           python3 packaging/gen-sbom.py \
             --version "$version" --commit "$(git rev-parse HEAD)" \
             --cargo-lock "${PWD}/engine/Cargo.lock" \
             --npm-lock "${PWD}/frontend/package-lock.json" \
-            --uv-lock "${PWD}/a2a-src/uv.lock" \
             --out "${PWD}/out/sbom.cdx.json"
+          # THE A2A RUNTIME IS DELIBERATELY ABSENT FROM THIS TREE. What gets
+          # composed is the dashboard, the updater, the release manifest, the
+          # licenses and the SBOM — 13-15 MB — and not the ~269 MB frozen a2a
+          # onedir this job used to build and bundle.
+          #
+          # It was bundled and INERT. The dashboard resolves its runtime from
+          # ~/.vaultspec/a2a/generations/<gen>/, never from the archive, and
+          # every lifecycle op that would populate that directory returns
+          # OpEffect::PendingImplementation. Nothing in the product could reach
+          # the bundled bytes, so shipping them bought 269 MB of download for a
+          # capability that does not exist yet.
+          #
+          # The absence is STATED, not faked. There is no stub a2a/ directory,
+          # no empty slot and no manifest entry: assemble-build-spec.py omits
+          # `sources.a2a` outright when the pair is not passed, and gen-sbom
+          # above is passed no --uv-lock because this build resolves no Python
+          # ecosystem to report.
+          #
+          # WHAT BRINGS IT BACK: runtime adoption — the lifecycle ops above
+          # populating the generation directory from a bundled onedir instead
+          # of returning PendingImplementation. Then restore the freeze steps
+          # (git history has them), pass --a2a-runtime with --lock here and
+          # --uv-lock to gen-sbom, and restore the native-architecture guard,
+          # because PyInstaller cannot cross-compile. Until adoption lands,
+          # adding the onedir back only re-adds the 269 MB.
+          #
           # (LICENSE is a release input — the repo LICENSE, sourced here as
           # ${PWD}/LICENSE. The SBOM is the file generated immediately above.)
           python3 packaging/assemble-build-spec.py \
@@ -347,10 +295,8 @@ jobs:
             --generation-root "$gen_root" \
             --dashboard "${ENGINE_TARGET_DIR}/${target}/release/vaultspec${suffix}" \
             --updater "${ENGINE_TARGET_DIR}/${target}/release/vaultspec-updater${suffix}" \
-            --a2a-runtime "$a2a_runtime" \
-            --lock "${PWD}/packaging/a2a-component.lock.json" \
             --sbom "${PWD}/out/sbom.cdx.json" \
-            --license vaultspec-a2a MIT "${PWD}/LICENSE" \
+            --license vaultspec MIT "${PWD}/LICENSE" \
             > build-spec.json
           "${ENGINE_TARGET_DIR}/release/product_build" build-spec.json
           echo "GEN_ROOT=${gen_root}" >> "$GITHUB_ENV"
@@ -565,8 +511,8 @@ jobs:
       channels: 'scoop winget'
       prior_version: ${{ needs.resolve-version.outputs.prior }}
 
-  # ATTACH. Without this job the complete product tree is built, arch-guarded,
-  # composed, self-verified, SBOM'd and digested - and then written only to an
+  # ATTACH. Without this job the complete product tree is built, composed,
+  # self-verified, SBOM'd and digested - and then written only to an
   # Actions artifact bucket, which expires. Every earlier release therefore
   # carried no complete-product archive at all, which is also why scoop-bump has
   # never succeeded: it points at `vaultspec-<version>-x86_64-pc-windows-msvc.zip`

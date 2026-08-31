@@ -117,6 +117,20 @@ pub(crate) fn verify_active_generation(
         &manifest.cohort.id,
     )?;
 
+    // This verifier exists to hand a caller a launchable runtime. A generation
+    // whose member manifest declares no bundled runtime has none to hand over,
+    // and the honest answer is a refusal naming that: every field below —
+    // the component-lock join, the runtime subtree, the entrypoint — describes
+    // something the tree does not carry, and fabricating any of them would put
+    // a path nobody can execute in front of a start.
+    let a2a = manifest
+        .a2a_component
+        .clone()
+        .ok_or_else(|| ManifestError::InvalidField {
+            field: "a2a_component".to_string(),
+            detail: "this generation carries no bundled a2a runtime, so no runtime can be started from it".to_string(),
+        })?;
+
     // The lock is joined to the RECEIPT before it is parsed or believed.
     let lock_bytes = read_installed_bounded(
         root,
@@ -134,12 +148,12 @@ pub(crate) fn verify_active_generation(
     expect_literal(
         "a2a_component.component_lock.path",
         COMPONENT_LOCK_PATH,
-        &manifest.a2a_component.component_lock.path,
+        &a2a.component_lock.path,
     )?;
     expect_digest(
         "a2a_component.component_lock.digest",
         &observed_lock_digest,
-        &manifest.a2a_component.component_lock.digest,
+        &a2a.component_lock.digest,
     )?;
     verify_release_lock_joins(&manifest, &lock)?;
 
@@ -154,13 +168,13 @@ pub(crate) fn verify_active_generation(
     // which file in it is launchable. A start resolves its program from this,
     // so an absent, truncated, or non-executable onedir must fail here rather
     // than at spawn.
-    verify_bundled_runtime(&manifest, observed)?;
+    verify_bundled_runtime(&a2a.runtime, &manifest.file_digests, observed)?;
 
     Ok(VerifiedActiveGeneration {
         release_set_identity: manifest.cohort.id,
         target: manifest.target,
-        a2a_identity: manifest.a2a_component.release_identity,
-        runtime_entrypoint: manifest.a2a_component.runtime.entrypoint.clone(),
+        a2a_identity: a2a.release_identity,
+        runtime_entrypoint: a2a.runtime.entrypoint,
         file_count: observed.len(),
     })
 }

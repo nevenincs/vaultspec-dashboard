@@ -9,8 +9,8 @@ repository.workspace = true
 rust-version.workspace = true
 # Withdrawn from crates.io, and with it from bare `cargo install` and
 # `cargo-binstall`: either would place only the `vaultspec` binary, never the
-# complete offline product tree (dashboard + external updater + the bundled A2A
-# runtime + manifests + licenses + SBOM + receipt), so neither can preserve the
+# complete offline product tree (dashboard + external updater + release manifest
+# + licenses + SBOM), so neither can preserve the
 # release-set, receipt, verification, update, and removal guarantees. Publication
 # stays withheld until a Cargo channel can carry the composite release contract;
 # the supported channels are the product-owned installers, the product MSI,

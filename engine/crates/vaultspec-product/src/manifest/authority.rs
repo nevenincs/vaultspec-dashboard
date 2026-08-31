@@ -263,6 +263,17 @@ impl<'generation, 'product, 'lock> VerifiedReleaseSet<'generation, 'product, 'lo
             });
         }
 
+        // A verified release set is the substrate a runtime is later started
+        // from, so a member declaring no bundled runtime is refused here rather
+        // than carried forward as receipt facts with an invented a2a identity.
+        let a2a = manifest
+            .a2a_component
+            .clone()
+            .ok_or_else(|| ManifestError::InvalidField {
+                field: "a2a_component".to_string(),
+                detail: "this release member carries no bundled a2a runtime, so no runtime can be started from it".to_string(),
+            })?;
+
         let component_lock_digest = hex::sha256(&authority.trusted_component_lock_bytes);
         expect_digest(
             "trusted_component_lock_bytes",
@@ -273,12 +284,12 @@ impl<'generation, 'product, 'lock> VerifiedReleaseSet<'generation, 'product, 'lo
         expect_literal(
             "a2a_component.component_lock.path",
             &authority.trusted_component_lock_path,
-            &manifest.a2a_component.component_lock.path,
+            &a2a.component_lock.path,
         )?;
         expect_digest(
             "a2a_component.component_lock.digest",
             &component_lock_digest,
-            &manifest.a2a_component.component_lock.digest,
+            &a2a.component_lock.digest,
         )?;
         verify_release_lock_joins(&manifest, &lock)?;
 
@@ -329,9 +340,9 @@ impl<'generation, 'product, 'lock> VerifiedReleaseSet<'generation, 'product, 'lo
         expect_literal(
             "a2a_component.runtime.root",
             &authority.trusted_capsule_root,
-            &manifest.a2a_component.runtime.root,
+            &a2a.runtime.root,
         )?;
-        verify_bundled_runtime(&manifest, observed)?;
+        verify_bundled_runtime(&a2a.runtime, &manifest.file_digests, observed)?;
 
         let final_snapshot = scan_generation(
             generation.path(),
@@ -361,7 +372,7 @@ impl<'generation, 'product, 'lock> VerifiedReleaseSet<'generation, 'product, 'lo
                     .receipt_external_cohort_digest
                     .clone(),
                 target: manifest.target,
-                a2a_identity: manifest.a2a_component.release_identity,
+                a2a_identity: a2a.release_identity,
                 active_generation,
                 channel,
                 bootstrap_created_ownership: bootstrap_created_ownership.get(),
