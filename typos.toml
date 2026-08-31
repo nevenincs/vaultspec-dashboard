@@ -42,6 +42,7 @@ extend-ignore-identifiers-re = ["\\b[0-9a-f]{7,64}\\b"]
   [default.extend-words]
   # Domain / tool vocabulary that is correct in this project (enumerated from the
   # first full run, 2026-06-13). Extend deliberately as real domain terms surface.
+  BRE = "BRE"                 # POSIX Basic Regular Expression, paired with ERE in the ci prose
   ND = "ND"                   # Myers O(ND) diff-algorithm complexity class (diffLines.ts)
   alls = "alls"               # vitest beforeAll pluralized in prose ("beforeAlls")
   gir = "gir"                 # audit finding prefix (graph-implementation-review GIR-xxx)
