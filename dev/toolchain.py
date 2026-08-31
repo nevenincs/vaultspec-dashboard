@@ -272,12 +272,26 @@ AUDIT = Verb(
                 ),
             ),
         ),
+        # Same rule as `python` above, applied to the SPA: what reaches a user
+        # is the built bundle embedded in the engine binary, so the runtime
+        # dependency tree is the one that gates. Build tooling is audited too
+        # and stays visible, but an advisory there is a maintenance signal
+        # about our own build box, not a reason to refuse a release. CI has
+        # drawn this line since the job was written - `npm audit --omit=dev`
+        # gating, the full tree `continue-on-error` - and this target gated on
+        # the full tree, so `just audit all` went red over build-time
+        # advisories that no release is blocked on.
         "node": Target(
-            "Audit the SPA's dependencies.",
+            "Audit the SPA's shipped dependencies.",
+            (Cmd(("npm", "--prefix", "frontend", "audit", "--omit=dev")),),
+        ),
+        "node-tooling": Target(
+            "ADVISORY. Report advisories against the SPA's build tooling.",
             (Cmd(("npm", "--prefix", "frontend", "audit")),),
         ),
         "all": Target(
-            "Every supply-chain audit.",
+            "Every gating supply-chain audit. Advisory 'node-tooling' is "
+            "deliberately excluded.",
             (
                 Echo("=== python ==="),
                 Ref("python"),
