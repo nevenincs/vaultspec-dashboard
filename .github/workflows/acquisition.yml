@@ -118,7 +118,7 @@ jobs:
       # ARM64 machine - where the loader rejects it for being the wrong
       # ARCHITECTURE while the job reports a glibc failure. The leg stays red,
       # so nothing looks broken, and it tests nothing.
-      - name: Acquire the published archive
+      - name: Resolve the release and the asset this leg needs
         shell: bash
         env:
           REPO: ${{ github.repository }}
@@ -137,11 +137,84 @@ jobs:
             exit 1
           fi
           archive="vaultspec-cli-${TRIPLE}.tar.xz"
-          echo "acquiring ${archive} from ${tag}"
+          {
+            echo "TAG=${tag}"
+            echo "ARCHIVE=${archive}"
+            echo "ASSET_URL=https://github.com/${REPO}/releases/download/${tag}/${archive}"
+          } >> "$GITHUB_ENV"
+          echo "resolved ${archive} on ${tag}"
+
+      # `release: published` FIRES BEFORE THE ASSETS EXIST. The release object is
+      # created and published by release-please; the archives are uploaded later
+      # by the Release workflow's `host` job, which has to build four targets
+      # first. So this workflow is started, by design, against a release that is
+      # still empty.
+      #
+      # v0.1.9 is what that looks like. The release published at 23:58:15, this
+      # workflow started at 23:58:16, and the Release run that would upload the
+      # assets started at 23:58:17 - one second AFTER the consumer went looking
+      # for its output. All three aarch64 legs failed on the download; the three
+      # x86_64 legs had not been scheduled yet and so were never affected.
+      #
+      # That split is the tell, and it is worth stating because it looks like an
+      # architecture bug and is not one: the aarch64 legs run on GitHub-hosted
+      # runners and start immediately, while the x86_64 legs queue behind a
+      # single self-hosted machine. The hosted legs lose the race precisely
+      # BECAUSE they are fast. Whether this workflow passed would otherwise
+      # depend on how deep the runner queue happened to be, which is not a
+      # property of the release at all.
+      #
+      # WAIT ON THE ASSET ITSELF, not on a proxy for it. The condition this leg
+      # depends on is "the file I am about to download is fetchable", so the
+      # honest test is to ask for it - a ranged GET of the first byte, through
+      # the real download URL, following the same redirect the download follows.
+      # Waiting on the Release workflow's run status instead would be a proxy
+      # that can report success before an upload is visible, and a fixed sleep
+      # answers a question nobody asked. A sibling project reached this the long
+      # way, through two proxies that each passed while the artefact was still
+      # unresolvable.
+      #
+      # THE BUDGET RUNNING OUT IS A FAILURE, not a skip. An asset that never
+      # arrives means publication did not complete or the release is genuinely
+      # bad, and both are things this workflow exists to report. The message
+      # names the asset so the leg cannot be misread as a timeout in the check.
+      - name: Wait for the asset to be published
+        shell: bash
+        run: |
+          set -u
+          # Long enough to cover a full four-target release build on a queue this
+          # workflow does not control. The reported duration is MEASURED rather
+          # than restated from this constant, so the message cannot drift out of
+          # agreement with the budget it describes.
+          budget=2700
+          started=$(date +%s)
+          deadline=$(( started + budget ))
+          attempt=0
+          while :; do
+            attempt=$(( attempt + 1 ))
+            code=$(curl -sS -L -o /dev/null -w '%{http_code}' --range 0-0 "${ASSET_URL}" 2>/dev/null || echo "000")
+            # 206 for a served range, 200 for a server that ignores Range.
+            if [ "${code}" = "206" ] || [ "${code}" = "200" ]; then
+              echo "${ARCHIVE} is published (HTTP ${code}, attempt ${attempt})"
+              exit 0
+            fi
+            if [ "$(date +%s)" -ge "${deadline}" ]; then
+              waited=$(( ($(date +%s) - started) / 60 ))
+              echo "::error::${ARCHIVE} never appeared on ${TAG} (last HTTP ${code}, ${attempt} attempts over ${waited}m). Either the Release workflow did not finish uploading it, or this release does not carry it." >&2
+              exit 1
+            fi
+            echo "waiting for ${ARCHIVE} on ${TAG} (HTTP ${code}, attempt ${attempt})"
+            sleep 30
+          done
+
+      - name: Acquire the published archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "acquiring ${ARCHIVE} from ${TAG}"
           mkdir -p /opt/acq
-          curl -fsSL -o "/opt/acq/${archive}" \
-            "https://github.com/${REPO}/releases/download/${tag}/${archive}"
-          tar -xf "/opt/acq/${archive}" -C /opt/acq
+          curl -fsSL -o "/opt/acq/${ARCHIVE}" "${ASSET_URL}"
+          tar -xf "/opt/acq/${ARCHIVE}" -C /opt/acq
           # The archive expands into a directory named for the asset; the binary
           # inside is plainly `vaultspec`, which is what a user ends up running.
           find /opt/acq -type f -name vaultspec -exec cp {} /opt/acq/vaultspec \; -quit
