@@ -1,11 +1,12 @@
 {
   "matrix_version": "1.0",
-  "description": "The explicit four-target by channel support matrix for the composite A2A product (dashboard executable + adjacent bundled A2A runtime as one release set). Every supported channel installs the SAME logical release set (ADR constraint). `support_status` is `supported` (product-owned, proven), `feasibility_gated` (a package-manager channel whose support is contingent on the phase-zero clean-machine install/upgrade/downgrade/repair/uninstall proof in `.github/workflows/a2a-channel-feasibility.yml` — a channel without a proven reversible adapter is NOT a supported update channel, ADR D2), or `unsupported` (with a reason). Self-installed copies let the external updater helper own file activation and rollback; package-manager-owned copies use a two-phase adapter (manager stages/activates/rolls back; the product helper does preflight/drain/snapshot/verify).",
+  "description": "The explicit four-target by channel support matrix for the composite A2A product (dashboard executable + adjacent bundled A2A runtime as one release set). Every supported channel installs the SAME logical release set (ADR constraint). `support_status` is `supported` (product-owned, proven), `feasibility_gated` (a package-manager channel whose support is contingent on the phase-zero clean-machine install/upgrade/downgrade/repair/uninstall proof in `.github/workflows/a2a-channel-feasibility.yml` — a channel without a proven reversible adapter is NOT a supported update channel, ADR D2), or `unsupported` (with a reason). Self-installed copies let the external updater helper own file activation and rollback; package-manager-owned copies use a two-phase adapter (manager stages/activates/rolls back; the product helper does preflight/drain/snapshot/verify). Homebrew is served as a FORMULA (not a cask): cask-on-Linux is limited to portable artifact types and brew's `quarantine` stanza has been removed, so an un-notarized CLI delivered as a cask would be unconditionally quarantined. The formula installs the same complete-product tarball as one tree under `libexec`, exposing only the `vaultspec` command on PATH. Homebrew's three targets stay `feasibility_gated`: the phase-zero proof workflow is Windows-target hardcoded today, so no clean-machine brew install/upgrade/downgrade/uninstall pass has been recorded.",
   "channels": [
     "self-install",
     "msi",
     "scoop",
     "winget",
+    "homebrew",
     "cargo-binstall",
     "cargo-install"
   ],
@@ -46,6 +47,15 @@
         "downgrade_path": "winget manager downgrade (declared adapter)",
         "rollback_path": "adapter transaction rollback + mutable-state and prior-receipt restore",
         "unsupported_reason": null
+      },
+      "homebrew": {
+        "support_status": "unsupported",
+        "payload_type": null,
+        "installer_authority": null,
+        "updater_authority": null,
+        "downgrade_path": null,
+        "rollback_path": null,
+        "unsupported_reason": "Homebrew does not serve Windows; a brew under WSL is a Linux install and is served by the Linux targets"
       },
       "cargo-binstall": {
         "support_status": "unsupported",
@@ -103,6 +113,15 @@
         "rollback_path": null,
         "unsupported_reason": "WinGet is a Windows-only package manager"
       },
+      "homebrew": {
+        "support_status": "feasibility_gated",
+        "payload_type": "complete-product-tarball",
+        "installer_authority": "homebrew",
+        "updater_authority": "homebrew-two-phase-adapter",
+        "downgrade_path": "homebrew manager downgrade (declared adapter)",
+        "rollback_path": "adapter transaction rollback + mutable-state and prior-receipt restore",
+        "unsupported_reason": null
+      },
       "cargo-binstall": {
         "support_status": "unsupported",
         "payload_type": "binary-only",
@@ -159,6 +178,15 @@
         "rollback_path": null,
         "unsupported_reason": "WinGet is a Windows-only package manager"
       },
+      "homebrew": {
+        "support_status": "feasibility_gated",
+        "payload_type": "complete-product-tarball",
+        "installer_authority": "homebrew",
+        "updater_authority": "homebrew-two-phase-adapter",
+        "downgrade_path": "homebrew manager downgrade (declared adapter)",
+        "rollback_path": "adapter transaction rollback + mutable-state and prior-receipt restore",
+        "unsupported_reason": null
+      },
       "cargo-binstall": {
         "support_status": "unsupported",
         "payload_type": "binary-only",
@@ -214,6 +242,15 @@
         "downgrade_path": null,
         "rollback_path": null,
         "unsupported_reason": "WinGet is a Windows-only package manager"
+      },
+      "homebrew": {
+        "support_status": "feasibility_gated",
+        "payload_type": "complete-product-tarball",
+        "installer_authority": "homebrew",
+        "updater_authority": "homebrew-two-phase-adapter",
+        "downgrade_path": "homebrew manager downgrade (declared adapter)",
+        "rollback_path": "adapter transaction rollback + mutable-state and prior-receipt restore",
+        "unsupported_reason": null
       },
       "cargo-binstall": {
         "support_status": "unsupported",

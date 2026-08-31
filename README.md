@@ -193,6 +193,24 @@ today and this product is not.
 
 **WinGet** (Windows): `winget install vaultspec.vaultspec` installs the same MSI.
 
+**Homebrew** (macOS on Apple Silicon; Linux on x86-64 and arm64):
+
+```console
+brew tap nevenincs/tap
+brew install nevenincs/tap/vaultspec
+```
+
+`brew tap nevenincs/tap` resolves to the same organisation tap by convention, so
+unlike Scoop it needs no explicit URL. The product ships as a **formula**, not a
+cask: cask-on-Linux is restricted to portable artifact types, and brew's
+`quarantine` opt-out has been removed, so a cask would hand macOS users a
+quarantined un-notarized binary. The formula places the whole release tree under
+the Cellar's `libexec` and puts only the `vaultspec` command on PATH, so the
+updater, licences, `release.json` and the SBOM stay beside the binary where
+`vaultspec verify-release` can find them. Intel Mac is not served - there is no
+`x86_64-apple-darwin` build. Like Scoop, this channel stays *pending proof*
+until a release actually publishes a formula to the tap.
+
 #### Updating
 
 How you update depends on how you installed.
@@ -206,6 +224,11 @@ How you update depends on how you installed.
 - **Scoop or WinGet:** update through the manager — `scoop update vaultspec` or
   `winget upgrade vaultspec.vaultspec`. `vaultspec update` refuses on a
   manager-installed copy and names the command to run instead.
+- **Homebrew:** `brew upgrade vaultspec`, and `brew uninstall vaultspec` to
+  remove it. Do not run `vaultspec update` on a Homebrew copy: it does *not*
+  refuse there — the only thing it checks is whether `vaultspec-updater` sits
+  beside the dashboard, and the formula installs them as siblings — so it would
+  hand a release transaction to a helper that rewrites files Homebrew owns.
 
 #### Removing it, and what stays
 
