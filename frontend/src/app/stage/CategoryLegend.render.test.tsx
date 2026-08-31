@@ -74,7 +74,8 @@ function describeServedTiers(client: ReturnType<typeof testQueryClient>): string
   const notes: string[] = [];
   for (const tier of CANONICAL_TIERS) {
     const state = merged[tier];
-    if (state === undefined) notes.push(`${tier}: ABSENT from the block (no reason carried)`);
+    if (state === undefined)
+      notes.push(`${tier}: ABSENT from the block (no reason carried)`);
     else if (state.available === false)
       notes.push(`${tier}: unavailable - ${state.reason ?? "(no reason given)"}`);
   }
