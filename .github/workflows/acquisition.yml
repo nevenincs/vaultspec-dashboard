@@ -28,8 +28,28 @@
 name: Acquisition
 
 on:
-  release:
-    types: [published]
+  # TRIGGERED BY THE PRODUCER FINISHING, not by the release being created.
+  #
+  # `release: published` fires when release-please publishes the release object,
+  # which is BEFORE the Release workflow has built or uploaded anything. On
+  # v0.1.9 that ordering was: release published at 23:58:15, this workflow
+  # started at 23:58:16, and the run that uploads the assets started at
+  # 23:58:17. The consumer went looking one second before the producer began.
+  #
+  # Waiting on the asset (below) fixes the correctness of that, but not the
+  # cost: on this fleet the Release run can sit QUEUED for hours behind one
+  # self-hosted machine, so a wait long enough to be reliable is a wait long
+  # enough to be useless, and a check that goes red on every release because of
+  # queue depth is a check people stop reading.
+  #
+  # So the trigger waits for Release to COMPLETE, and the asset probe below
+  # still decides whether to proceed. The `workflow_run` event is only choosing
+  # WHEN TO START LOOKING; it is never the authority on whether the artefact is
+  # there. That distinction is the whole design - a proxy used as a scheduler is
+  # sound, a proxy used as evidence is not.
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
   # WEEKLY, because the answer can change without a release. Nothing in this
   # repository was scheduled before this - no workflow used `schedule` at all -
   # so every check here answered only for the commit that triggered it, and a
@@ -54,12 +74,24 @@ permissions:
   contents: read
 
 concurrency:
-  group: acquisition-${{ github.event.release.tag_name || inputs.tag || github.ref }}
+  group: acquisition-${{ github.event.workflow_run.head_branch || inputs.tag || github.ref }}
   cancel-in-progress: true
 
 jobs:
   acquire:
     name: acquire ${{ matrix.arch }} on ${{ matrix.image }}
+    # A FAILED Release IS NOT THIS WORKFLOW'S FINDING TO REPORT. `workflow_run`
+    # fires on completion whatever the conclusion, so without this gate a
+    # Release that failed to build would be followed by six legs reporting that
+    # an asset "never appeared" - attributing a build failure to distribution,
+    # in six red legs, next to the one red run that already said it properly.
+    # A release whose build failed has no assets by definition, and
+    # `verify-release-assets` in release.yml is what reports an empty release.
+    # The schedule and manual dispatch are unaffected, which is what keeps a
+    # deliberate look at a known-bad release available.
+    if: >-
+      github.event_name != 'workflow_run'
+      || github.event.workflow_run.conclusion == 'success'
     strategy:
       fail-fast: false
       matrix:
@@ -122,12 +154,34 @@ jobs:
         shell: bash
         env:
           REPO: ${{ github.repository }}
-          EVENT_TAG: ${{ github.event.release.tag_name }}
+          # For a Release run started by a tag push, `head_branch` carries the
+          # TAG, which is the release this acquisition is about. It is remote
+          # input either way, so it is shape-checked below before it reaches a
+          # URL rather than trusted for being ours.
+          EVENT_TAG: ${{ github.event.workflow_run.head_branch }}
           INPUT_TAG: ${{ inputs.tag }}
           TRIPLE: ${{ matrix.triple }}
         run: |
           set -euo pipefail
           tag="${EVENT_TAG:-${INPUT_TAG:-}}"
+          # A Release run can be started by something other than a tag push - a
+          # dispatch, or a pull request under `pr-run-mode` - and then
+          # `head_branch` is a branch name, not a release. Falling back to the
+          # latest release is right for those: it is the release a user would
+          # get today, which is the thing worth proving loads.
+          #
+          # Character check FIRST, shape check second, and the order is the
+          # point. A shell glob's `*` matches slashes and dots, so a version
+          # shape alone admits `v0.1.9/../../x` - which is a path traversal into
+          # a URL this step is about to build. Rejecting anything outside the
+          # safe set closes that before the shape is even considered.
+          case "${tag}" in
+            *[!0-9A-Za-z.+-]*) tag="" ;;
+          esac
+          case "${tag}" in
+            v[0-9]*.[0-9]*.[0-9]*) ;;
+            *) tag="" ;;
+          esac
           if [ -z "${tag}" ]; then
             tag=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
               | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)
@@ -144,35 +198,28 @@ jobs:
           } >> "$GITHUB_ENV"
           echo "resolved ${archive} on ${tag}"
 
-      # `release: published` FIRES BEFORE THE ASSETS EXIST. The release object is
-      # created and published by release-please; the archives are uploaded later
-      # by the Release workflow's `host` job, which has to build four targets
-      # first. So this workflow is started, by design, against a release that is
-      # still empty.
+      # ASK FOR THE ASSET, do not infer it. The trigger established that the
+      # producer finished; it did not establish that this file exists. A green
+      # Release that uploaded nothing looks identical, from the trigger's side,
+      # to one that uploaded everything - and an empty release is precisely what
+      # this workflow is here to catch rather than assume away.
       #
-      # v0.1.9 is what that looks like. The release published at 23:58:15, this
-      # workflow started at 23:58:16, and the Release run that would upload the
-      # assets started at 23:58:17 - one second AFTER the consumer went looking
-      # for its output. All three aarch64 legs failed on the download; the three
-      # x86_64 legs had not been scheduled yet and so were never affected.
+      # The condition each leg depends on is "the file I am about to download is
+      # fetchable", so the test is to ask for it: a ranged GET of the first byte,
+      # through the real download URL, following the same redirect the download
+      # follows. Not a HEAD against a different path, not a listing that agrees
+      # with it, not a sleep. A sibling project arrived here the long way,
+      # through two proxies that each reported success while the artefact was
+      # still unresolvable.
       #
-      # That split is the tell, and it is worth stating because it looks like an
-      # architecture bug and is not one: the aarch64 legs run on GitHub-hosted
-      # runners and start immediately, while the x86_64 legs queue behind a
-      # single self-hosted machine. The hosted legs lose the race precisely
-      # BECAUSE they are fast. Whether this workflow passed would otherwise
-      # depend on how deep the runner queue happened to be, which is not a
-      # property of the release at all.
-      #
-      # WAIT ON THE ASSET ITSELF, not on a proxy for it. The condition this leg
-      # depends on is "the file I am about to download is fetchable", so the
-      # honest test is to ask for it - a ranged GET of the first byte, through
-      # the real download URL, following the same redirect the download follows.
-      # Waiting on the Release workflow's run status instead would be a proxy
-      # that can report success before an upload is visible, and a fixed sleep
-      # answers a question nobody asked. A sibling project reached this the long
-      # way, through two proxies that each passed while the artefact was still
-      # unresolvable.
+      # One thing this must never do is fail per-architecture for a reason that
+      # is not architectural. Before the trigger changed, the aarch64 legs failed
+      # this download while the x86_64 legs did not - not because of the
+      # binaries, but because the aarch64 legs run on hosted runners and start
+      # immediately while the x86_64 legs queue behind one self-hosted machine.
+      # The hosted legs lost the race by being fast. Any future change here
+      # should keep the timing question separate from the loader question below,
+      # so a scheduling artefact can never be read as a floor regression.
       #
       # THE BUDGET RUNNING OUT IS A FAILURE, not a skip. An asset that never
       # arrives means publication did not complete or the release is genuinely
@@ -182,17 +229,32 @@ jobs:
         shell: bash
         run: |
           set -u
-          # Long enough to cover a full four-target release build on a queue this
-          # workflow does not control. The reported duration is MEASURED rather
-          # than restated from this constant, so the message cannot drift out of
-          # agreement with the budget it describes.
-          budget=2700
+          # A BACKSTOP FOR VISIBILITY LAG, not a wait for the build. The trigger
+          # already waits for Release to finish, so by the time this runs the
+          # upload has happened and the only gap left is the seconds between an
+          # upload completing and the asset being fetchable. Ten minutes is
+          # generous for that and short enough that a genuine absence is
+          # reported promptly rather than after most of an hour.
+          #
+          # It is deliberately still here. The trigger says the producer
+          # finished; only this says the artefact exists, and a green Release
+          # that uploaded nothing is exactly the failure this must catch rather
+          # than infer away.
+          #
+          # The reported duration is MEASURED rather than restated from this
+          # constant, so the message cannot drift out of agreement with it.
+          budget=600
           started=$(date +%s)
           deadline=$(( started + budget ))
           attempt=0
           while :; do
             attempt=$(( attempt + 1 ))
-            code=$(curl -sS -L -o /dev/null -w '%{http_code}' --range 0-0 "${ASSET_URL}" 2>/dev/null || echo "000")
+            # `-w` writes the status itself, including `000` when the request
+            # never got one, so curl's exit status is not consulted. An earlier
+            # `|| echo "000"` did consult it and CONCATENATED onto what -w had
+            # already written, reporting "HTTP 206000" for a perfectly good 206.
+            code=$(curl -sS -L -o /dev/null -w '%{http_code}' --range 0-0 "${ASSET_URL}" 2>/dev/null)
+            [ -n "${code}" ] || code="000"
             # 206 for a served range, 200 for a server that ignores Range.
             if [ "${code}" = "206" ] || [ "${code}" = "200" ]; then
               echo "${ARCHIVE} is published (HTTP ${code}, attempt ${attempt})"
