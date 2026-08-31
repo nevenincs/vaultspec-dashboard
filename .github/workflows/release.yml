@@ -49,8 +49,139 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Run 'dist plan' (or host) to determine what tasks we need to do
+  # Hand-set for the self-hosted fleet; re-apply if `dist generate-ci` regenerates this file.
+  #
+  # Refuse to start a release whose runners cannot serve it.
+  #
+  # v0.1.9 is why. It was tagged at 23:58 and became `releases/latest` with zero
+  # assets; `build-local-artifacts (aarch64-apple-darwin)` then sat QUEUED until
+  # 04:44 - 4h46m - waiting on a host that serves runners only on AC. Nothing
+  # timed it out, because a queued job is not bounded by `timeout-minutes`. The
+  # installers fetch from the release, so for that whole window they resolved to
+  # nothing.
+  #
+  # The failure is silent and MISATTRIBUTABLE, which is the real cost: a queued
+  # job and a busy fleet look identical from the outside, and this queue was read
+  # as fleet contention for over an hour before anyone opened the run.
+  #
+  # HOSTED, deliberately: a preflight that needs the fleet cannot report that the
+  # fleet is down. It is the only job in this file that does not run on it.
+  preflight:
+    name: Preflight runners
+    runs-on: ubuntu-latest
+    steps:
+      # Only what the steps below read, only this commit.
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          sparse-checkout: |
+            .github/actions/preflight-runners
+            .github/workflows/release.yml
+            dist-workspace.toml
+          sparse-checkout-cone-mode: false
+
+      - name: Derive the selectors this workflow schedules onto
+        id: derive
+        shell: bash
+        run: |
+          set -uo pipefail
+          workflow=".github/workflows/release.yml"
+          config="dist-workspace.toml"
+          for f in "${workflow}" "${config}"; do
+            [ -f "${f}" ] || { echo "::error::${f} not checked out; cannot derive selectors" >&2; exit 1; }
+          done
+
+          # DERIVED, not hand-listed. A list that must be edited in lockstep with
+          # a matrix eventually is not: the sibling project shipped a hand-kept
+          # list that outlived its matrix twice, and the second time it reported
+          # a false partial on a release every leg could serve.
+          #
+          # Two sources, because there are two KINDS of selector here and only
+          # one of them is in this file:
+          #
+          #   1. The build matrix. Its `runs-on` is a dist-computed expression,
+          #      so there is nothing in this workflow to read. dist takes those
+          #      values verbatim from the github-custom-runners table in
+          #      dist-workspace.toml, so that table IS the matrix. Read the same
+          #      file dist reads.
+          #   2. Every other job, which carries a literal label list right here.
+          #
+          # Both readings assume a shape, so both assert it. A derivation that
+          # silently describes something the file no longer says is worse than no
+          # derivation, because it still prints a confident ok.
+          #
+          # The braces below are escaped so this stays a bash string: Actions
+          # expands a bare expression inside `run:` before bash ever sees it, and
+          # the guard would then be matching the empty string against itself.
+          grep -qE 'runs-on:[[:space:]]*\$\{\{[[:space:]]*matrix\.runner[[:space:]]*\}\}' "${workflow}" || {
+            echo "::error::${workflow} no longer selects its build matrix through matrix.runner; the dist-workspace.toml table may no longer be the matrix. Re-check this derivation." >&2
+            exit 1
+          }
+          grep -qE '^[[:space:]]*\[dist\.github-custom-runners\]' "${config}" || {
+            echo "::error::${config} has no [dist.github-custom-runners] table; dist would emit its default hosted runners and this derivation would miss every build leg." >&2
+            exit 1
+          }
+
+          mapfile -t selectors < <(
+            {
+              # Literal label lists. Templated ones are skipped - parsing one
+              # would yield a selector containing an unexpanded expression, which
+              # matches no runner and reads as a real failure.
+              grep -v '\$\{\{' "${workflow}" |
+                awk -F'[][]' '/^[[:space:]]*runs-on:[[:space:]]*\[/ && NF > 2 {print $2}' |
+                tr -d ' ' | tr '[:upper:]' '[:lower:]'
+              # The dist table, in BOTH of the forms it accepts: the short
+              # `<target> = "<label>"` directly under the table, and the expanded
+              # `[dist.github-custom-runners.<target>]` sub-table, where the
+              # label is `runner` and the neighbouring `host` and `container`
+              # keys must not be mistaken for one. Both forms are in use here -
+              # the Linux legs moved to the expanded form when they gained
+              # digest-pinned manylinux containers.
+              awk '
+                function value(s) {
+                  sub(/^[^=]*=[[:space:]]*/, "", s)
+                  sub(/[[:space:]]*#.*$/, "", s)
+                  gsub(/"/, "", s)
+                  gsub(/[[:space:]]/, "", s)
+                  return tolower(s)
+                }
+                /^[[:space:]]*\[dist\.github-custom-runners\][[:space:]]*$/ { mode = "short"; next }
+                /^[[:space:]]*\[dist\.github-custom-runners\./              { mode = "expanded"; next }
+                /^[[:space:]]*\[/                                           { mode = ""; next }
+                mode == "short" && /^[[:space:]]*[A-Za-z0-9_.-]+[[:space:]]*=/ { v = value($0); if (length(v)) print v; next }
+                mode == "expanded" && /^[[:space:]]*runner[[:space:]]*=/       { v = value($0); if (length(v)) print v; next }
+              ' "${config}"
+            } | sort -u
+          )
+          if [ "${#selectors[@]}" -eq 0 ]; then
+            echo "::error::derived no runner selector from ${workflow} or ${config}; refusing to pass vacuously" >&2
+            exit 1
+          fi
+          {
+            echo "selectors<<SELECTORS_EOF"
+            printf '%s\n' "${selectors[@]}"
+            echo "SELECTORS_EOF"
+          } >> "${GITHUB_OUTPUT}"
+
+      # Hosted selectors among the above - this repository's aarch64 Linux leg
+      # builds on `ubuntu-24.04-arm` - are reported and skipped by the action:
+      # `actions/runners` lists self-hosted runners only, so checking a hosted
+      # label would fail every release for a runner that is always available.
+      - uses: ./.github/actions/preflight-runners
+        with:
+          selectors: ${{ steps.derive.outputs.selectors }}
+          # A PAT with `administration: read` if configured; the default token
+          # otherwise. Without the PAT this check is blind and says so.
+          token: ${{ secrets.FLEET_PREFLIGHT_TOKEN || secrets.GITHUB_TOKEN }}
+          # Enforce only when a tag is publishing. This workflow also runs on
+          # every pull request, and dist's pr-run-mode is `plan`, so no PR builds
+          # an artifact or needs the build fleet. Failing PRs because a laptop is
+          # on battery would be a worse bug than the one this job fixes, and it
+          # would train everyone to ignore the check.
+          enforce: ${{ github.event_name == 'push' }}
+
   plan:
+    needs: preflight
     # Hand-set for the self-hosted fleet; re-apply if `dist generate-ci` regenerates this file.
     runs-on: [self-hosted, Linux, X64]
     outputs:

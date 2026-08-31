@@ -59,66 +59,92 @@ jobs:
     name: Preflight runners
     runs-on: ubuntu-latest
     steps:
-      - name: Every target selector has an online runner
+      # Only what the steps below read, only this commit.
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          sparse-checkout: |
+            .github/actions/preflight-runners
+            .github/workflows/product-release.yml
+          sparse-checkout-cone-mode: false
+
+      - name: Derive the selectors this workflow schedules onto
+        id: derive
         shell: bash
-        env:
-          # A PAT with `administration: read` if one is configured; the default
-          # GITHUB_TOKEN otherwise. The default token CANNOT read
-          # `actions/runners` - that endpoint needs admin - so without the PAT
-          # this check is unobservable and says so rather than guessing.
-          GH_TOKEN: ${{ secrets.FLEET_PREFLIGHT_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
-          # NOT `set -e`. An unobservable preflight must not fail the release:
-          # the `gh api` below returns 403 under the default GITHUB_TOKEN, and
-          # under `set -e` that aborted the step, skipped the attach job, and
-          # refused v0.1.6 for a permissions gap that has nothing to do with the
-          # fleet. A check that cannot tell "no runner" from "cannot see
-          # runners" must not be allowed to speak for the first.
           set -uo pipefail
-          if ! runners=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runners" --jq '.runners[] | [.status, ([.labels[].name] | map(ascii_downcase) | join(","))] | @tsv' 2>&1); then
-            echo "::warning::preflight cannot read the runner list: ${runners}"
-            echo "::warning::The default GITHUB_TOKEN cannot read actions/runners. Set FLEET_PREFLIGHT_TOKEN to a PAT with administration:read to enable this check."
-            echo "::warning::SKIPPING - unobservable is not the same as unserviceable, and refusing a release on a blind check is worse than not checking."
-            exit 0
-          fi
-          if [ -z "${runners}" ]; then
-            echo "::error::no self-hosted runners are registered for this repository"
+          workflow=".github/workflows/product-release.yml"
+          [ -f "${workflow}" ] || { echo "::error::${workflow} not checked out; cannot derive selectors" >&2; exit 1; }
+
+          # DERIVED, not hand-listed. This job used to carry the four label sets
+          # in a literal bash array. That is the defect the sibling project paid
+          # for twice: its hand-kept list outlived its matrix, and the first time
+          # the named host was down while every real leg was up, it refused a
+          # release every leg could serve, citing a target that no longer
+          # existed. A list that must be edited in lockstep with a matrix
+          # eventually is not, and neither copy of that mistake was caught in
+          # review.
+          #
+          # The staleness is currently harmless only because the check is blind:
+          # `actions/runners` needs `administration: read`, the default
+          # GITHUB_TOKEN does not have it, and every run so far has taken the 403
+          # path and passed. Arming FLEET_PREFLIGHT_TOKEN is exactly what would
+          # detonate a stale list, so deriving has to land BEFORE the token does.
+          #
+          # Two sources, matching the two ways this file selects a runner:
+          #   1. The compose matrix, which schedules by OS *and* architecture
+          #      through `[self-hosted, os, arch]`.
+          #   2. Every other job, which carries a literal label list.
+          #
+          # Both readings assume a shape, so both assert it. A derivation that
+          # silently describes something the file no longer says is worse than no
+          # derivation, because it still prints a confident ok.
+          # The braces are escaped so this stays a bash string: Actions expands
+          # a bare expression inside `run:` before bash ever sees it, and the
+          # guard would then be matching the empty string against itself.
+          grep -qE 'runs-on:[[:space:]]*\[self-hosted,[[:space:]]*"\$\{\{[[:space:]]*matrix\.os[[:space:]]*\}\}",[[:space:]]*"\$\{\{[[:space:]]*matrix\.arch[[:space:]]*\}\}"\]' "${workflow}" || {
+            echo "::error::${workflow} no longer schedules the compose matrix by [self-hosted, os, arch]; this derivation would miss every build leg. Re-check it." >&2
+            exit 1
+          }
+
+          mapfile -t selectors < <(
+            {
+              # Literal label lists. Templated ones are handled below; parsing
+              # them here would yield a selector containing an unexpanded
+              # expression, which matches no runner and reads as a real failure.
+              grep -v '\$\{\{' "${workflow}" |
+                awk -F'[][]' '/^[[:space:]]*runs-on:[[:space:]]*\[/ && NF > 2 {print $2}' |
+                tr -d ' ' | tr '[:upper:]' '[:lower:]'
+              # The compose matrix, whose os/arch pairs fill the templated
+              # runs-on asserted above.
+              awk '/target:/ && /os:/ && /arch:/ {
+                     os = ""; arch = ""
+                     if (match($0, /os:[[:space:]]*[A-Za-z0-9_-]+/))   { os   = substr($0, RSTART, RLENGTH); sub(/os:[[:space:]]*/, "", os) }
+                     if (match($0, /arch:[[:space:]]*[A-Za-z0-9_-]+/)) { arch = substr($0, RSTART, RLENGTH); sub(/arch:[[:space:]]*/, "", arch) }
+                     if (length(os) && length(arch)) print tolower("self-hosted," os "," arch)
+                   }' "${workflow}"
+            } | sort -u
+          )
+          if [ "${#selectors[@]}" -eq 0 ]; then
+            echo "::error::derived no runner selector from ${workflow}; refusing to pass vacuously" >&2
             exit 1
           fi
+          {
+            echo "selectors<<SELECTORS_EOF"
+            printf '%s\n' "${selectors[@]}"
+            echo "SELECTORS_EOF"
+          } >> "${GITHUB_OUTPUT}"
 
-          selectors=(
-            "self-hosted,linux,x64"
-            "self-hosted,windows,x64"
-            "self-hosted,linux,arm64"
-            "self-hosted,macos,arm64"
-          )
-
-          failed=0
-          for want in "${selectors[@]}"; do
-            online=0; registered=0
-            while IFS=$'	' read -r status labels; do
-              missing=0
-              IFS=',' read -ra parts <<< "${want}"
-              for part in "${parts[@]}"; do
-                case ",${labels}," in *",${part},"*) ;; *) missing=1; break ;; esac
-              done
-              [ "${missing}" -eq 0 ] || continue
-              registered=$((registered + 1))
-              [ "${status}" = "online" ] && online=$((online + 1))
-            done <<< "${runners}"
-
-            if [ "${online}" -gt 0 ]; then
-              echo "ok        [${want}] -> ${online} online"
-            elif [ "${registered}" -eq 0 ]; then
-              echo "::error::[${want}] is carried by no registered runner." >&2
-              failed=1
-            else
-              echo "::error::[${want}] matches ${registered} runner(s), none online - usually the power-gated host on battery. Re-run on AC." >&2
-              failed=1
-            fi
-          done
-
-          [ "${failed}" -eq 0 ] || { echo "::error::preflight refused a release that would queue rather than run" >&2; exit 1; }
+      - uses: ./.github/actions/preflight-runners
+        with:
+          selectors: ${{ steps.derive.outputs.selectors }}
+          # A PAT with `administration: read` if one is configured; the default
+          # GITHUB_TOKEN otherwise. Without the PAT this check is blind and says
+          # so rather than guessing.
+          token: ${{ secrets.FLEET_PREFLIGHT_TOKEN || secrets.GITHUB_TOKEN }}
+          # Unconditional here: this workflow runs only on a tag push or a
+          # deliberate dispatch, and both of those build artifacts on the fleet.
+          enforce: "true"
 
   build-product-tree:
     needs: preflight

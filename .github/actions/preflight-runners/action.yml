@@ -1,0 +1,142 @@
+name: Preflight runners
+description: >-
+  Refuse to start a release whose runners cannot serve it. A job whose `runs-on`
+  matches no ONLINE runner does not fail - it QUEUES, and a queued job is not
+  bounded by `timeout-minutes`, so nothing inside the calling workflow can
+  rescue it.
+
+# One implementation, two callers. The checking logic below is identical for
+# every workflow that schedules onto the fleet, and it was already duplicated
+# once; a third copy would drift, and the copy that never gets the fix is the
+# one that ships the bug. What is NOT shared is where the selectors come from -
+# each workflow declares its runners differently - so callers derive their own
+# and pass them in.
+#
+# Run this on a HOSTED runner. A preflight that needs the fleet cannot report
+# that the fleet is down.
+
+inputs:
+  selectors:
+    description: >-
+      Newline-separated runner selectors, one per line, each a comma-joined set
+      of labels that must ALL be carried by one runner, e.g.
+      `self-hosted,linux,x64`. Lowercase. Must be non-empty - an empty list
+      would pass vacuously, which is the failure this action exists to prevent.
+    required: true
+  token:
+    description: >-
+      A token that can read `actions/runners`. That endpoint requires
+      `administration: read`, which the default GITHUB_TOKEN does NOT have; pass
+      a PAT to arm this check. Without one it reports blind and passes.
+    required: true
+  enforce:
+    description: >-
+      `true` to fail the job when a selector has no online runner. `false` to
+      report and pass - use it on pull requests, which do not build artifacts
+      and so do not need the build fleet.
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Every runner selector this release needs is online
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        SELECTORS: ${{ inputs.selectors }}
+        ENFORCE: ${{ inputs.enforce }}
+      run: |
+        # NOT `set -e`. An unobservable preflight must not refuse a release: the
+        # `gh api` below returns 403 under the default GITHUB_TOKEN, and under
+        # `set -e` that aborts the step and skips everything downstream. It
+        # refused v0.1.6 exactly that way, for a permissions gap that has
+        # nothing to do with the fleet. A check that cannot tell "no runner"
+        # from "cannot see runners" must not speak for the first.
+        set -uo pipefail
+
+        mapfile -t requested < <(printf '%s\n' "${SELECTORS}" | tr -d '\r' | sed '/^[[:space:]]*$/d')
+        if [ "${#requested[@]}" -eq 0 ]; then
+          echo "::error::no selectors were passed; refusing to pass vacuously" >&2
+          exit 1
+        fi
+
+        # GitHub-HOSTED runners are not in `actions/runners`, which lists only
+        # self-hosted ones. A hosted label therefore looks exactly like a
+        # self-hosted label nobody registered, and checking it would fail every
+        # release for a runner that is always available: this repository's
+        # aarch64 Linux leg builds on `ubuntu-24.04-arm`, deliberately, because
+        # the fleet's ARM64 machine has no reachable docker daemon.
+        #
+        # The prefixes below are GitHub's hosted-image vocabulary, not ours, and
+        # a hosted image label always carries a version or channel suffix
+        # (`ubuntu-latest`, `ubuntu-24.04-arm`, `windows-2022`, `macos-15`). Our
+        # own custom fleet labels - `macos`, `windows`, `linux-x64`,
+        # `linux-arm64` - have no such suffix and are checked normally. A
+        # self-hosted label deliberately named `windows-<something>` would be
+        # skipped by this and go unchecked; name fleet labels without those
+        # prefixes.
+        selectors=()
+        for want in "${requested[@]}"; do
+          case "${want}" in
+            ubuntu-*|windows-*|macos-*)
+              echo "hosted    [${want}] -> GitHub-hosted, not in the self-hosted runner list; not checked"
+              ;;
+            *) selectors+=("${want}") ;;
+          esac
+        done
+        if [ "${#selectors[@]}" -eq 0 ]; then
+          echo "every selector is GitHub-hosted; nothing to check against the fleet."
+          exit 0
+        fi
+        printf 'checking selector: %s\n' "${selectors[@]}"
+
+        if ! runners=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runners" --jq '.runners[] | [.status, ([.labels[].name] | map(ascii_downcase) | join(","))] | @tsv' 2>&1); then
+          echo "::warning::preflight cannot read the runner list: ${runners}"
+          echo "::warning::The default GITHUB_TOKEN cannot read actions/runners. Set FLEET_PREFLIGHT_TOKEN to a PAT with administration:read to arm this check."
+          echo "::warning::SKIPPING - unobservable is not the same as unserviceable, and refusing a release on a blind check is worse than not checking."
+          exit 0
+        fi
+        if [ -z "${runners}" ]; then
+          echo "::error::no self-hosted runners are registered for this repository" >&2
+          if [ "${ENFORCE}" = "true" ]; then exit 1; fi
+          exit 0
+        fi
+
+        failed=0
+        for want in "${selectors[@]}"; do
+          online=0
+          registered=0
+          while IFS="$(printf '\t')" read -r status labels; do
+            missing=0
+            IFS=',' read -ra parts <<< "${want}"
+            for part in "${parts[@]}"; do
+              case ",${labels}," in
+                *",${part},"*) ;;
+                *) missing=1; break ;;
+              esac
+            done
+            [ "${missing}" -eq 0 ] || continue
+            registered=$((registered + 1))
+            [ "${status}" = "online" ] && online=$((online + 1))
+          done <<< "${runners}"
+
+          if [ "${online}" -gt 0 ]; then
+            echo "ok        [${want}] -> ${online} online"
+          elif [ "${registered}" -eq 0 ]; then
+            echo "::error::[${want}] is carried by no registered runner." >&2
+            failed=1
+          else
+            echo "::error::[${want}] matches ${registered} runner(s), none online - usually the power-gated host on battery. Re-run on AC." >&2
+            failed=1
+          fi
+        done
+
+        if [ "${failed}" -eq 0 ]; then
+          exit 0
+        fi
+        if [ "${ENFORCE}" = "true" ]; then
+          echo "::error::preflight refused a release that would queue rather than run" >&2
+          exit 1
+        fi
+        echo "::warning::selectors above have no online runner; not failing over it because enforce is off."
