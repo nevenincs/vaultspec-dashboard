@@ -263,14 +263,35 @@ jobs:
         run: |
           uv tool install vaultspec-core
           uv tool dir --bin >> "$GITHUB_PATH"
+      # Captured to a file rather than piped, so the suite's OWN exit code is
+      # what fails the step, and so the classifier below has the output to read
+      # even when the job is killed before anything else can inspect it.
       - name: Unit tests (just test frontend)
-        run: just test frontend
+        shell: bash
+        run: |
+          set +e
+          just test frontend > "${RUNNER_TEMP}/frontend-suite.log" 2>&1
+          status=$?
+          cat "${RUNNER_TEMP}/frontend-suite.log"
+          exit $status
         env:
           # Pin the exact binary the live suite spawns. Its own fallback probes
           # `engine/target/{release,debug}`, which does not exist when the build
           # landed in the shared directory — the suite would then fail at global
           # setup with "no vaultspec engine binary found" rather than running.
           VAULTSPEC_TEST_ENGINE_BIN: ${{ env.ENGINE_TARGET_DIR }}/debug/vaultspec
+      # A red here means one of two unrelated things and, until now, looked
+      # identical either way: an assertion failed, or the runner died. vitest
+      # prints its summary only after running to completion, so its ABSENCE is
+      # what separates them - a signature only names a known fault, and never
+      # decides, so an unrecognised infrastructure failure is still not reported
+      # as a test verdict.
+      - name: Say which kind of red this is
+        if: failure()
+        shell: bash
+        run: |
+          log="${RUNNER_TEMP}/frontend-suite.log"
+          uv run --no-sync python -m dev.classify_failure "$log" | tee -a "${GITHUB_STEP_SUMMARY}"
       - name: Unused code (just lint knip — advisory)
         run: just lint knip
         continue-on-error: true
