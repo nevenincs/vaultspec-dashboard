@@ -92,6 +92,11 @@ describe("deriveFolderBrowserView", () => {
     expect(view.state).toBe("loading");
     expect(view.currentPath).toBeNull();
     expect(view.rows).toEqual([]);
+    // The trail is the single "roots" crumb while loading, and Breadcrumb
+    // renders the LAST item as a span rather than a button - so a loading
+    // browser presents a breadcrumb with zero clickable ancestors. Stated here
+    // because the shape is not obvious from either file alone.
+    expect(view.breadcrumbs).toHaveLength(1);
   });
 
   it("renders the error state honestly, never a thrown crash", () => {
