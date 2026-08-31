@@ -127,7 +127,7 @@ jobs:
               # Literal label lists. Templated ones are skipped - parsing one
               # would yield a selector containing an unexpanded expression, which
               # matches no runner and reads as a real failure.
-              grep -v '\$\{\{' "${workflow}" |
+              grep -vE '\$\{\{' "${workflow}" |
                 awk -F'[][]' '/^[[:space:]]*runs-on:[[:space:]]*\[/ && NF > 2 {print $2}' |
                 tr -d ' ' | tr '[:upper:]' '[:lower:]'
               # The dist table, in BOTH of the forms it accepts: the short

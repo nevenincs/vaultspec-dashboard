@@ -112,7 +112,7 @@ jobs:
               # Literal label lists. Templated ones are handled below; parsing
               # them here would yield a selector containing an unexpanded
               # expression, which matches no runner and reads as a real failure.
-              grep -v '\$\{\{' "${workflow}" |
+              grep -vE '\$\{\{' "${workflow}" |
                 awk -F'[][]' '/^[[:space:]]*runs-on:[[:space:]]*\[/ && NF > 2 {print $2}' |
                 tr -d ' ' | tr '[:upper:]' '[:lower:]'
               # The compose matrix, whose os/arch pairs fill the templated
