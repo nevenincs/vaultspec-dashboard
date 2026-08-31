@@ -124,34 +124,53 @@ Every channel installs the same complete tree described under
 [Installed runtime](#installed-runtime), and verifies it before the install counts as
 done.
 
-| Channel                           | Platforms    | Who installs and updates it                    | Status        |
-| --------------------------------- | ------------ | ---------------------------------------------- | ------------- |
-| Shell script                      | macOS, Linux | This project's installer and updater           | Not built     |
-| PowerShell script                 | Windows      | This project's installer and updater           | Not built     |
-| MSI                               | Windows      | Windows Installer, with this project's updater | Not built     |
-| Scoop                             | Windows      | Scoop                                          | Pending proof |
-| WinGet                            | Windows      | WinGet                                         | Pending proof |
-| `cargo install`, `cargo binstall` | —            | —                                              | Not supported |
+| Channel                           | Platforms    | Who installs and updates it                    | Status           |
+| --------------------------------- | ------------ | ---------------------------------------------- | ---------------- |
+| Shell script                      | macOS, Linux | This project's installer and updater           | Awaiting release |
+| PowerShell script                 | Windows      | This project's installer and updater           | Awaiting release |
+| MSI                               | Windows      | Windows Installer, with this project's updater | Not built        |
+| Scoop                             | Windows      | Scoop                                          | Pending proof    |
+| WinGet                            | Windows      | WinGet                                         | Pending proof    |
+| `cargo install`, `cargo binstall` | —            | —                                              | Not supported    |
 
-*Not built* means the release does not currently carry that artifact at all.
-`dist-workspace.toml` sets `installers = []`, disabling dist's generated shell,
-PowerShell and MSI installers in favour of product-owned replacements that do
-not exist yet. These three were previously listed as *supported*: the shell and
-PowerShell URLs below have never resolved — v0.1.3, the last release to carry
-installers, published them as `vaultspec-cli-installer.sh` and
-`.ps1`, and no MSI has ever been built for any release. Use the release
-binaries directly until the product-owned installers ship.
+*Awaiting release* means the artifact is produced and attached by the release
+pipeline, but no release has yet completed to carry it. *Not built* means the
+release does not currently carry that artifact at all.
+`dist-workspace.toml` sets `installers = []`, disabling dist's generated shell
+and PowerShell installers in favour of the product-owned `packaging/install.sh`
+and `packaging/install.ps1`, which install the complete tree rather than a bare
+binary. Those two are now published as release assets by the same job that
+attaches the product archives, so an installer can never appear on a release
+whose archives are missing — but that job has not yet completed successfully for
+any release, so no published release carries either script today. No MSI has
+ever been built.
 
 A channel marked *pending proof* must still prove install, upgrade, downgrade, repair,
 and uninstall on a clean machine before it counts as supported. Until it does, prefer a
 supported channel.
 
-**Shell script, PowerShell script and MSI** are *not built* — see the note above.
-The commands that used to appear here fetched
-`releases/latest/download/install.sh` and `install.ps1`, which return 404 and
-always have. Download the platform archive from
+**Shell script and PowerShell script** are *awaiting their first release*. Once a
+release carries them, these are the commands — with no argument, each installs
+the newest published release:
+
+```console
+curl -fsSL https://github.com/nevenincs/vaultspec-dashboard/releases/latest/download/install.sh | bash
+```
+
+```console
+& ([scriptblock]::Create((irm https://github.com/nevenincs/vaultspec-dashboard/releases/latest/download/install.ps1)))
+```
+
+`bash`, not `sh`: the script uses `set -o pipefail`, which dash — `/bin/sh` on
+Debian and Ubuntu — does not accept. Pass `--version <ver>` (`-Version` in
+PowerShell) to pin a release instead of taking the newest. Both verify the
+downloaded archive against its published `.sha256` before placing anything, and
+run `vaultspec verify-release` over the installed tree afterwards; a tree that
+fails either check is a failed install.
+
+Until that first release lands, download the platform archive from
 [Releases](https://github.com/nevenincs/vaultspec-dashboard/releases) and run
-the binary directly in the meantime.
+the binary directly.
 
 **Scoop** (Windows):
 
