@@ -154,6 +154,18 @@ describe("CategoryLegend behavior", () => {
       ENGINE_WAIT,
     );
     await waitFor(() => expect(client.isFetching()).toBe(0), ENGINE_WAIT);
+    // Every control that WRITES the doc-type facet is disabled while the served
+    // graph slice is degraded, reset included, and firing a click at a disabled
+    // button does nothing at all. Without this the test drives dead controls and
+    // then times out waiting for a state change that was never requested — which
+    // reports as `expected <button …> to be null` and names neither the cause nor
+    // the control. Assert the precondition the component actually has, so a slice
+    // that stays degraded fails here, saying so.
+    await waitFor(
+      () =>
+        expect(document.querySelector("[data-category-legend-degraded]")).toBeNull(),
+      ENGINE_WAIT,
+    );
 
     expect(item("adr").title).toBe(
       en.graph.legend.actions.addDocumentTypeFilter.replace(
