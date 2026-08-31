@@ -38,6 +38,13 @@ from pathlib import Path
 #: vitest's end-of-run summary. Its presence is what makes a red a verdict.
 SUITE_SUMMARY = re.compile(r"^\s*Test Files\s+", re.MULTILINE)
 
+#: The live suite spawns a real engine over loopback. When that engine dies the
+#: suite keeps running and reports, so the summary is present and this stays a
+#: verdict — but every test touching the wire fails as collateral. A handful of
+#: these is ordinary; a flood is the engine being gone.
+ENGINE_UNREACHABLE = re.compile(r"socket hang up|ECONNREFUSED|ECONNRESET")
+ENGINE_UNREACHABLE_THRESHOLD = 20
+
 #: Known infrastructure faults, each paired with what a reader should do about
 #: it. Matching one only names the fault; it never decides whether the run was a
 #: verdict, so an unrecognised infrastructure failure is still not called a test
@@ -87,6 +94,20 @@ class Verdict:
 def classify(log: str) -> Verdict:
     """Decide what a failed run established, from its own output."""
     if SUITE_SUMMARY.search(log) is not None:
+        # A summary means the suite judged the code, so this stays a verdict —
+        # never downgraded, because hiding a real defect is the expensive
+        # direction. But a run whose engine died under it produces failures that
+        # are collateral, and the reader deserves to be told which they are
+        # looking at rather than discovering it in the stack traces.
+        if len(ENGINE_UNREACHABLE.findall(log)) >= ENGINE_UNREACHABLE_THRESHOLD:
+            return Verdict(
+                is_test_verdict=True,
+                fault=None,
+                guidance="the suite reported, so this is a verdict — but the live engine "
+                "was unreachable throughout the run, so a failure here is as likely to be "
+                "collateral as a real defect; check the failing test against a healthy run "
+                "before acting on it",
+            )
         return Verdict(
             is_test_verdict=True,
             fault=None,

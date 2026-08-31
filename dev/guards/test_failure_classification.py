@@ -99,3 +99,26 @@ def test_a_summary_wins_over_an_infrastructure_signature() -> None:
     """
     log = GENUINE_TEST_FAILURE + "\nError: socket hang up\n"
     assert classify(log).is_test_verdict
+
+
+def test_a_reported_run_whose_engine_died_stays_a_verdict_but_says_so() -> None:
+    """The case #99's own first red turned out to be.
+
+    The engine died under a suite that still reported, so the summary is
+    present and this must NOT be downgraded — hiding a real defect is the
+    expensive direction. What changes is that the reader is told the failures
+    may be collateral, instead of finding out from the stack traces.
+    """
+    log = GENUINE_TEST_FAILURE + ("Error: socket hang up\n" * 40)
+    verdict = classify(log)
+    assert verdict.is_test_verdict
+    assert "collateral" in verdict.guidance
+    assert render(verdict).startswith("::error ")
+
+
+def test_a_few_connection_errors_do_not_change_a_clean_verdict() -> None:
+    """A handful is ordinary; only a flood means the engine is gone."""
+    log = GENUINE_TEST_FAILURE + ("Error: socket hang up\n" * 3)
+    verdict = classify(log)
+    assert verdict.is_test_verdict
+    assert "collateral" not in verdict.guidance
