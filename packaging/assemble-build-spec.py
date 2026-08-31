@@ -20,7 +20,7 @@ Usage:
     --dashboard <path> --updater <path> \
     --capsule-archive <path> --capsule-manifest <path> --tree-evidence <path> \
     --lock packaging/a2a-component.lock.json \
-    --license vaultspec-a2a:MIT:<path> --sbom <path> \
+    --license vaultspec-a2a MIT <path> --sbom <path> \
     [--dashboard-name vaultspec.exe --updater-name vaultspec-updater.exe] \
     > build-spec.json
 """
@@ -68,9 +68,18 @@ def main() -> int:
     p.add_argument(
         "--license",
         action="append",
+        nargs=3,
         default=[],
-        metavar="COMPONENT:SPDX:PATH",
-        help="a license file, e.g. vaultspec-a2a:MIT:/path/a2a.txt",
+        metavar=("COMPONENT", "SPDX", "PATH"),
+        # THREE ARGUMENTS, NOT ONE COLON-COMPOSITE. Under Git Bash on Windows
+        # MSYS converts a standalone path-shaped argument to native form, but
+        # reads an argument containing colons as a colon-separated path LIST and
+        # leaves the tail unconverted -- so "vaultspec-a2a:MIT:/c/.../LICENSE"
+        # reached native Python as a POSIX path it could not open, failing the
+        # Windows compose leg while the other three legs got as far as the
+        # portable-path check. Separate arguments convert like every other path
+        # and carry no colon ambiguity.
+        help="a license file: --license vaultspec-a2a MIT /path/a2a.txt",
     )
     args = p.parse_args()
 
@@ -84,8 +93,7 @@ def main() -> int:
     )
 
     licenses = []
-    for spec in args.license:
-        component, spdx, path = spec.split(":", 2)
+    for component, spdx, path in args.license:
         name = path.replace("\\", "/").rsplit("/", 1)[-1]
         licenses.append(
             {
@@ -139,8 +147,8 @@ def main() -> int:
             ("--updater", args.updater),
             ("--lock", args.lock),
             ("--sbom", args.sbom),
-            *((f"--license {spec_str.split(':', 2)[0]}", spec_str.split(":", 2)[2])
-              for spec_str in args.license if spec_str.count(":") >= 2),
+            *((f"--license {component}", path)
+              for component, _spdx, path in args.license),
         )
         if not os.path.isfile(path)
     ]
