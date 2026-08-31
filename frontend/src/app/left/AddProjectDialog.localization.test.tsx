@@ -156,9 +156,10 @@ describe("localized add project dialog", () => {
 
   it("keeps pending copy active through a real rejected registration", async () => {
     const runtime = createTestLocalizationRuntime();
+    const client = createMenuTestQueryClient();
     render(
       <I18nextProvider i18n={runtime}>
-        <MenuTestProviders client={createMenuTestQueryClient()}>
+        <MenuTestProviders client={client}>
           <AddProjectDialog />
         </MenuTestProviders>
       </I18nextProvider>,
@@ -171,8 +172,23 @@ describe("localized add project dialog", () => {
     });
     fireEvent.change(pathInput, { target: { value: availablePath } });
     fireEvent.keyDown(pathInput, { key: "Enter" });
-    // The confirm label is static ("Pick folder"); the typed path resolving is
-    // signalled by the button becoming enabled, so wait on that before clicking.
+    // SETTLED, not merely enabled. The confirm is
+    // `disabled={submitting || target === null || target.length === 0}`, and
+    // `target` is `null` for as long as `level.isPlaceholderData` holds - which
+    // it does through every refetch of the folder listing. So the button flips
+    // back to disabled mid-flight, and a click that lands in that window is
+    // swallowed in silence: `submitting` never becomes true, the pending copy
+    // never renders, and no error is raised either.
+    //
+    // That is exactly the state CI reported, twice, with identical detail:
+    //   dialog open; buttons: ... | Pick folder [disabled]; status: (none)
+    // Idle label, so `submitting` is false; disabled, so `target` is empty; and
+    // no status, so nothing was ever rejected. The click did nothing at all.
+    //
+    // Waiting for the query cache to go quiet first means `isPlaceholderData`
+    // is settled when the click lands. The enabled assertion below is kept -
+    // this adds a precondition, it does not relax one.
+    await waitFor(() => expect(client.isFetching()).toBe(0), ENGINE_WAIT);
     await waitFor(
       () =>
         expect(
