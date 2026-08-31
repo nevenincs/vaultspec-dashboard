@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.1.11](https://github.com/nevenincs/vaultspec-dashboard/compare/v0.1.10...v0.1.11) (2026-08-31)
+
+
+### Features
+
+* **channels:** deliver the package, not a pointer to a loose file ([#82](https://github.com/nevenincs/vaultspec-dashboard/issues/82)) ([975c98a](https://github.com/nevenincs/vaultspec-dashboard/commit/975c98af66cc572db6e97cbaf95f127245cbbe1a))
+* **release:** ship the package without the runtime nothing reads ([#80](https://github.com/nevenincs/vaultspec-dashboard/issues/80)) ([57a6a46](https://github.com/nevenincs/vaultspec-dashboard/commit/57a6a4603f5fec33bfdcb46050c64153f37a0a75))
+
+
+### Bug Fixes
+
+* **ci:** derive the preflight's runner selectors, and give release.yml one ([#87](https://github.com/nevenincs/vaultspec-dashboard/issues/87)) ([d6a5eaf](https://github.com/nevenincs/vaultspec-dashboard/commit/d6a5eafd649b040b602cece8e45f5c50abf7fbdc))
+* **ci:** only acquire when a TAG's Release run finishes ([#76](https://github.com/nevenincs/vaultspec-dashboard/issues/76)) ([6c07237](https://github.com/nevenincs/vaultspec-dashboard/commit/6c07237b52c5f985e84a83bb6770739dc5265b54))
+* **ci:** the preflight's brace filter needs ERE, not grep's default BRE ([#90](https://github.com/nevenincs/vaultspec-dashboard/issues/90)) ([1ff4a6b](https://github.com/nevenincs/vaultspec-dashboard/commit/1ff4a6b89bf97cccd457e493b862e14721ce96ad))
+* **dialog:** cancel the pending path parse when a write changes nothing ([#86](https://github.com/nevenincs/vaultspec-dashboard/issues/86)) ([79733fd](https://github.com/nevenincs/vaultspec-dashboard/commit/79733fdcf8ab52f641c2a9ba8b1967f871e63bef))
+* **packaging:** pass the license as three arguments, not a colon composite ([#74](https://github.com/nevenincs/vaultspec-dashboard/issues/74)) ([8a604fb](https://github.com/nevenincs/vaultspec-dashboard/commit/8a604fb31e8ddcaeefc5fda08a77804491455f24))
+* **release:** publish the product, not the tooling that builds it ([#61](https://github.com/nevenincs/vaultspec-dashboard/issues/61)) ([766214a](https://github.com/nevenincs/vaultspec-dashboard/commit/766214a036bd126a7b5cfc25be6ca830cef85dfd))
+
 ## [0.1.10](https://github.com/nevenincs/vaultspec-dashboard/compare/v0.1.9...v0.1.10) (2026-08-31)
 
 
