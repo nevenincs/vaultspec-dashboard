@@ -3,30 +3,32 @@
   The product-owned Windows Installer package.
 
   This MSI installs the COMPLETE composed product tree, never a bare binary: the
-  dashboard executable, the copied external updater, every file of the bundled
-  A2A runtime (a frozen self-contained directory this product builds and ships,
-  never fetched at install time), the release manifest, the component lock, every
+  dashboard executable, the copied external updater, the release manifest, every
   license, and the SBOM. Every one of those files is carried by its own component
   so Windows Installer owns install, repair, and removal of each individually.
+
+  NO AGENT-TO-AGENT RUNTIME IS PACKAGED, and that absence is a decision rather
+  than an oversight. The dashboard resolves that runtime from the invoking user's
+  app home, never from this install directory, and no shipped operation populates
+  that location yet - adoption is declared but not implemented. Packaging a copy
+  here would add several hundred megabytes of files the product never reads. It
+  returns to this package when adoption is implemented.
 
   BUILD CONTRACT. The package is compiled against an already-composed product
   tree, not against a cargo target directory. The build must define:
 
     ProductTreeDir  The composed generation root to package (the directory that
                     holds release.json).
-    A2aRuntimeDir   <ProductTreeDir>\a2a
     LicensesDir     <ProductTreeDir>\licenses
     Version         The product version for this package.
 
-  Two file sets have build-decided membership rather than a fixed roster, so they
-  arrive as harvested fragments carrying ONE COMPONENT PER FILE:
+  One file set has build-decided membership rather than a fixed roster, so it
+  arrives as a harvested fragment carrying ONE COMPONENT PER FILE:
 
-    heat dir <ProductTreeDir>\a2a      -cg A2aRuntimeFiles -dr A2ARUNTIMEDIR \
-        -var var.A2aRuntimeDir -srd -sreg -scom -gg -g1 -sfrag -out a2a.wxs
-    heat dir <ProductTreeDir>\licenses -cg LicenseFiles    -dr LICENSESDIR   \
-        -var var.LicensesDir   -srd -sreg -scom -gg -g1 -sfrag -out licenses.wxs
+    heat dir <ProductTreeDir>\licenses -cg LicenseFiles -dr LICENSESDIR \
+        -var var.LicensesDir -srd -sreg -scom -gg -g1 -sfrag -out licenses.wxs
 
-  Both fragments are compiled and linked alongside this file. A missing variable
+  That fragment is compiled and linked alongside this file. A missing variable
   or a missing file fails the build loudly; nothing here degrades to a partial
   payload.
 
@@ -63,7 +65,7 @@
 
         <Package Id='*'
             Keywords='Installer'
-            Description='The complete vaultspec product: the dashboard, its external updater, and the bundled A2A runtime, installed offline as one verified release set.'
+            Description='The complete vaultspec product: the dashboard, its external updater, and its release manifest, licenses, and SBOM, installed offline as one verified release set.'
             Manufacturer='vaultspec contributors'
             InstallerVersion='450'
             Languages='1033'
@@ -127,25 +129,8 @@
                         </Component>
                     </Directory>
 
-                    <!-- The bundled A2A runtime onedir. Its files are ordinary
-                         product files, digest-covered by the release manifest like
-                         every other installed file; the harvested group carries one
-                         component per file. -->
-                    <Directory Id='A2ARUNTIMEDIR' Name='a2a'/>
-
                     <!-- Third-party license texts, one component per license. -->
                     <Directory Id='LICENSESDIR' Name='licenses'/>
-
-                    <Directory Id='PackagingDir' Name='packaging'>
-                        <Component Id='ComponentLock' Guid='DEDE50A6-FBCC-44F5-A628-2CB75261D6C0'>
-                            <File
-                                Id='ComponentLockJson'
-                                Name='a2a-component.lock.json'
-                                DiskId='1'
-                                Source='$(var.ProductTreeDir)\packaging\a2a-component.lock.json'
-                                KeyPath='yes'/>
-                        </Component>
-                    </Directory>
 
                     <!-- The release-set member manifest: the digest evidence the
                          shipped verifier checks the installed tree against. -->
@@ -233,7 +218,7 @@
         <Feature
             Id='ProductTree'
             Title='vaultspec'
-            Description='The complete product: the dashboard, its external updater, the bundled A2A runtime, the release manifest, licenses, and the SBOM.'
+            Description='The complete product: the dashboard, its external updater, the release manifest, licenses, and the SBOM.'
             Level='1'
             ConfigurableDirectory='APPLICATIONFOLDER'
             AllowAdvertise='no'
@@ -243,10 +228,8 @@
             <ComponentRef Id='DashboardBinary'/>
             <ComponentRef Id='UpdaterBinary'/>
             <ComponentRef Id='ReleaseManifest'/>
-            <ComponentRef Id='ComponentLock'/>
             <ComponentRef Id='Sbom'/>
             <ComponentRef Id='InstallProvenance'/>
-            <ComponentGroupRef Id='A2aRuntimeFiles'/>
             <ComponentGroupRef Id='LicenseFiles'/>
 
             <Feature

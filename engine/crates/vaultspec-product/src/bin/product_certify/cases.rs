@@ -22,9 +22,9 @@ use crate::artifact::Artifact;
 use crate::command::{CommandLimits, execute_installed, require_success, run_bounded};
 use crate::network::require_network_removed;
 use crate::{
-    CONCURRENT_ENSURE_CONTENDERS, CaseError, CaseResult, EXTRACT_OUTPUT_CAP, EvidenceGap,
-    MAX_SCAN_DIRECTORIES, MAX_SCAN_FILE_BYTES, MAX_SCAN_FILES, PROBE_WALL, WORKER_IPC_CREDENTIAL,
-    describe_code, display, exe_suffix,
+    CONCURRENT_ENSURE_CONTENDERS, CaseError, CaseResult, EXTRACT_OUTPUT_CAP, MAX_SCAN_DIRECTORIES,
+    MAX_SCAN_FILE_BYTES, MAX_SCAN_FILES, PROBE_WALL, WORKER_IPC_CREDENTIAL, describe_code, display,
+    exe_suffix,
 };
 
 // Cases
@@ -64,9 +64,11 @@ pub(crate) fn case_relocation(artifact: &Artifact) -> CaseResult {
     let dashboard_relative = format!("bin/vaultspec{}", exe_suffix());
     let runtime_relative = format!("a2a/vaultspec-a2a{}", exe_suffix());
     // Resolve both components BEFORE moving, so an absent component reports a
-    // gap against the staged tree rather than half-relocating it.
+    // gap against the staged tree rather than half-relocating it. The runtime
+    // half of this property has no subject in a product built without the
+    // bundled runtime, which reports itself not applicable rather than absent.
     artifact.dashboard()?;
-    let runtime_present = artifact.a2a_runtime().is_ok();
+    artifact.required_a2a_runtime()?;
 
     let relocated = artifact.workspace.join("relocated");
     if relocated.exists() {
@@ -88,13 +90,6 @@ pub(crate) fn case_relocation(artifact: &Artifact) -> CaseResult {
         None,
     )?;
 
-    if !runtime_present {
-        return Err(EvidenceGap::ComponentAbsent {
-            component: "frozen A2A runtime",
-            relative: runtime_relative,
-        }
-        .into());
-    }
     // Onedir resolution is proven by a real SERVICE verb, not by `--version`.
     // A version or help invocation only constructs the command surface; a
     // frozen-closure defect — a missing data file, an unfrozen resource, a
@@ -145,7 +140,7 @@ pub(crate) fn case_relocation(artifact: &Artifact) -> CaseResult {
 /// status verbs are actually executed against the installed onedir and their own
 /// reports are decoded, which is the first place such a defect shows.
 pub(crate) fn case_frozen_runtime_dispatch(artifact: &Artifact) -> CaseResult {
-    let runtime = artifact.a2a_runtime()?;
+    let runtime = artifact.required_a2a_runtime()?;
     let app_home = artifact.product_paths()?.app_home();
 
     let prepared = run_frozen_verb(&runtime, "setup", &app_home)?;

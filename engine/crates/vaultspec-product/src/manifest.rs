@@ -705,7 +705,12 @@ struct RawReleaseSetManifest {
     release_manifest: ReleaseManifestFile,
     dashboard: DashboardBuild,
     updater: UpdaterBuild,
-    a2a_component: A2aComponentPin,
+    /// Absent when the product tree carries no bundled a2a runtime. Absence is
+    /// the ONLY encoding of "no runtime": present, the pin is whole — a lock
+    /// join and a runtime whose `file_count` floor is 1 — so an empty or zeroed
+    /// block cannot be parsed into existence.
+    #[serde(default)]
+    a2a_component: Option<A2aComponentPin>,
     licenses: Vec<LicenseEntry>,
     sbom: Sbom,
     #[serde(deserialize_with = "deserialize_file_digests")]
@@ -877,25 +882,26 @@ fn validate_release(manifest: &RawReleaseSetManifest) -> Result<()> {
         manifest.updater.size,
         &manifest.updater.digest,
     )?;
-    require_commit("a2a_component.commit", &manifest.a2a_component.commit)?;
-    require_identity(
-        "a2a_component.release_identity.name",
-        &manifest.a2a_component.release_identity.name,
-    )?;
-    require_exact_version(
-        "a2a_component.release_identity.version",
-        &manifest.a2a_component.release_identity.version,
-    )?;
-    validate_evidence(
-        "a2a_component.component_lock",
-        &manifest.a2a_component.component_lock,
-    )?;
-    expect_literal(
-        "a2a_component.component_lock.path",
-        COMPONENT_LOCK_PATH,
-        &manifest.a2a_component.component_lock.path,
-    )?;
-    validate_bundled_runtime("a2a_component.runtime", &manifest.a2a_component.runtime)?;
+    // Optional, never weakened: a member that DECLARES a bundled runtime is held
+    // to exactly the checks it always was. Only its absence is now expressible.
+    if let Some(a2a) = &manifest.a2a_component {
+        require_commit("a2a_component.commit", &a2a.commit)?;
+        require_identity(
+            "a2a_component.release_identity.name",
+            &a2a.release_identity.name,
+        )?;
+        require_exact_version(
+            "a2a_component.release_identity.version",
+            &a2a.release_identity.version,
+        )?;
+        validate_evidence("a2a_component.component_lock", &a2a.component_lock)?;
+        expect_literal(
+            "a2a_component.component_lock.path",
+            COMPONENT_LOCK_PATH,
+            &a2a.component_lock.path,
+        )?;
+        validate_bundled_runtime("a2a_component.runtime", &a2a.runtime)?;
+    }
     if manifest.licenses.is_empty() || manifest.licenses.len() > 4096 {
         return invalid("licenses", "must contain 1..=4096 entries");
     }
@@ -949,9 +955,14 @@ fn validate_release(manifest: &RawReleaseSetManifest) -> Result<()> {
     all_references.extend([
         manifest.dashboard.path.as_str(),
         manifest.updater.path.as_str(),
-        manifest.a2a_component.component_lock.path.as_str(),
         manifest.sbom.path.as_str(),
     ]);
+    // The component lock is a reference only where a bundled runtime declares
+    // it. With no runtime the lock is not in the tree, so admitting its path
+    // into the reference set would reserve a path nothing occupies.
+    if let Some(a2a) = &manifest.a2a_component {
+        all_references.push(a2a.component_lock.path.as_str());
+    }
     all_references.extend(
         manifest
             .licenses
@@ -1002,13 +1013,19 @@ fn validate_artifact(field: &str, path: &str, size: u64, digest: &str) -> Result
     require_digest(&format!("{field}.digest"), digest)
 }
 
+/// Join a member's declared a2a source pin to independently trusted lock bytes.
+///
+/// A member that declares no bundled runtime states no source pin, so there is
+/// nothing to join and the check is vacuously satisfied. This is what lets the
+/// installed-tree verification of an a2a-less product succeed under the lock the
+/// CLI embeds: the lock still governs every member that DOES pin a source, and
+/// a member that pins one is held to exactly the same equality it always was.
 fn verify_release_lock_joins(manifest: &RawReleaseSetManifest, lock: &ComponentLock) -> Result<()> {
-    expect_literal(
-        "a2a_component.commit",
-        &lock.a2a_source.commit,
-        &manifest.a2a_component.commit,
-    )?;
-    if manifest.a2a_component.release_identity != lock.a2a_source.release_identity {
+    let Some(a2a) = &manifest.a2a_component else {
+        return Ok(());
+    };
+    expect_literal("a2a_component.commit", &lock.a2a_source.commit, &a2a.commit)?;
+    if a2a.release_identity != lock.a2a_source.release_identity {
         return Err(ManifestError::IdentityMismatch {
             detail: "release member A2A identity differs from the component lock".to_string(),
         });

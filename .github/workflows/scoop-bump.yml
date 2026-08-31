@@ -75,7 +75,7 @@ jobs:
           ASSET="vaultspec-${VERSION}-x86_64-pc-windows-msvc.zip"
           # The manifest is generated from scratch below, so its prose lives
           # here rather than surviving in a committed file nobody re-reads.
-          DESCRIPTION="The complete vaultspec dashboard product: the dashboard, the copied external updater, the bundled A2A runtime, and the signed release manifest, licenses, and SBOM - installed as one offline-complete tree. Only the vaultspec dashboard command is shimmed onto PATH; the companion files stay in the install directory."
+          DESCRIPTION="The complete vaultspec dashboard product: the dashboard, the copied external updater, and the signed release manifest, licenses, and SBOM - installed as one offline-complete tree. Only the vaultspec dashboard command is shimmed onto PATH; the companion files stay in the install directory."
           URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${ASSET}"
           HASH=$(curl --proto '=https' --tlsv1.2 -sSfL "${URL}.sha256" | cut -d' ' -f1)
           # One check per line, deliberately. Written as

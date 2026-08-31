@@ -12,6 +12,7 @@ pub(crate) struct Fixture {
     pub(crate) guard: InstallLockGuard,
     payloads: Vec<(String, Vec<u8>)>,
     entrypoint_mode: String,
+    with_a2a: bool,
     member: Vec<u8>,
     descriptor: Vec<u8>,
     member_digest: String,
@@ -26,6 +27,21 @@ impl Fixture {
     }
 
     fn with_entrypoint_mode(entrypoint_mode: &str) -> Self {
+        Self::build(entrypoint_mode, true)
+    }
+
+    /// The same release tree built WITHOUT the bundled a2a runtime: no onedir,
+    /// no component lock in the tree, and a member manifest that omits
+    /// `a2a_component` outright.
+    ///
+    /// A separate constructor rather than a mutation of [`Self::new`], so every
+    /// proof that runs against a tree that DOES bundle the runtime keeps running
+    /// against one.
+    pub(crate) fn without_a2a() -> Self {
+        Self::build("0755", false)
+    }
+
+    fn build(entrypoint_mode: &str, with_a2a: bool) -> Self {
         let temp = tempfile::tempdir().expect("real temporary product home");
         let paths = ProductPaths::under_app_home(temp.path());
         paths.ensure().unwrap();
@@ -48,19 +64,26 @@ impl Fixture {
         let tree_file = b"bundled-runtime-file".to_vec();
         let gateway_file = b"gateway-entrypoint".to_vec();
         let standalone_file = b"standalone-mcp-entrypoint".to_vec();
-        let payloads: Vec<(String, Vec<u8>)> = vec![
-            (COMPONENT_LOCK_PATH.to_string(), LOCK_BYTES.to_vec()),
+        let mut payloads: Vec<(String, Vec<u8>)> = vec![
             ("bin/dashboard.exe".to_string(), dashboard),
             ("bin/updater.exe".to_string(), updater),
-            (RUNTIME_ENTRYPOINT_PATH.to_string(), gateway_file),
-            (
-                "a2a/capsule/bin/vaultspec-a2a-mcp".to_string(),
-                standalone_file,
-            ),
-            ("a2a/capsule/runtime/tool".to_string(), tree_file),
             ("licenses/a2a.txt".to_string(), license),
             ("sbom.cdx.json".to_string(), sbom),
         ];
+        // The lock is placed with the runtime it pins, never on its own: a tree
+        // that bundles no runtime carries no source for the lock to pin.
+        if with_a2a {
+            payloads.extend([
+                (COMPONENT_LOCK_PATH.to_string(), LOCK_BYTES.to_vec()),
+                (RUNTIME_ENTRYPOINT_PATH.to_string(), gateway_file),
+                (
+                    "a2a/capsule/bin/vaultspec-a2a-mcp".to_string(),
+                    standalone_file,
+                ),
+                ("a2a/capsule/runtime/tool".to_string(), tree_file),
+            ]);
+        }
+        payloads.sort_by(|left, right| left.0.cmp(&right.0));
         let mut digests = serde_json::Map::new();
         let mut sizes = BTreeMap::new();
         for (path, bytes) in &payloads {
@@ -76,16 +99,21 @@ impl Fixture {
             "release_manifest": {"path": "release.json", "binding_mode": "external-cohort-and-receipt"},
             "dashboard": {"version": "0.1.4", "commit": "a".repeat(40), "path": "bin/dashboard.exe", "size": sizes["bin/dashboard.exe"], "digest": digests["bin/dashboard.exe"]},
             "updater": {"version": "0.1.4", "path": "bin/updater.exe", "size": sizes["bin/updater.exe"], "digest": digests["bin/updater.exe"]},
-            "a2a_component": {
-                "commit": lock.a2a_source.commit,
-                "release_identity": lock.a2a_source.release_identity,
-                "component_lock": {"path": COMPONENT_LOCK_PATH, "digest": lock_digest},
-                "runtime": {"root": RUNTIME_ROOT, "entrypoint": RUNTIME_ENTRYPOINT_PATH, "file_count": 3}
-            },
             "licenses": [{"component": "vaultspec-a2a", "spdx": "MIT", "path": "licenses/a2a.txt", "digest": digests["licenses/a2a.txt"]}],
             "sbom": {"format": "cyclonedx", "path": "sbom.cdx.json", "size": sizes["sbom.cdx.json"], "digest": digests["sbom.cdx.json"]},
             "file_digests": serde_json::Value::Object(digests)
         });
+        let mut release = release;
+        // Present or omitted; never emptied. A member that bundles no runtime
+        // states nothing about one.
+        if with_a2a {
+            release["a2a_component"] = serde_json::json!({
+                "commit": lock.a2a_source.commit,
+                "release_identity": lock.a2a_source.release_identity,
+                "component_lock": {"path": COMPONENT_LOCK_PATH, "digest": lock_digest},
+                "runtime": {"root": RUNTIME_ROOT, "entrypoint": RUNTIME_ENTRYPOINT_PATH, "file_count": 3}
+            });
+        }
         let member = serde_json::to_vec(&release).unwrap();
         let member_digest = hex::sha256(&member);
         let descriptor = cohort_bytes(&member_digest);
@@ -95,6 +123,7 @@ impl Fixture {
             guard,
             payloads,
             entrypoint_mode: entrypoint_mode.to_string(),
+            with_a2a,
             member,
             descriptor,
             member_digest,
@@ -109,14 +138,16 @@ impl Fixture {
             write_file(root, path, bytes);
         }
         write_file(root, "release.json", &self.member);
-        set_mode(
-            &root.join("a2a/capsule/bin/vaultspec-a2a"),
-            &self.entrypoint_mode,
-        );
-        set_mode(
-            &root.join("a2a/capsule/bin/vaultspec-a2a-mcp"),
-            &self.entrypoint_mode,
-        );
+        if self.with_a2a {
+            set_mode(
+                &root.join("a2a/capsule/bin/vaultspec-a2a"),
+                &self.entrypoint_mode,
+            );
+            set_mode(
+                &root.join("a2a/capsule/bin/vaultspec-a2a-mcp"),
+                &self.entrypoint_mode,
+            );
+        }
     }
 
     /// Crate-visible fixture facts for the materializer tests, which build a
@@ -631,7 +662,7 @@ fn bounded_reread_and_final_snapshot_detect_real_file_drift() {
     let fixture = Fixture::new();
     fixture.with_generation(|generation| {
         let initial = scan_generation(generation.path(), Some("release.json")).unwrap();
-        let relative = "a2a/capsule/runtime/tool";
+        let relative = "bin/updater.exe";
         let path = generation.path().join(relative);
         let original = std::fs::read(&path).unwrap();
         let replacement = vec![b'x'; original.len()];
@@ -655,7 +686,7 @@ fn bounded_reread_and_final_snapshot_detect_real_file_drift() {
     let fixture = Fixture::new();
     fixture.with_generation(|generation| {
         let initial = scan_generation(generation.path(), Some("release.json")).unwrap();
-        let relative = "a2a/capsule/runtime/tool";
+        let relative = "bin/updater.exe";
         let initial_file = observed_file(&initial.files, relative).unwrap();
         let path = generation.path().join(relative);
         let mut append = std::fs::OpenOptions::new().append(true).open(path).unwrap();
@@ -670,10 +701,10 @@ fn bounded_reread_and_final_snapshot_detect_real_file_drift() {
     let fixture = Fixture::new();
     fixture.with_generation(|generation| {
         let initial = scan_generation(generation.path(), Some("release.json")).unwrap();
-        let relative = "a2a/capsule/runtime/tool";
+        let relative = "bin/updater.exe";
         let initial_file = observed_file(&initial.files, relative).unwrap();
         let path = generation.path().join(relative);
-        let old = generation.path().join("a2a/capsule/runtime/tool.old");
+        let old = generation.path().join("bin/updater.exe.old");
         let bytes = std::fs::read(&path).unwrap();
         std::fs::rename(&path, &old).unwrap();
         std::fs::write(&path, &bytes).unwrap();
@@ -887,7 +918,7 @@ fn permission_and_child_acl_drift_fail_closed() {
         }
         #[cfg(windows)]
         {
-            let payload_directory = generation_path.join("a2a");
+            let payload_directory = generation_path.join("bin");
             permit_test_peer(&payload_directory);
             assert!(matches!(
                 verified.revalidate_for_activation(),
@@ -918,7 +949,7 @@ fn permission_and_child_acl_drift_fail_closed() {
 
         let fixture = Fixture::new();
         fixture.with_generation(|generation| {
-            let directory = generation.path().join("a2a");
+            let directory = generation.path().join("bin");
             let original = std::fs::metadata(&directory).unwrap().permissions().mode() & 0o777;
             let changed = if original == 0o700 { 0o750 } else { 0o700 };
             let verified = fixture.verify(generation).unwrap();
@@ -1043,6 +1074,97 @@ fn an_independent_known_vector_pins_the_jcs_cohort_preimage() {
     assert_eq!(
         cohort_descriptor_digest(COHORT_VECTOR.as_bytes()).unwrap(),
         "729a3486c5497ae66e55ec11d2a262bf84e84bf125b554592f83640924c3f6b1"
+    );
+}
+
+#[test]
+fn the_cohort_preimage_binds_member_bytes_so_dropping_a2a_changes_the_digest() {
+    // The vector above is a HAND-WRITTEN descriptor: it carries member digests,
+    // never member documents, so nothing inside a member moves it. What a member
+    // does move is the digest it hashes to — dropping `a2a_component` changes the
+    // member bytes, so the descriptor built over them is a different document
+    // with a different digest. Pinning that difference is what proves the member
+    // shape reaches the cohort preimage at all.
+    let with_a2a = Fixture::new();
+    let without_a2a = Fixture::without_a2a();
+    assert_ne!(with_a2a.member_digest, without_a2a.member_digest);
+    assert_ne!(with_a2a.cohort_digest, without_a2a.cohort_digest);
+    // Each shape is deterministic under the same canonicalization.
+    assert_eq!(
+        cohort_descriptor_digest(&without_a2a.descriptor).unwrap(),
+        without_a2a.cohort_digest
+    );
+}
+
+#[test]
+fn an_a2a_less_member_states_nothing_about_a_runtime_it_does_not_carry() {
+    let fixture = Fixture::without_a2a();
+    let text = std::str::from_utf8(&fixture.member).unwrap();
+    let value: serde_json::Value = serde_json::from_slice(&fixture.member).unwrap();
+
+    // Omitted, not emptied: no block, no zeroed count, no stub path.
+    assert!(value.get("a2a_component").is_none());
+    assert!(!text.contains("a2a_component"));
+    // And no pin smuggled in under another name: the committed lock's own
+    // identity appears nowhere in a member that bundles no source.
+    let lock = ComponentLock::parse(std::str::from_utf8(LOCK_BYTES).unwrap()).unwrap();
+    assert!(!text.contains(COMPONENT_LOCK_PATH));
+    assert!(!text.contains(&lock.a2a_source.commit));
+    assert!(!text.contains(RUNTIME_ROOT));
+
+    // The document is still a valid member manifest under the same parser.
+    parse_release(&fixture.member).expect("an a2a-less member parses");
+
+    // The tree matches what the member says: no lock file, no runtime subtree.
+    fixture.with_generation(|generation| {
+        assert!(!generation.path().join(COMPONENT_LOCK_PATH).exists());
+        assert!(!generation.path().join(RUNTIME_ROOT).exists());
+    });
+}
+
+#[test]
+fn a_generation_with_no_bundled_runtime_cannot_be_verified_as_a_startable_release() {
+    // The release authority hands a caller a runtime to start. A generation
+    // carrying none has nothing to hand over, and says so explicitly rather than
+    // verifying and then producing a fabricated entrypoint.
+    let fixture = Fixture::without_a2a();
+    assert!(
+        matches!(
+            fixture.verify_result(),
+            Err(ManifestError::InvalidField { ref field, ref detail })
+                if field == "a2a_component" && detail.contains("no bundled a2a runtime")
+        ),
+        "an a2a-less generation must be refused by name, got {:?}",
+        fixture.verify_result()
+    );
+}
+
+#[test]
+fn an_a2a_less_member_that_adds_a_component_block_does_not_self_authorize_a_runtime() {
+    // The member re-digests itself and its own cohort descriptor after the
+    // edit, so the block is as internally coherent as a document can make
+    // itself, and every value in it is copied from the REAL committed lock. It
+    // still authorizes nothing: the lock bytes are supplied independently and
+    // must be present in the tree at the path the block names, and this tree
+    // carries neither them nor the runtime subtree the block declares.
+    let lock = ComponentLock::parse(std::str::from_utf8(LOCK_BYTES).unwrap()).unwrap();
+    let lock_digest = hex::sha256(LOCK_BYTES);
+    let mut fixture = Fixture::without_a2a();
+    fixture.mutate_member(|member| {
+        member["a2a_component"] = serde_json::json!({
+            "commit": lock.a2a_source.commit,
+            "release_identity": lock.a2a_source.release_identity,
+            "component_lock": {"path": COMPONENT_LOCK_PATH, "digest": lock_digest},
+            "runtime": {"root": RUNTIME_ROOT, "entrypoint": RUNTIME_ENTRYPOINT_PATH, "file_count": 3}
+        });
+    });
+    assert!(
+        matches!(
+            fixture.verify_result(),
+            Err(ManifestError::MissingFile(ref path)) if path == COMPONENT_LOCK_PATH
+        ),
+        "a fabricated a2a_component must fail against the tree, got {:?}",
+        fixture.verify_result()
     );
 }
 

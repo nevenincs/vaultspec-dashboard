@@ -5,11 +5,19 @@
 
 .DESCRIPTION
     Installs the COMPLETE offline product tree - the dashboard binary, the copied
-    external updater, the bundled A2A runtime (a frozen onedir built and shipped
-    by this product, not fetched at install time), the release manifest, the
-    component lock, licenses, and the SBOM - never a bare binary. The composed
-    tree is offline-complete: nothing here resolves a runtime dependency over the
-    network, and the only network touch is the optional release-archive download.
+    external updater, the release manifest, licenses, and the SBOM - never a bare
+    binary. The composed tree is offline-complete: nothing here resolves a runtime
+    dependency over the network, and the only network touch is the optional
+    release-archive download.
+
+    That list is the WHOLE tree: no agent-to-agent runtime is bundled, and the
+    absence is deliberate rather than an oversight. The dashboard resolves that
+    runtime from the machine app home (`~/.vaultspec/a2a/generations/`), never
+    from its own install directory, and no shipped operation populates that
+    location yet - adoption is declared but not implemented. Bundling one would
+    add several hundred megabytes this product never reads. It returns to the
+    tree when adoption is implemented; the receipt-state and removal verbs below
+    read the app home either way, so they are unaffected by its absence.
 
     At most one operation runs per invocation. Selecting NONE installs the newest
     published release, which is the only shape a piped invocation can take:

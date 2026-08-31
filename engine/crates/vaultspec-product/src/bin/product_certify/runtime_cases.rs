@@ -75,7 +75,7 @@ fn now_ms() -> i64 {
 /// prove a cold worker never collapses service readiness and that a second demand
 /// resolves to the SAME single worker.
 pub(crate) fn case_cold_gateway_readiness(artifact: &Artifact) -> CaseResult {
-    let runtime = artifact.a2a_runtime()?;
+    let runtime = artifact.required_a2a_runtime()?;
     let paths = artifact.product_paths()?;
     let app_home = paths.app_home();
 
@@ -719,7 +719,7 @@ fn wait_for_descendant(pid_file: &Path, budget: Duration) -> Option<u32> {
 /// processes rather than asserted from a manifest. The caller then closes the
 /// stream it owns and the surface is proven to exit.
 pub(crate) fn case_standalone_mcp_fence(artifact: &Artifact) -> CaseResult {
-    let runtime = artifact.a2a_runtime()?;
+    let runtime = artifact.required_a2a_runtime()?;
     let paths = artifact.product_paths()?;
     let app_home = display(&paths.app_home());
 

@@ -29,7 +29,17 @@ const ROSTER: [Target; 4] = [
 
 /// A verified member manifest for `target`, sharing the cohort identity.
 fn member(lock: &ComponentLock, target: Target) -> String {
-    let composed = ComposedMember {
+    emit_member_manifest(&composed(target, true), Some(lock)).unwrap()
+}
+
+/// The same member with no bundled a2a runtime: no placed evidence, and so no
+/// source pin, which is why it needs no lock to emit.
+fn member_without_a2a(target: Target) -> String {
+    emit_member_manifest(&composed(target, false), None).unwrap()
+}
+
+fn composed(target: Target, with_a2a: bool) -> ComposedMember {
+    ComposedMember {
         target,
         cohort_id: COHORT_ID.to_string(),
         cohort_targets: ROSTER.to_vec(),
@@ -49,7 +59,7 @@ fn member(lock: &ComponentLock, target: Target) -> String {
             size: 16,
             digest: "c".repeat(64),
         },
-        a2a_component: A2aComponentEvidence {
+        a2a_component: with_a2a.then(|| A2aComponentEvidence {
             component_lock: EvidenceArtifact {
                 path: "packaging/a2a-component.lock.json".to_string(),
                 digest: "d".repeat(64),
@@ -59,7 +69,7 @@ fn member(lock: &ComponentLock, target: Target) -> String {
                 entrypoint: "a2a/vaultspec-a2a".to_string(),
                 file_count: 3,
             },
-        },
+        }),
         licenses: vec![LicenseArtifact {
             component: "vaultspec-a2a".to_string(),
             spdx: "MIT".to_string(),
@@ -75,12 +85,15 @@ fn member(lock: &ComponentLock, target: Target) -> String {
             },
         },
         file_digests: BTreeMap::from([("bin/dashboard".to_string(), "b".repeat(64))]),
-    };
-    emit_member_manifest(&composed, lock).unwrap()
+    }
 }
 
 fn all_members(lock: &ComponentLock) -> Vec<(Target, String)> {
     ROSTER.iter().map(|&t| (t, member(lock, t))).collect()
+}
+
+fn all_members_without_a2a() -> Vec<(Target, String)> {
+    ROSTER.iter().map(|&t| (t, member_without_a2a(t))).collect()
 }
 
 #[test]
@@ -136,5 +149,53 @@ fn a_member_supplied_for_the_wrong_target_slot_is_rejected() {
     assert!(matches!(
         emit_cohort_descriptor(&members, &lock),
         Err(CohortError::Roster { .. })
+    ));
+}
+
+#[test]
+fn four_a2a_less_members_emit_a_deterministic_cohort_digest() {
+    // A release built without the bundled runtime still aggregates: absence is a
+    // shared identity like any other, so four members that all lack it agree.
+    let lock = lock();
+    let members = all_members_without_a2a();
+    let emitted = emit_cohort_descriptor(&members, &lock)
+        .expect("four members that all carry no bundled runtime emit a cohort");
+    assert_eq!(emitted, emit_cohort_descriptor(&members, &lock).unwrap());
+    assert_eq!(emitted.cohort_digest.len(), 64);
+    // The digest is over DIFFERENT member documents, so it must differ from the
+    // with-a2a cohort's; identical digests would mean the member shape did not
+    // reach the preimage at all.
+    assert_ne!(
+        emitted.cohort_digest,
+        emit_cohort_descriptor(&all_members(&lock), &lock)
+            .unwrap()
+            .cohort_digest
+    );
+}
+
+#[test]
+fn a_mixed_cohort_is_rejected() {
+    // The property that must survive making a2a optional: whether the release
+    // bundles the runtime is part of the identity all four members share. Three
+    // targets shipping a runtime and one shipping none is a release the members
+    // disagree about, and is refused on the same footing as an A2A commit skew.
+    let lock = lock();
+    let mut members = all_members(&lock);
+    let last = members.len() - 1;
+    members[last].1 = member_without_a2a(members[last].0);
+    assert!(
+        matches!(
+            emit_cohort_descriptor(&members, &lock),
+            Err(CohortError::Identity { .. })
+        ),
+        "a cohort where only some members bundle the runtime must be rejected"
+    );
+
+    // And the mirror: one member bundling a runtime the other three do not.
+    let mut members = all_members_without_a2a();
+    members[0].1 = member(&lock, members[0].0);
+    assert!(matches!(
+        emit_cohort_descriptor(&members, &lock),
+        Err(CohortError::Identity { .. })
     ));
 }

@@ -1,11 +1,13 @@
 //! The product-tree builder CLI.
 //!
 //! Invoked with exactly one operand: the path to a build-spec JSON that names the
-//! target, the destination generation root, and every pre-built source artifact —
-//! including the frozen a2a onedir the pipeline built at the pinned commit. The CLI
-//! reads the spec, loads the trusted component lock from the spec's own source
-//! path, then composes and self-verifies the complete product tree. All authority
-//! lives in the library; this shell only parses, dispatches, and classifies into a
+//! target, the destination generation root, and every pre-built source artifact.
+//! The frozen a2a onedir and the component lock that pins it are one OPTIONAL
+//! source: supplied, the CLI loads the lock from the spec's own source path and
+//! the composed tree carries the runtime; omitted, the tree is composed without
+//! one and its manifest omits `a2a_component` outright. The CLI reads the spec,
+//! then composes and self-verifies the complete product tree. All authority lives
+//! in the library; this shell only parses, dispatches, and classifies into a
 //! stable exit code.
 
 use std::path::{Path, PathBuf};
@@ -73,19 +75,29 @@ fn build(spec_path: &Path) -> Result<PathBuf, BuildFailure> {
         message: format!("build spec is invalid: {error}"),
     })?;
 
-    let lock_raw =
-        std::fs::read_to_string(&spec.sources.component_lock.source).map_err(|error| {
-            BuildFailure {
-                code: EXIT_SPEC,
-                message: format!("cannot read component lock: {error}"),
-            }
-        })?;
-    let lock = ComponentLock::parse(&lock_raw).map_err(|error| BuildFailure {
-        code: EXIT_SPEC,
-        message: format!("component lock is invalid: {error}"),
-    })?;
+    // The lock is loaded from the spec's own a2a source, so it exists exactly
+    // when a bundled runtime does. A spec that declares no runtime names no
+    // lock, and the build has no source pin to anchor rather than a missing one.
+    let lock = match &spec.sources.a2a {
+        Some(a2a) => {
+            let lock_raw =
+                std::fs::read_to_string(&a2a.component_lock.source).map_err(|error| {
+                    BuildFailure {
+                        code: EXIT_SPEC,
+                        message: format!("cannot read component lock: {error}"),
+                    }
+                })?;
+            Some(
+                ComponentLock::parse(&lock_raw).map_err(|error| BuildFailure {
+                    code: EXIT_SPEC,
+                    message: format!("component lock is invalid: {error}"),
+                })?,
+            )
+        }
+        None => None,
+    };
 
-    compose_product_tree(&spec.generation_root, &spec.sources, &lock).map_err(|error| {
+    compose_product_tree(&spec.generation_root, &spec.sources, lock.as_ref()).map_err(|error| {
         BuildFailure {
             code: EXIT_BUILD,
             message: error.to_string(),
