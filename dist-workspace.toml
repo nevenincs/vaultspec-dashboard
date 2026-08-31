@@ -121,8 +121,62 @@ post-announce-jobs = ["./scoop-bump"]
   # Those two labels must exist on the runners before this file names them. A
   # label no registered runner carries does not fail the release — it queues it,
   # silently and forever.
+  # The two non-Linux targets keep the short form: one label, no container.
   [dist.github-custom-runners]
   aarch64-apple-darwin = "macOS"
-  aarch64-unknown-linux-gnu = "linux-arm64"
   x86_64-pc-windows-msvc = "Windows"
-  x86_64-unknown-linux-gnu = "linux-x64"
+
+  # THE LINUX LEGS BUILD INSIDE A DIGEST-PINNED manylinux IMAGE, so their glibc
+  # floor is something the build environment enforces rather than something the
+  # build host happens to satisfy. Before this, neither Linux target declared a
+  # container, so each binary inherited whatever its runner provided: v0.1.8
+  # shipped a `vaultspec` requiring glibc 2.39 from a host running 2.43, and
+  # nothing in the repository stated a floor or would have noticed it moving.
+  # 2.39 excludes every current enterprise LTS - Ubuntu 22.04, Debian 12,
+  # RHEL 8 and 9, Rocky, Alma, Amazon Linux 2023 - while the README promised
+  # "glibc-based Linux" without qualification.
+  #
+  # Same image and digest vaultspec-rag pins, so the products share one
+  # baseline rather than each discovering their own. Pinned by digest because a
+  # mutable tag is not an acceptable input to a release, and pinned to the same
+  # manylinux RELEASE on both arches, not merely the same floor: the build
+  # environment is a downloaded, executed input, and two builds of one toolchain
+  # can differ in ways a floor check does not measure.
+  #
+  # THE SPA BUILD RUNS IN HERE TOO, and it fits with nothing to spare. The
+  # build hook installs Node 22 and runs `npm ci` inside this image, and every
+  # JavaScript action the job uses is executed by the runner's own bundled node.
+  # Measured by running all of them in both images: Node 20, 22 and 24, and the
+  # runner's node20 and node24, each report a maximum requirement of exactly
+  # GLIBC_2.28 and load cleanly. That is the image's ceiling met precisely -
+  # there is NO headroom. A future Node release that moves to a 2.31 floor stops
+  # working here with no warning and no config change on our side, and the
+  # failure will look like a broken runner rather than an expired baseline.
+  # Moving to a newer manylinux is the fix when that happens; the floor guard
+  # will hold the README to whatever is chosen.
+  #
+  # `host` is set EXPLICITLY on both, and is not decoration. It defaults to a
+  # hardcoded x86_64-unknown-linux-musl, and dist prefers the container's host
+  # over the runner's when it decides what the build machine is - so an aarch64
+  # leg that omits it plans a cargo-zigbuild cross-compile instead of a native
+  # build, and produces an artifact labelled for a machine it was not built on.
+  # Verified against the pinned 0.32.0 binary: omitting `host` puts
+  # `pip3 install cargo-zigbuild` into the leg's install step, and setting it
+  # clears that step to null.
+  [dist.github-custom-runners.x86_64-unknown-linux-gnu]
+  runner = "linux-x64"
+  host = "x86_64-unknown-linux-gnu"
+  container = { image = "quay.io/pypa/manylinux_2_28_x86_64@sha256:4dc41da7df20400310c80d162a2fe2d2c2f3d9734d8dec20f6b9843711618deb", host = "x86_64-unknown-linux-gnu" }
+
+  # HOSTED, and the only leg that is. The fleet's ARM64 Linux runner is itself a
+  # colima container with no reachable docker daemon, so a container job there
+  # dies in `Initialize containers` with
+  # `Value cannot be null. (Parameter 'network')` before any step runs, and
+  # building natively there inherits the guest's glibc. `ubuntu-24.04-arm` is a
+  # GitHub-hosted ARM64 runner with a working docker daemon, free for public
+  # repositories, which this one is. No hardware was needed - the blocker was
+  # the assumption that hosted runners were not an option here.
+  [dist.github-custom-runners.aarch64-unknown-linux-gnu]
+  runner = "ubuntu-24.04-arm"
+  host = "aarch64-unknown-linux-gnu"
+  container = { image = "quay.io/pypa/manylinux_2_28_aarch64@sha256:29a6ceb78de5b00494e6e7456a72782a4cb54238de102e7491d15fe47789b4d1", host = "aarch64-unknown-linux-gnu" }

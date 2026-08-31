@@ -105,11 +105,17 @@ against this worktree. Its lifecycle fields may be newer than the latest release
 vaultspec-dashboard supports four platforms:
 
 - macOS on Apple silicon
-- glibc-based Linux on arm64
-- glibc-based Linux on x64
+- Linux on arm64, glibc 2.28 or newer
+- Linux on x64, glibc 2.28 or newer
 - Windows on x64
 
 Intel macOS isn't supported.
+
+Both Linux binaries are built inside a digest-pinned `manylinux_2_28` image, so that
+floor is enforced by the build environment rather than inherited from whichever machine
+happened to run the build. It covers the current enterprise LTS releases — RHEL 8 and 9
+and their rebuilds, Debian 12 and 13, Ubuntu 22.04 and newer, Amazon Linux 2023 — and a
+repository guard fails the build if this sentence and the pinned image ever disagree.
 
 The routes below target the latest published GitHub Release. Development on `main` may
 contain lifecycle changes that haven't been released yet.

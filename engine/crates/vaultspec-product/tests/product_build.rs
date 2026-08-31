@@ -517,6 +517,27 @@ fn scan_rejects_a_non_portable_file_name() {
 }
 
 #[test]
+fn a_non_portable_rejection_names_the_whole_path() {
+    let temp = tempfile::tempdir().unwrap();
+    // The offending SEGMENT alone does not say where the file came from, and a
+    // composed tree carries the frozen runtime's entire dependency closure. A
+    // rejection naming only the segment leaves the reader searching two
+    // repositories for a file that is in neither, so the message must carry
+    // the path that reaches the emitter.
+    let nested = temp.path().join("_internal/vendor/data");
+    std::fs::create_dir_all(&nested).unwrap();
+    std::fs::write(nested.join("my file.txt"), b"x").unwrap();
+
+    let Err(ProductBuildError::NonPortablePath { detail }) = scan_composed_tree(temp.path()) else {
+        panic!("a non-portable file name must fail the build scan");
+    };
+    assert!(
+        detail.contains("_internal/vendor/data/my file.txt"),
+        "the rejection must name the whole path, got {detail:?}"
+    );
+}
+
+#[test]
 fn scan_rejects_a_tree_deeper_than_the_segment_ceiling() {
     let temp = tempfile::tempdir().unwrap();
     let mut deep = temp.path().to_path_buf();
