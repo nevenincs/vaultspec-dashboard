@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.12](https://github.com/nevenincs/vaultspec-dashboard/compare/v0.1.11...v0.1.12) (2026-08-31)
+
+
+### Bug Fixes
+
+* **audit:** gate the SPA audit on the shipped surface, as CI already does ([#97](https://github.com/nevenincs/vaultspec-dashboard/issues/97)) ([3fc2bb3](https://github.com/nevenincs/vaultspec-dashboard/commit/3fc2bb3462865571c6911bce06011a753108a28e))
+* **engine:** regenerate Cargo.lock for the 0.1.11 version bump ([#93](https://github.com/nevenincs/vaultspec-dashboard/issues/93)) ([6129e90](https://github.com/nevenincs/vaultspec-dashboard/commit/6129e902339b686ffc80d25280175df84aed48d0))
+
 ## [0.1.11](https://github.com/nevenincs/vaultspec-dashboard/compare/v0.1.10...v0.1.11) (2026-08-31)
 
 
