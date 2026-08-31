@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.10](https://github.com/nevenincs/vaultspec-dashboard/compare/v0.1.9...v0.1.10) (2026-08-31)
+
+
+### Bug Fixes
+
+* **ci:** stop acquisition racing the upload it acquires ([#68](https://github.com/nevenincs/vaultspec-dashboard/issues/68)) ([b9fa919](https://github.com/nevenincs/vaultspec-dashboard/commit/b9fa91996aee8f81f461f3df43cf437c01d0f172))
+
 ## [0.1.9](https://github.com/nevenincs/vaultspec-dashboard/compare/v0.1.8...v0.1.9) (2026-08-30)
 
 
