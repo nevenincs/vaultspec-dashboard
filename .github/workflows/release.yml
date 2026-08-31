@@ -333,6 +333,21 @@ jobs:
           if [ "${{ job.status }}" = "failure" ]; then
             rm -rf target engine/target 2>/dev/null || true
           fi
+          # HAND THE TREE BACK. Since the Linux legs build inside a pinned
+          # manylinux image, everything cargo writes is owned by the container's
+          # root. The removal above only happens when the job FAILED, so a
+          # SUCCESSFUL leg leaves engine/target root-owned - and the next job on
+          # this shared machine is an ordinary non-root checkout that cannot
+          # clean what it does not own. It dies in `actions/checkout` with
+          # `EACCES: permission denied, unlink .../engine/target/...` and then
+          # `fatal: not a git repository`.
+          #
+          # `--reference=/__w` copies the owner the runner itself uses rather
+          # than naming a uid, and /__w exists only on a containerised job, so
+          # this is a no-op on a normal runner.
+          if [ -d /__w ]; then
+            chown -R --reference=/__w "$GITHUB_WORKSPACE" 2>/dev/null || true
+          fi
           df -h . 2>/dev/null | tail -1
       # Hand-set for the self-hosted fleet; re-apply if `dist generate-ci` regenerates this file.
       - name: Reclaim runner disk (always · windows)
