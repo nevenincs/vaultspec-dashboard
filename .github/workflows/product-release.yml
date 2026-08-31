@@ -601,3 +601,24 @@ jobs:
           fi
           gh release upload "${tag}" dist/* --clobber
           echo "attached ${{ steps.gather.outputs.count }} archive(s) to ${tag}"
+
+  # POST-ATTACH CHANNEL PUBLICATION. Homebrew's formula points at the three
+  # non-Windows archives ON THE RELEASE and verifies each digest by
+  # re-downloading, so it can only run once `attach-to-release` has uploaded
+  # them - hence `needs`, not a parallel leg. It is itself fail-closed behind
+  # `channel-publish-gate`, so a run here publishes nothing until the matrix
+  # marks homebrew `supported` on all three targets.
+  #
+  # The Scoop equivalent hangs off dist's `post-announce-jobs`
+  # (`custom-scoop-bump` in release.yml) rather than here, because it was wired
+  # before this workflow existed and reads the dist plan JSON for its tag.
+  # Homebrew takes the resolved version directly: this is the workflow that
+  # attaches the archives it consumes, and `attach-to-release` already tags them
+  # `v<version>` from exactly this value.
+  homebrew-bump:
+    name: Publish the Homebrew formula
+    needs: [resolve-version, attach-to-release]
+    uses: ./.github/workflows/homebrew-bump.yml
+    with:
+      version: ${{ needs.resolve-version.outputs.value }}
+    secrets: inherit

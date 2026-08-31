@@ -1,0 +1,321 @@
+# Post-release Homebrew formula publication: the Homebrew analogue of
+# scoop-bump.yml. `product-release.yml` calls this AFTER `attach-to-release`
+# has uploaded the complete product archives to the `v<version>` GitHub
+# Release, because everything below reads those archives and their `.sha256`
+# sidecars off the release. `brew install` reads the COMMITTED formula -
+# `livecheck` only serves maintainer tooling - so each release must land one
+# formula commit.
+#
+# WHY A FORMULA AND NOT A CASK. Two decisions, both load-bearing:
+#   1. Cask-on-Linux only landed in Homebrew/brew#20334 (2026-05) and is
+#      limited to portable artifact types. Two of this product's three
+#      Homebrew-servable targets are Linux, so a cask would serve macOS and
+#      silently abandon Linux.
+#   2. The `quarantine` stanza was REMOVED from brew master, so cask downloads
+#      are unconditionally quarantined with no opt-out. For an un-notarized CLI
+#      that is fatal: Gatekeeper kills the binary on first run. Formula
+#      downloads go through curl, which never sets the quarantine attribute.
+#
+# WHY NO `bottle` BLOCK. `bottle :unneeded` was REMOVED in brew 3.5.0, not
+# merely deprecated. A formula that ships pre-built binaries simply omits the
+# block; emitting one is a hard parse failure on any current brew.
+#
+# WHY NO `depends_on arch:`. All three Homebrew-servable targets ship
+# (macOS arm64, Linux x86_64, Linux arm64). `ArchRequirement` is fatal, and an
+# `arch: :arm64` constraint would reject Intel Linux, which is a real target.
+# There is NO x86_64-apple-darwin build - Intel Mac is unsupported - and that
+# is expressed by simply having no `on_intel` inside `on_macos`, which makes
+# brew report an unsupported platform rather than 404 on an invented asset.
+#
+# THE `on_system` SHAPE (deliberate, and VERIFIED - read this before "fixing" it).
+# `url` and `sha256` written inside `on_macos` / `on_linux` / `on_arm` /
+# `on_intel` blocks are the received wisdom's classic RuboCop offence: the
+# `FormulaAudit/ComponentsOrder` allow-list for `on_system` blocks was long
+# said not to include them. That is NO LONGER TRUE on current brew. Checked
+# against Homebrew 4.6.20 with this exact generated formula:
+#     brew style --formula  -> 1 file inspected, no offenses detected
+#     brew audit  --formula -> exit 0, no problems
+# So this shape is clean, not tolerated - and it is also the exact shape the
+# two formulas already in `nevenincs/homebrew-tap` (`vaultspec-core.rb`,
+# `vaultspec-rag.rb`) use, so it is consistency and correctness at once. Do not
+# hoist the urls to the top level: there is no single url that serves three
+# platforms.
+#
+# NO `version` STANZA, deliberately. Every asset name embeds the version
+# (`vaultspec-<version>-<target>.tar.gz`), so brew scans the version from the
+# url - `brew info` reports `stable 0.1.10` with no stanza present - and an
+# explicit one is a REAL audit failure, not a style nit:
+#   "Stable: `version 0.1.10` is redundant with version scanned from URL".
+# That is why this formula diverges from `vaultspec-core.rb`, which does carry
+# `version`: its assets are named `vaultspec-core-<target>` with the version
+# only in the release path, so brew cannot scan it and the stanza is required.
+# The backward-bump guard below therefore reads the committed version back out
+# of the url, which is the same read brew performs.
+#
+# FLEET DIVERGENCE (noted here so a later generalisation of the fleet generator
+# has a starting point). `vaultspec-rag`'s `tools/packaging/homebrew.py` renders
+# a BARE-BINARY formula: one release asset per executable, the first executable
+# becoming the formula's single primary `url` and every other executable a
+# nested `resource` block, with `def install` renaming the triple-suffixed
+# assets into `bin`. That works because vaultspec-core and vaultspec-rag attach
+# individually-downloadable binaries. THIS product does not: it attaches ONE
+# archive per platform - `vaultspec-<version>-<target>.tar.gz` - whose contents
+# are flat at the archive root (`bin/`, `licenses/`, `release.json`,
+# `sbom.cdx.json`) and which is offline-complete by design. So there is exactly
+# one `url` per platform and NO `resource` blocks at all, and `def install`
+# relocates the whole unpacked tree into `libexec` instead of renaming binaries.
+# Generalising the fleet generator means teaching it a second payload shape
+# ("archive bundle" beside "bare binaries"), not parameterising the existing
+# one. The fleet generator is NOT modified here, and no generator ships as a
+# product from this repository - the formula is generated inline below, the way
+# scoop-bump generates its manifest with `jq -n`.
+#
+# WHY `libexec` + `write_exec_script` AND NOT `bin.install`. The archive is an
+# offline-complete release set: the dashboard, the external updater, the
+# licences, `release.json` and the SBOM must stay siblings, because
+# `vaultspec verify-release` walks the tree against its own `release.json`.
+# `libexec.install buildpath.children` keeps that tree intact - `children`, not
+# `Dir["*"]`, because the latter drops dotfiles - and
+# `bin.write_exec_script` (not `install_symlink`) puts only `vaultspec` on PATH
+# while making `$0` resolve to the REAL libexec path, so the binary's sibling
+# lookups still find `vaultspec-updater` and `release.json`. A symlink would
+# leave `$0` pointing at `bin/vaultspec` and break every sibling lookup.
+#
+# THE SELF-UPDATER DOES NOT REFUSE HERE, AND THE CAVEATS SAY SO. Verified
+# against `engine/crates/vaultspec-cli/src/cmd/lifecycle.rs:236-248`: `update()`
+# guards on ONE condition - `current_exe().with_file_name("vaultspec-updater")`
+# being a file - and refuses with a remediation string naming only
+# `scoop update`, `winget upgrade`, the product installer, and Windows
+# Installer. Homebrew is not named there, and more importantly the guard never
+# fires on a Homebrew copy: this formula installs the whole release tree, so
+# the updater IS a sibling of the dashboard. A `brew install` of this exact
+# formula shape was run to confirm it - the shim resolves
+# `$0 = .../Cellar/vaultspec/<v>/libexec/bin/vaultspec` and the sibling updater
+# and `release.json` both resolve FOUND. So `vaultspec update` would proceed
+# and rewrite files inside the Cellar. That is a PRODUCT gap, not a packaging
+# one, and it is not fixed here: the caveats below tell the user plainly not to
+# run it. The same is true of the Scoop copy today, since the complete Windows
+# zip also places the updater as a sibling; the honest fix is a channel-aware
+# guard in `update()` (a receipt or an install-root check), not a formula tweak.
+#
+# Recovery note: if a merge clobbers the formula commit (a long-lived branch
+# whose Formula commit predates the bump is merged without rebasing), the tap
+# silently regresses. Recover by triggering this workflow via workflow_dispatch
+# with the released version.
+
+name: homebrew-bump
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: 'Released version, without the leading v.'
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Released version, without the leading v (e.g. 0.1.10).'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: homebrew-bump-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # Fail-closed publication gate, called exactly as scoop-bump calls it.
+  # Publishing a formula is a PUBLICATION act, so it must not proceed until the
+  # Homebrew channel has earned publication per the support matrix + phase-zero
+  # reversibility proof. Today this fails closed (the matrix marks homebrew
+  # `feasibility_gated` on all three Homebrew-servable targets), which is the
+  # correct honest state until a clean-machine proof flips it to `supported`.
+  gate:
+    uses: ./.github/workflows/channel-publish-gate.yml
+    with:
+      channel: homebrew
+
+  bump:
+    needs: gate
+    runs-on: [self-hosted, Linux, X64]
+    steps:
+      # The channel root is an ORGANISATION resource, not a per-repo one. A
+      # package manager resolves ONE tap for all of nevenincs, so a formula
+      # committed to this repository is published nowhere a user's brew can
+      # see. Check out the org distribution repo and commit there. Same deploy
+      # key, same repository, same mechanism scoop-bump uses for `bucket/`;
+      # this tap serves `bucket/` for Scoop and `Formula/` for Homebrew.
+      - uses: actions/checkout@v6
+        with:
+          repository: nevenincs/homebrew-tap
+          ref: main
+          path: channels
+          ssh-key: ${{ secrets.CHANNEL_ROOT_DEPLOY_KEY }}
+
+      - name: Generate and commit the org tap formula for the released version
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+
+          : "${VERSION:?refusing to bump: no version supplied}"
+          TAG="v${VERSION}"
+          BASE="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
+          HOMEPAGE="https://github.com/${GITHUB_REPOSITORY}"
+          WORK="${RUNNER_TEMP:-/tmp}/vaultspec-homebrew"
+          rm -rf "$WORK"
+          mkdir -p "$WORK"
+
+          # Resolve one platform's digest: fetch the published sidecar, then
+          # RE-DOWNLOAD the archive and compare its own SHA-256 against it,
+          # exactly as scoop-bump does for its single Windows asset. Trusting
+          # the sidecar alone would let a corrupt or mismatched upload land in
+          # the formula and 404-equivalent (checksum-mismatch) every install.
+          resolve() {
+            local target="$1"
+            local asset="vaultspec-${VERSION}-${target}.tar.gz"
+            local url="${BASE}/${asset}"
+            local sidecar actual
+
+            sidecar=$(curl --proto '=https' --tlsv1.2 -sSfL "${url}.sha256" | cut -d' ' -f1 | tr -d '\r')
+            # One check per line, deliberately: `test -n "$A" && test -n "$B"`
+            # does NOT trip `set -e` for the non-final command, which is how a
+            # sibling channel once published empty hashes out of a green run.
+            : "${sidecar:?refusing to bump: no digest fetched from the ${target} sidecar}"
+
+            curl --proto '=https' --tlsv1.2 -sSfL "$url" -o "${WORK}/${target}.tar.gz"
+            actual=$(sha256sum "${WORK}/${target}.tar.gz" | cut -d' ' -f1)
+            if [ "$actual" != "$sidecar" ]; then
+              echo "::error::${target} archive digest mismatch: sidecar ${sidecar}, actual ${actual}" >&2
+              exit 1
+            fi
+            # Freeing each archive as it verifies keeps peak disk at one
+            # archive rather than three; the runner is shared.
+            rm -f "${WORK}/${target}.tar.gz"
+            printf '%s' "$actual"
+          }
+
+          # The three targets Homebrew serves. x86_64-apple-darwin is
+          # deliberately absent: Intel Mac is not a build target, and a formula
+          # must not name an asset the release never produced.
+          MACOS_ARM_SHA=$(resolve aarch64-apple-darwin)
+          LINUX_X86_SHA=$(resolve x86_64-unknown-linux-gnu)
+          LINUX_ARM_SHA=$(resolve aarch64-unknown-linux-gnu)
+
+          # Refuse a backwards bump, as scoop-bump does. This catches a re-run
+          # for an older release, and a stale-branch merge that clobbered a
+          # prior formula commit. An ABSENT formula is a first publication, not
+          # a regression, so it must not be read as version "null".
+          #
+          # Read the committed version back OUT OF THE URL, not out of a
+          # `version` stanza, because the formula deliberately carries none:
+          # every asset name embeds the version, so brew scans it from the url
+          # and `brew audit` rejects an explicit `version` as redundant with it
+          # ("Stable: `version X` is redundant with version scanned from URL").
+          # This parse is the same read brew performs.
+          FORMULA=channels/Formula/vaultspec.rb
+          if [ -f "$FORMULA" ]; then
+            CURRENT_VERSION=$(sed -n 's|.*/vaultspec-\(.*\)-aarch64-apple-darwin\.tar\.gz".*|\1|p' "$FORMULA" | head -1)
+            if [ -n "$CURRENT_VERSION" ] && \
+               [ "$(printf '%s\n' "$CURRENT_VERSION" "$VERSION" | sort -V | tail -1)" = "$CURRENT_VERSION" ] && \
+               [ "$CURRENT_VERSION" != "$VERSION" ]; then
+              echo "::error::tap is at ${CURRENT_VERSION}, refusing to bump backward to ${VERSION}" >&2
+              exit 1
+            fi
+          fi
+
+          # Generated WHOLE, never rewritten in place: an in-place edit needs a
+          # committed file to read (which does not exist before the first
+          # publication) and is how a stale field survives a bump unnoticed.
+          # The tap may carry no Formula/ yet for this product.
+          mkdir -p channels/Formula
+          cat > "$FORMULA" <<FORMULA_EOF
+          class Vaultspec < Formula
+            desc "Spec-driven development dashboard with its own updater and release manifest"
+            homepage "${HOMEPAGE}"
+            license "MIT"
+
+            livecheck do
+              url :stable
+              regex(/^v(\d+(?:\.\d+)+)\$/i)
+              strategy :github_latest
+            end
+
+            on_macos do
+              on_arm do
+                url "${BASE}/vaultspec-${VERSION}-aarch64-apple-darwin.tar.gz"
+                sha256 "${MACOS_ARM_SHA}"
+              end
+            end
+
+            on_linux do
+              on_intel do
+                url "${BASE}/vaultspec-${VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+                sha256 "${LINUX_X86_SHA}"
+              end
+
+              on_arm do
+                url "${BASE}/vaultspec-${VERSION}-aarch64-unknown-linux-gnu.tar.gz"
+                sha256 "${LINUX_ARM_SHA}"
+              end
+            end
+
+            def install
+              libexec.install buildpath.children
+              bin.write_exec_script libexec/"bin/vaultspec"
+            end
+
+            def caveats
+              <<~EOS
+                Installed as one offline-complete release tree under:
+                  #{libexec}
+                Only \`vaultspec\` is on PATH. \`vaultspec-updater\`, the licences,
+                release.json and the SBOM stay beside it, which is what lets
+                \`vaultspec verify-release\` check the tree it is actually running from.
+
+                Update and remove through Homebrew, which owns these files:
+                  brew upgrade vaultspec
+                  brew uninstall vaultspec
+
+                Do NOT run \`vaultspec update\` on this copy. It does not refuse
+                here: its only guard is whether \`vaultspec-updater\` sits beside
+                the dashboard, and this install places them as siblings, so the
+                command would hand a release transaction to a helper that
+                rewrites files Homebrew owns. Use \`brew upgrade\` instead.
+
+                Verify with: vaultspec --version
+              EOS
+            end
+
+            test do
+              assert_match version.to_s, shell_output("#{bin}/vaultspec --version")
+            end
+          end
+          FORMULA_EOF
+
+          cd channels
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Stage FIRST, then ask whether anything changed. `git diff` reports
+          # only TRACKED paths, so before the first publication it sees no
+          # change and this job would exit zero having published nothing.
+          git add -- Formula/vaultspec.rb
+          if git diff --cached --quiet -- Formula/vaultspec.rb; then
+            echo "formula already at ${VERSION}; nothing to bump"
+            exit 0
+          fi
+          git commit -m "chore(homebrew): bump vaultspec-dashboard formula to ${TAG}"
+          git push origin main
+
+      - name: Reclaim runner disk (always)
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          df -h . 2>/dev/null | tail -1
+          rm -rf "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
+          df -h . 2>/dev/null | tail -1

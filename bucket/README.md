@@ -1,45 +1,67 @@
 # Scoop bucket
 
-This directory makes the repository its own Scoop bucket. Scoop resolves app manifests
-from a `bucket/` subdirectory when one is present, so no separate bucket repository
-exists or needs to be created. Every product under this account repeats this layout,
-which is what keeps the count of distribution repositories at zero per product.
+**This directory is not the published bucket, and no manifest is committed here.**
 
-Once a release publishes the complete product archive, install with:
+The Scoop bucket for this product is the ORGANISATION tap
+[`nevenincs/homebrew-tap`](https://github.com/nevenincs/homebrew-tap), which serves
+`bucket/` for Scoop and `Formula/` for Homebrew across every nevenincs product. A
+package manager resolves one bucket per organisation, not one per repository, so a
+manifest committed to this repository's own `bucket/` is published nowhere a user's
+Scoop can see.
 
 ```powershell
-scoop bucket add vaultspec https://github.com/nevenincs/vaultspec-dashboard
-scoop install vaultspec
+scoop bucket add nevenincs https://github.com/nevenincs/homebrew-tap
+scoop install nevenincs/vaultspec
 ```
 
-## No manifest is committed
+The app name is `vaultspec`: Scoop derives it from the manifest filename, and
+`.github/workflows/scoop-bump.yml` writes `bucket/vaultspec.json` into the tap.
 
-`vaultspec.json` is written by `.github/workflows/scoop-bump.yml` at release time and is
-absent until that job first succeeds. That absence is deliberate: a manifest names a
-version and pins a SHA-256, so a placeholder is a claim a user can act on and fail
-against.
+## What used to be here, and why it was wrong
 
-A placeholder is exactly what used to live here, and it was not a harmless stub. It
+This directory previously claimed the repository was its own Scoop bucket. Scoop *will*
+resolve manifests from a `bucket/` subdirectory of any repo you add, so the claim was
+plausible — it was simply not how this organisation publishes, and it does not match
+where `scoop-bump.yml` actually commits.
+
+Worse, it carried a committed placeholder manifest. That was not a harmless stub: it
 pinned version `0.1.2` with `"hash": "0000…0000"` and a URL for
 `vaultspec-0.1.2-x86_64-pc-windows-msvc.zip` — an asset **no release has ever
-published**. Every release from v0.1.0 through v0.1.4 attaches only the
-`vaultspec-cli-*` archives, so that URL returns 404 on all of them. `scoop install
-vaultspec` failed at the download, before the placeholder digest could even be checked.
+published**. `scoop install vaultspec` failed at the download, before the placeholder
+digest could even be checked. The bump job never overwrote it because the job had never
+succeeded: it fetches `${URL}.sha256` for the same non-existent asset and dies there. So
+the committed placeholder turned "this channel was never finished" into "this channel is
+broken", and hid the difference for four releases.
 
-The bump job never overwrote it because the job has never succeeded: it fetches
-`${URL}.sha256` for the same non-existent asset and dies there. So the committed
-placeholder turned "this channel was never finished" into "this channel is broken", and
-hid the difference for four releases.
+Both defects have the same fix, and it is the one in force now: publish to the org tap,
+and commit no manifest until a real release produces one.
+
+## How the manifest gets there
+
+`.github/workflows/scoop-bump.yml` runs after the GitHub Release publishes, checks out
+`nevenincs/homebrew-tap`, generates `bucket/vaultspec.json` whole with `jq -n`, verifies
+the published archive's digest against its sibling `.sha256` by re-downloading, and
+commits one bump per release. `scoop update` reads that COMMITTED manifest; the
+`checkver`/`autoupdate` stanzas in it serve maintainer tooling only.
 
 ## Before this channel can ship
 
-`scoop-bump.yml` points at the **complete product archive** — the whole offline tree,
+`scoop-bump.yml` points at the **complete product archive**
+(`vaultspec-<version>-x86_64-pc-windows-msvc.zip`) — the whole offline tree,
 deliberately, not the binary-only `vaultspec-cli` archive that Dist produces. That
 archive is what `packaging/install.ps1` places, and the reasoning is recorded in
-`dist-workspace.toml`. Until a release attaches it, there is nothing truthful for a
-manifest to point at, and pointing one at the cli-only archive instead would ship
-something that is not the product.
+`dist-workspace.toml`. No published release attaches it yet, so nothing has been
+committed to the tap and the channel remains *pending proof*: `vaultspec-core` and
+`vaultspec-rag` are present in the tap today and this product is not.
 
-The same reasoning is why there is no `Formula/` here yet. vaultspec-core and
-vaultspec-rag each ship a Homebrew tap from their own repository, and this product
-should too — but over the archive it is actually supposed to install.
+Publication is additionally fail-closed behind
+`.github/workflows/channel-publish-gate.yml`, which refuses until the phase-zero
+clean-machine install/upgrade/downgrade/repair/uninstall proof flips the Scoop entry in
+`packaging/a2a-support-matrix.json` from `feasibility_gated` to `supported`.
+
+## Why this directory still exists
+
+For this README. It documents where the bucket actually is, so that the next person who
+looks for a `bucket/` in this repository finds the redirect rather than concluding the
+Scoop channel was never wired. Scoop only reads `.json` manifests, so a directory holding
+one Markdown file publishes nothing even if someone does add this repo as a bucket.

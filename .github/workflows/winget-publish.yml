@@ -7,12 +7,25 @@
 # cannot run unless the WinGet channel has earned publication per the support
 # matrix + phase-zero reversibility proof.
 #
+# WHAT IT WOULD SUBMIT. The manifests install the composed product archive
+# `vaultspec-<version>-x86_64-pc-windows-msvc.zip` as `InstallerType: zip` +
+# `NestedInstallerType: portable`, exposing one command (`vaultspec`). They no
+# longer reference an MSI: `engine/crates/vaultspec-cli/wix/main.wxs` `<?error?>`s
+# on an undefined `ProductTreeDir` and expects heat-harvested fragments nothing
+# generates, no CI step invokes candle/light, and `dist-workspace.toml` sets
+# `installers = []` — that MSI has never been built and cannot be. The zip is
+# the artefact the product actually ships, and is the one Scoop installs too.
+#
 # TWO STANDING DEPENDENCIES, both authored-pending:
 #
-#   1. MSI (DEFERRED — WiX not installed on the build box). WinGet's
-#      installer manifest references the complete product MSI, not the zip. Until
-#      the MSI artifact is built and published, this path has no artifact to
-#      submit. The manifests are authored-PENDING-MSI.
+#   1. THE COMPOSED ARCHIVE IS NOT ON A RELEASE YET. `product-release.yml`
+#      composes `vaultspec-<version>-<target>.zip` + a bare-digest `.sha256`,
+#      but no published release carries it — v0.1.10 attaches only the Dist
+#      per-package archives (`vaultspec-cli-*`, `vaultspec-product-*`,
+#      `vaultspec-updater-*`, `vaultspec-release-verify-*`). Until that lands,
+#      `InstallerUrl` names a file that 404s and `InstallerSha256` stays the
+#      64-zero sentinel that `a2a-channel-feasibility.yml` matches to fail the
+#      channel closed. See packaging/winget/README.md.
 #
 #   2. CROSS-REPO PUBLISH (#46/#50 class). Submission targets
 #      microsoft/winget-pkgs via a fork + PR (komac/wingetcreate). That requires
@@ -58,16 +71,25 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
         run: |
-          # AUTHORED-PENDING (see header): the MSI artifact and the
-          # winget-pkgs fork/token (cross-repo) must both exist before this
-          # submits. The gate has already proven the channel is publishable, so
-          # reaching here means the matrix marks winget `supported`.
+          # AUTHORED-PENDING (see header): a release must actually carry the
+          # composed product archive, and the winget-pkgs fork/token
+          # (cross-repo) must exist, before this submits. The gate has already
+          # proven the channel is publishable, so reaching here means the matrix
+          # marks winget `supported`.
           #
-          # Submission uses the authored manifests under packaging/winget/ against
-          # the published complete MSI. When the MSI + fork/token land, wire the
-          # komac/wingetcreate submission here; until then this is a fail-loud
-          # placeholder so no partial publish can occur.
-          Write-Error "winget-publish: MSI artifact and winget-pkgs fork/token (cross-repo) are pending; no submission performed"
+          # Report which of the two dependencies is still outstanding rather
+          # than a single flat refusal, so the failure names the actual blocker.
+          $manifest = 'packaging/winget/vaultspec.vaultspec.installer.yaml'
+          $installer = Get-Content $manifest -Raw
+          $blockers = @()
+          if ($installer -match 'InstallerSha256:\s*"?0{64}') {
+            $blockers += "InstallerSha256 in $manifest is still the 64-zero sentinel: no release has attached vaultspec-$env:VERSION-x86_64-pc-windows-msvc.zip, so there is no digest to publish"
+          }
+          $blockers += 'winget-pkgs fork + token (cross-repo submission) is not wired; komac/wingetcreate has no target to push to'
+          #
+          # When the blockers above are cleared, replace this refusal with the
+          # komac/wingetcreate submission against packaging/winget/.
+          Write-Error ("winget-publish: refusing to submit — " + ($blockers -join '; '))
           exit 1
       - name: Reclaim runner disk (always)
         if: always()
