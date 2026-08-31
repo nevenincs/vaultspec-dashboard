@@ -35,6 +35,13 @@ dev = [
   "mdformat-gfm>=1.0.0",
   "prek>=0.3.2",
   "pymarkdownlnt>=0.9.0",
+  # Declared, not inherited. The guards parse the release workflows to check
+  # that every `runs-on` reaches the preflight's selector derivation, and PyYAML
+  # was already importable here only as a transitive dependency of several
+  # others. The dependency-declaration guard refuses that - a package that
+  # arrives by accident leaves on the same terms, and the first sign is a guard
+  # that cannot import on a clean checkout.
+  "pyyaml>=6.0",
   "pytest>=9.1.1",
   "rich>=15.0.0",
   "torch>=2.4",

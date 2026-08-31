@@ -26,7 +26,7 @@ import pytest
 DEV_ONLY_PACKAGES = frozenset({"pytest", "rich", "torch", "vaultspec-rag", "mdformat"})
 
 #: Import names whose distribution is named differently on PyPI.
-DISTRIBUTION_ALIASES = {"pymarkdown": "pymarkdownlnt"}
+DISTRIBUTION_ALIASES = {"pymarkdown": "pymarkdownlnt", "yaml": "pyyaml"}
 
 
 def _normalise(name: str) -> str:
