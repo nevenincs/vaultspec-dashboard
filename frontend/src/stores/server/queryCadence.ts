@@ -28,8 +28,8 @@ export const OPERATOR_STATUS_STALE_MS = 5_000;
  *  every cache entry carries an explicit `gcTime`). */
 export const OPERATOR_STATUS_GC_MS = 5 * 60_000;
 
-/** Trigger-then-poll cadence for a bounded background job (provisioning run, A2A
- *  lifecycle op): how often to refetch while the job is still `running`. */
+/** Trigger-then-poll cadence for a bounded background job (a provisioning run):
+ *  how often to refetch while the job is still `running`. */
 export const JOB_POLL_MS = 1_500;
 
 /** Bounded retention for a job-poll query once it stops being observed. */
@@ -37,8 +37,8 @@ export const JOB_POLL_GC_MS = 5 * 60_000;
 
 /** `refetchInterval` predicate for the job-poll cadence above: refetch while the
  *  job is `running`, stop once it reaches any terminal state. Generic over the
- *  job shape so both `ProvisionJob` and `A2aLifecycleJob` (identical `state` union)
- *  share the one predicate rather than re-authoring it per job type. */
+ *  job shape so any bounded job carrying that `state` union shares the one
+ *  predicate rather than re-authoring it per job type. */
 export function runningJobRefetchInterval<T extends { state: string }>(query: {
   state: { data?: T };
 }): number | false {

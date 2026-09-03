@@ -22,7 +22,19 @@ permissions:
 
 concurrency:
   group: quality-gates-${{ github.ref }}
-  cancel-in-progress: true
+  # Superseding a run is right on a branch and wrong on the default one.
+  #
+  # `main` takes direct pushes, so for such a push this workflow IS the gate.
+  # Cancelling it on the next push destroys that gate, and the damage is silent:
+  # a cancelled run reports as `cancelled`, not `failed`, so it is not red in
+  # the Actions list and nothing downstream reacts to it. FIFTY of the last
+  # hundred `main` runs ended that way - half the default branch's history
+  # carries no verdict at all, which is most of why this workflow's condition
+  # went unnoticed for six weeks.
+  #
+  # On any other ref a newer commit really does make the in-flight run
+  # obsolete, so keep cancelling there.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   spellcheck:
@@ -145,6 +157,59 @@ jobs:
           rm -rf "${RUNNER_TEMP:-/tmp}"/actionlint "${RUNNER_TEMP:-/tmp}"/actionlint_*.tar.gz 2>/dev/null || true
           df -h . 2>/dev/null | tail -1
 
+  guards:
+    # The repository-health guards under `dev/guards` — and, until this job
+    # existed, the one part of the local gate that CI never ran. They are
+    # reachable as `just lint guards` and `just test guards`, both of which
+    # expand to the same pytest invocation, and NO workflow in .github/ invoked
+    # either: a grep of this directory for `pytest`, `dev/guards`, `just lint`
+    # and `just test` returned the frontend job and nothing else. So the
+    # invariants they assert — that every justfile recipe dispatches into
+    # `dev/`, that the recipes and `dev/toolchain.py`'s target table describe
+    # the same commands, that the src/dev/harness import fence holds, that
+    # dependencies are declared and tooling lives in its stated home — held
+    # only on a machine where somebody had typed the command. On every push and
+    # every pull request they asserted nothing.
+    #
+    # That is worse than not having them, because the tree cites them as
+    # settled. The justfile's own header tells a reader that a shell branch
+    # reintroduced into a recipe body "fails the build rather than quietly
+    # working on one machine"; no build was checking, so the sentence was an
+    # assurance nothing backed. A guard that runs nowhere is a test file.
+    #
+    # The gate is INVOKED through `just`, never restated as a bare
+    # `pytest dev/guards` — the same rule as the frontend job below, and here
+    # it is load-bearing twice over. test_dispatch_conformance.py asserts that
+    # the justfile and the toolchain table agree, so a step reaching past both
+    # to call pytest directly would be verifying a dispatch layer it had just
+    # gone around, and would keep reporting success after the recipe it claims
+    # to exercise was renamed or deleted.
+    #
+    # `just bootstrap` is required rather than defensive: the guards run under
+    # `uv run --no-sync`, which deliberately will not provision `.venv`, so
+    # without the sync there is no pytest to spawn and the step dies at
+    # "program not found" instead of reporting on a guard. Nothing here builds
+    # — the guards read the tree and import `dev.*` — so this job needs neither
+    # Node nor a Rust toolchain and stays one of the cheap ones.
+    name: Repo guards (just lint guards · pytest)
+    runs-on: [self-hosted, Linux, X64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: extractions/setup-just@v2
+      - uses: astral-sh/setup-uv@v6
+      - name: Provision the dev toolchain
+        run: just bootstrap
+      - name: Guards (just lint guards)
+        run: just lint guards
+      - name: Reclaim runner disk (always)
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          df -h . 2>/dev/null | tail -1
+          rm -rf "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
+          df -h . 2>/dev/null | tail -1
+
   frontend:
     name: Frontend (just lint frontend · vitest)
     runs-on: [self-hosted, Linux, X64]
@@ -178,6 +243,13 @@ jobs:
         id: toolchain
         shell: bash
         run: echo "channel=$(grep -m1 '^channel' engine/rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+      # Absorb a transient `socket hang up`: the action does not retry, and a
+      # dropped connection here aborts the job before the suite starts, which
+      # reads exactly like a test failure. rustup's install is idempotent, so
+      # a successful warm makes the action's own fetch a no-op.
+      - name: Warm the pinned toolchain, retrying a dropped connection
+        shell: bash
+        run: bash .github/scripts/warm-toolchain.sh "${{ steps.toolchain.outputs.channel }}" || true
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ steps.toolchain.outputs.channel }}
@@ -198,14 +270,35 @@ jobs:
         run: |
           uv tool install vaultspec-core
           uv tool dir --bin >> "$GITHUB_PATH"
+      # Captured to a file rather than piped, so the suite's OWN exit code is
+      # what fails the step, and so the classifier below has the output to read
+      # even when the job is killed before anything else can inspect it.
       - name: Unit tests (just test frontend)
-        run: just test frontend
+        shell: bash
+        run: |
+          set +e
+          just test frontend > "${RUNNER_TEMP}/frontend-suite.log" 2>&1
+          status=$?
+          cat "${RUNNER_TEMP}/frontend-suite.log"
+          exit $status
         env:
           # Pin the exact binary the live suite spawns. Its own fallback probes
           # `engine/target/{release,debug}`, which does not exist when the build
           # landed in the shared directory — the suite would then fail at global
           # setup with "no vaultspec engine binary found" rather than running.
           VAULTSPEC_TEST_ENGINE_BIN: ${{ env.ENGINE_TARGET_DIR }}/debug/vaultspec
+      # A red here means one of two unrelated things and, until now, looked
+      # identical either way: an assertion failed, or the runner died. vitest
+      # prints its summary only after running to completion, so its ABSENCE is
+      # what separates them - a signature only names a known fault, and never
+      # decides, so an unrecognised infrastructure failure is still not reported
+      # as a test verdict.
+      - name: Say which kind of red this is
+        if: failure()
+        shell: bash
+        run: |
+          log="${RUNNER_TEMP}/frontend-suite.log"
+          uv run --no-sync python -m dev.classify_failure "$log" | tee -a "${GITHUB_STEP_SUMMARY}"
       - name: Unused code (just lint knip — advisory)
         run: just lint knip
         continue-on-error: true
@@ -237,6 +330,13 @@ jobs:
         id: toolchain
         shell: bash
         run: echo "channel=$(grep -m1 '^channel' engine/rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+      # Absorb a transient `socket hang up`: the action does not retry, and a
+      # dropped connection here aborts the job before the suite starts, which
+      # reads exactly like a test failure. rustup's install is idempotent, so
+      # a successful warm makes the action's own fetch a no-op.
+      - name: Warm the pinned toolchain, retrying a dropped connection
+        shell: bash
+        run: bash .github/scripts/warm-toolchain.sh "${{ steps.toolchain.outputs.channel }}" || true
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ steps.toolchain.outputs.channel }}
@@ -339,12 +439,70 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Reject version decrease in bucket/vaultspec.json
+      - name: Guard the committed Scoop manifest
         shell: bash
         run: |
           set -euo pipefail
-          BASE_VERSION=$(git show "origin/${{ github.base_ref }}:bucket/vaultspec.json" | jq -r '.version')
-          HEAD_VERSION=$(jq -r '.version' bucket/vaultspec.json)
+          # The manifest is a release POINTER: it names a version and pins a
+          # digest that `scoop install` acts on. This guard protects two
+          # properties of it, and the second was added because the first alone
+          # let a broken pointer sit here for four releases.
+          #
+          # No manifest is committed until the bump job first succeeds, so
+          # "absent" is a real and expected state on both sides. `jq` on a
+          # missing file is a hard failure under `set -e`, which is what the
+          # version-only form of this guard did.
+          base_json="$(git show "origin/${{ github.base_ref }}:bucket/vaultspec.json" 2>/dev/null || true)"
+          head_json=""
+          [ -f bucket/vaultspec.json ] && head_json="$(cat bucket/vaultspec.json)"
+
+          # Returns 0 when the manifest's url is definitely absent. A network
+          # fault is NOT treated as absent: only a 404/410 counts, so a flaky
+          # runner cannot turn this gate into a false accusation.
+          url_is_gone() {
+            local url code
+            url=$(printf '%s' "$1" | jq -r '.url')
+            [ -n "$url" ] && [ "$url" != "null" ] || return 1
+            code=$(curl --proto '=https' --tlsv1.2 -sS -o /dev/null -w '%{http_code}' \
+                     -I -L --max-time 30 "$url" 2>/dev/null || echo 000)
+            echo "  ${url} -> HTTP ${code}"
+            [ "$code" = "404" ] || [ "$code" = "410" ]
+          }
+
+          if [ -z "$head_json" ]; then
+            if [ -z "$base_json" ]; then
+              echo "no manifest on either side — nothing to publish yet, OK"
+              exit 0
+            fi
+            # Removing a WORKING pointer un-publishes the product. Removing one
+            # that resolves to nothing only deletes a false claim, which is the
+            # honest fix and must stay possible.
+            echo "manifest removed; checking whether the base pointer resolved"
+            if url_is_gone "$base_json"; then
+              echo "base manifest pointed at a non-existent asset — removal OK"
+              exit 0
+            fi
+            echo "ERROR: refusing to remove a manifest whose url still resolves." >&2
+            echo "Removing it would un-publish the product for Scoop users." >&2
+            exit 1
+          fi
+
+          # A committed manifest must point at something real. This is the
+          # property whose absence let 0.1.2 ship with a 404 url and a
+          # placeholder digest, install-breaking, out of a green run.
+          echo "manifest present; checking its url resolves"
+          if url_is_gone "$head_json"; then
+            echo "ERROR: bucket/vaultspec.json points at an asset that does not exist." >&2
+            echo "A manifest is a claim a user acts on; do not commit one that 404s." >&2
+            exit 1
+          fi
+
+          HEAD_VERSION=$(printf '%s' "$head_json" | jq -r '.version')
+          if [ -z "$base_json" ]; then
+            echo "first published manifest (${HEAD_VERSION}) — OK"
+            exit 0
+          fi
+          BASE_VERSION=$(printf '%s' "$base_json" | jq -r '.version')
           if [ "$BASE_VERSION" = "$HEAD_VERSION" ]; then
             echo "bucket version unchanged (${HEAD_VERSION}) — OK"
             exit 0
@@ -370,6 +528,13 @@ jobs:
     runs-on: [self-hosted, Linux, X64]
     steps:
       - uses: actions/checkout@v4
+      # Absorb a transient `socket hang up`: the action does not retry, and a
+      # dropped connection here aborts the job before the suite starts, which
+      # reads exactly like a test failure. rustup's install is idempotent, so
+      # a successful warm makes the action's own fetch a no-op.
+      - name: Warm the pinned toolchain, retrying a dropped connection
+        shell: bash
+        run: bash .github/scripts/warm-toolchain.sh "stable" || true
       - uses: dtolnay/rust-toolchain@stable
       - name: cargo-deny (native — no Docker on the self-hosted runner)
         shell: bash
@@ -430,6 +595,13 @@ jobs:
         id: toolchain
         shell: bash
         run: echo "channel=$(grep -m1 '^channel' engine/rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+      # Absorb a transient `socket hang up`: the action does not retry, and a
+      # dropped connection here aborts the job before the suite starts, which
+      # reads exactly like a test failure. rustup's install is idempotent, so
+      # a successful warm makes the action's own fetch a no-op.
+      - name: Warm the pinned toolchain, retrying a dropped connection
+        shell: bash
+        run: bash .github/scripts/warm-toolchain.sh "${{ steps.toolchain.outputs.channel }}" || true
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ steps.toolchain.outputs.channel }}
@@ -439,6 +611,17 @@ jobs:
           set -euo pipefail
           python3 -c "import json; json.load(open('packaging/a2a-component.lock.json'))"
           python3 -c "import json; json.load(open('schemas/release-set-manifest.json'))"
+      # The committed lock must agree with the manifest. Nothing else in this
+      # file passes `--locked`, so without this step cargo silently refreshes
+      # the lock in memory and every build succeeds over a tree that is not
+      # reproducible. That is how the drift became recurring: release-please
+      # bumps `[workspace.package] version` in engine/Cargo.toml and does not
+      # regenerate engine/Cargo.lock, and no instrument was positioned to see
+      # it. `cargo metadata` resolves without building, so this is cheap and
+      # fails fast, on the release PR itself.
+      - name: The committed Cargo.lock agrees with Cargo.toml
+        run: cargo metadata --locked --format-version 1 > /dev/null
+        working-directory: engine
       - name: Product builder, manifest verifiers, and lock/capsule/release pins
         run: cargo test -p vaultspec-product
         working-directory: engine

@@ -3,8 +3,8 @@ tags:
   - '#adr'
   - '#a2a-orchestration-edge'
 date: '2026-07-14'
-modified: '2026-08-01'
-body_hash: 'sha256:48424edc966e9d64284155d9e7ee871475f1cd92443660265ed13bfa5aed5e98'
+modified: '2026-08-02'
+body_hash: 'sha256:6d83386b6b136ad13332cde4571861b04482f34a01df19e7cd5fc62ce213216e'
 related:
   - "[[2026-07-14-a2a-orchestration-edge-research]]"
   - '[[2026-06-29-agentic-authoring-boundary-adr]]'
@@ -207,6 +207,67 @@ namespace — it is orchestration control only.
 > the composer's model picker consumes that existing truth per
 > `2026-08-01-a2a-agent-flow-adr` D3 — no wire change was needed or made
 > for model selection.
+
+> **Amendment (2026-08-02, clarification resolution widens to three
+> outcomes — reviewed cross-repo contract event, a2a-orchestration-edge
+> campaign):** NO new verb. The brokered `clarification-respond` body
+> widens to EXACTLY ONE OF three alternatives, enforced at the engine
+> BEFORE any round-trip: `answers` (unchanged), `prompt` (the sibling's
+> 2026-08-02 `clarification-continuation` outcome — a new prompt resuming
+> the parked run; broker carry-through landed engine-side `184caa8323`),
+> and `decline` (the sibling's 2026-08-02 `clarification-decline` outcome
+> — a payload-free refusal that resumes the run with NO answer given,
+> distinct from `run-cancel`; the sibling's gate appends one fixed marker
+> turn as its downstream trace, producer landed a2a-side `e5ff51bb`).
+> `decline` admits only the literal `true`, mirroring the sibling schema's
+> refusal of the contradictory `false`. The sibling additionally renders
+> an ANSWERED questionnaire into one human transcript turn
+> (`clarification-decline` / `clarification-answers-grounding` records,
+> a2a vault) — a sibling-side behaviour change with no engine wire
+> impact, noted here so the transcript a viewer reads is not mistaken for
+> client-fabricated content. Producer-first ordering was honoured for
+> decline; the continuation carry-through corrected the inverse gap
+> (sibling served an outcome the broker could not reach). Stores seam:
+> `useRespondToClarification` takes the exactly-one-of union
+> (`answers | prompt | decline`), making an ambiguous two-outcome
+> submission unrepresentable in the client. Bound correction folded into
+> this event: the continuation `prompt` takes the RUN-MESSAGE posture
+> (trim-non-empty, the run-start 64 KiB ceiling, multiline legal), not
+> the answer posture (single-line, answer-sized) it first shipped with —
+> the sibling types `ContinuationPrompt` against its run-message ceiling
+> with no line-safety rule, so the answer posture refused prompts the
+> sibling accepts and stranded the user on a parked run.
+
+> **Amendment (2026-08-02, run-start selection becomes
+> optional-until-served — owner-directed ruling, relayed by the review
+> router):** the brokered `run-start` had come to REQUIRE an A2A-served
+> catalog `selection` while the sibling's extra-forbid `RunStartRequest`
+> admits no such field and `/v1/provider-catalog` (whitelisted, engine
+> `12f7de9796`) is not yet served — so no run could start through an
+> engine built from current main in either direction (evidence:
+> `2026-08-02-a2a-orchestration-edge-provider-catalog-inversion-audit`).
+> This relaxation is the RESTORATION of producer-first, not a tolerated
+> violation of it: the rule exists so a consumer never demands what no
+> producer serves, and the mandatory selection was the engine enforcing a
+> future contract against the present sibling. The relaxed contract:
+> `selection` is OPTIONAL on brokered run-start; when absent, the
+> forwarded body carries no selection-shaped key at all (never a null,
+> never an empty object) — the only body the deployed sibling accepts;
+> when present, it is validated exactly as before and forwarded, so the
+> catalog consumer stack stays intact for the moment its producer lands.
+> Orphan `overrides`/`fallbacks` without a `selection` are refused: they
+> modify a whole-team selection that is not there. Landing with the fix,
+> not after it, is the conformance pin
+> (`run_start_forwards_only_keys_the_sibling_schema_admits`): every
+> forwarded run-start key must be in the sibling's pinned
+> `RunStartRequest` field list, with the selection keys deliberately
+> absent until served — extending that list is a reviewed
+> cross-repository contract event, never a local edit. **SUNSET:**
+> `selection` becomes mandatory again in ONE reviewed event when the
+> sibling BOTH serves the catalog read AND admits the selection fields on
+> run-start (the provider-model-catalog record's producer milestones,
+> a2a vault); the reversal re-tightens `validate.rs` and moves the three
+> selection keys into the pinned admitted list together.
 
 **D2 — Actors and tokens are provisioned by the engine at run start.** The
 brokered `run-start` verb is the provisioning moment: the engine registers (or

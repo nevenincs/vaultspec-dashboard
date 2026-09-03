@@ -604,7 +604,7 @@ fn read_only_child_file_mask_excludes_every_mutation_right() {
     assert_eq!(hardening & !materializer, WRITE_DAC);
 }
 
-/// Real-NTFS acceptance for the directory-metadata flush (W01.P01.S177).
+/// Real-NTFS acceptance for the directory-metadata flush.
 ///
 /// Both sides of the boundary, so the result cannot be misread: a directory
 /// handle WITHOUT append access is refused by `FlushFileBuffers`, and
@@ -653,7 +653,7 @@ fn directory_metadata_flush_succeeds_through_a_non_flushable_handle() {
     );
 }
 
-/// The ACCESS-RIGHTS BOUNDARY for flushing a directory (W01.P01.S177 acceptance).
+/// The ACCESS-RIGHTS BOUNDARY for flushing a directory.
 ///
 /// This is a testable CODE fact about a precondition, NOT a durability inference:
 /// `FlushFileBuffers` requires append-data access, and on a directory

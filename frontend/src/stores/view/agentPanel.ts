@@ -4,7 +4,9 @@
 // panels (modal, single-open, visited-not-lived-in), it coexists with the
 // editor/graph and holds a running conversation.
 // Local chrome only: no wire access lives here; the
-// session data is the `stores/server/agent` slice.
+// session data is the `stores/server/agent` slice. The pure derivations below
+// take already-read snapshots as arguments for the same reason — they decide what
+// the open panel presents, and fetch nothing themselves.
 //
 // WHETHER the panel is mounted is NOT stored here: the panel occupies the center
 // dock's ONE reserved slot (agent-panel-shell-integration D1), so "open" IS
@@ -21,11 +23,16 @@ import {
   useShellCenterSlot,
 } from "./shellLayout";
 import { clearClarificationRecaps } from "./clarificationRecaps";
+import type { TeamRunStatus } from "../server/agent/a2aTeam";
+import {
+  adaptProviderCondition,
+  type ProviderCondition,
+} from "../server/agent/providerCondition";
+import {
+  relayErrorCode,
+  type RelayTranscriptFrame,
+} from "../server/liveAdapters/a2aRelay";
 
-/** The two panel views: the running conversation and
- *  the folded-in cross-run "Pending changes" inbox. Local chrome — the transcript
- *  is the default; the inbox has no composer of its own. */
-export type AgentPanelView = "transcript" | "pending";
 export type TeamRunScopeAction = "keep" | "clear";
 
 /** Decide the synchronous local action when the served active scope changes. */
@@ -51,10 +58,40 @@ export function scopedTeamRunId(
     : null;
 }
 
+/** How the panel's bound run was REFUSED, or `null` while it has not failed.
+ *
+ *  Lifecycle stays AUTHORITATIVE: only a failed run-status snapshot opens this,
+ *  never a relay frame, so a transient live fault cannot make a still-running run
+ *  look refused. Within a failure the served classification wins; a live failure
+ *  frame observed this session fills in for a snapshot that carries none (the
+ *  same authoritative-first, relay-fills-the-gap reading the run header's roster
+ *  already uses). A failure that classified as nothing at all is the vocabulary's
+ *  floor, which has a presentation of its own — silence would have none.
+ *
+ *  Nothing here reads the served reason. That prose has been observed naming a
+ *  retry step on a run refused for an exhausted balance, so a remedy chosen from
+ *  it would be the wrong remedy. */
+export function teamRunProviderCondition(
+  status: TeamRunStatus | undefined,
+  frames: readonly RelayTranscriptFrame[],
+): ProviderCondition | null {
+  if (status?.status !== "failed") return null;
+  if (status.provider_condition !== undefined) return status.provider_condition;
+  for (let index = frames.length - 1; index >= 0; index -= 1) {
+    const frame = frames[index];
+    const live = frame === undefined ? undefined : relayErrorCode(frame);
+    const condition = adaptProviderCondition(live);
+    if (condition !== undefined) return condition;
+  }
+  return "unknown";
+}
+
 interface AgentPanelState {
-  /** Which view the open panel renders: the running
-   *  transcript (default) or the folded-in pending-changes inbox. */
-  panelView: AgentPanelView;
+  /** Whether the in-conversation "changes awaiting review" region is expanded
+   *  (agent-panel-shell-integration D9). The panel has ONE view — the
+   *  conversation — and the pending queue is a disclosure INSIDE it, so this is
+   *  an open flag on a region, never a view switch; the composer never unmounts. */
+  pendingChangesOpen: boolean;
   /** The session the header names and the transcript renders, or `null` when no
    *  session is current (the empty state). */
   currentSessionId: string | null;
@@ -72,7 +109,7 @@ interface AgentPanelState {
   /** Scope that owns the current viewing binding. A scope change clears it before
    *  discovery for the next workspace so no run renders under the wrong root. */
   teamRunScope: string | null;
-  setPanelView: (view: AgentPanelView) => void;
+  setPendingChangesOpen: (open: boolean) => void;
   setCurrentSession: (sessionId: string | null) => void;
   setTeamRun: (
     run: { runId: string; prompt: string | null; scope: string } | null,
@@ -80,13 +117,15 @@ interface AgentPanelState {
 }
 
 export const useAgentPanel = create<AgentPanelState>((set) => ({
-  panelView: "transcript",
+  pendingChangesOpen: false,
   currentSessionId: null,
   teamRunId: null,
   teamRunPrompt: null,
   teamRunScope: null,
-  setPanelView: (view) =>
-    set((state) => (state.panelView === view ? state : { panelView: view })),
+  setPendingChangesOpen: (open) =>
+    set((state) =>
+      state.pendingChangesOpen === open ? state : { pendingChangesOpen: open },
+    ),
   setCurrentSession: (sessionId) =>
     set((state) =>
       state.currentSessionId === sessionId ? state : { currentSessionId: sessionId },
@@ -113,8 +152,8 @@ export function useAgentPanelOpen(): boolean {
   return useShellCenterSlot() === "agent";
 }
 
-export function useAgentPanelView(): AgentPanelView {
-  return useAgentPanel((state) => state.panelView);
+export function useAgentPendingChangesOpen(): boolean {
+  return useAgentPanel((state) => state.pendingChangesOpen);
 }
 
 export function useAgentCurrentSessionId(): string | null {
@@ -135,17 +174,18 @@ export function useAgentTeamRunScope(): string | null {
 
 // --- imperative seams (for a chip/action outside a component subscription) -------
 
-/** Give the center slot to the Agent panel, optionally targeting a view (the
- *  footer pending chip opens it straight in the inbox). Omitting the view leaves
- *  the current one. Every entry point — chip, chord, palette, background menu,
- *  comment-send bridge — lands here, so the slot has one open path. */
-export function openAgentPanel(options?: { view?: AgentPanelView }): void {
-  if (options?.view !== undefined) setAgentPanelView(options.view);
+/** Give the center slot to the Agent panel; `pendingChanges: true` additionally
+ *  expands the in-conversation pending-changes region (the footer chip's path —
+ *  D9: an expanded disclosure, never a second view). Every entry point — chip,
+ *  chord, palette, background menu, comment-send bridge — lands here, so the
+ *  slot has one open path. */
+export function openAgentPanel(options?: { pendingChanges?: boolean }): void {
+  if (options?.pendingChanges === true) setAgentPendingChangesOpen(true);
   setShellCenterSlot("agent");
 }
 
-export function setAgentPanelView(view: AgentPanelView): void {
-  useAgentPanel.getState().setPanelView(view);
+export function setAgentPendingChangesOpen(open: boolean): void {
+  useAgentPanel.getState().setPendingChangesOpen(open);
 }
 
 /** Empty the center slot when the Agent panel holds it. Never touches the slot

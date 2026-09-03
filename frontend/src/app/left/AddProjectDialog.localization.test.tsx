@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import { tmpdir } from "node:os";
-import { resolve } from "node:path";
+import { resolve, sep } from "node:path";
 
 import {
   act,
@@ -153,6 +153,60 @@ describe("localized add project dialog", () => {
     expect(alert.parentElement?.parentElement?.className).toContain("sm:flex-row");
   });
 
+  it("keeps the confirm enabled after a typed path the engine spells identically", async () => {
+    // REGRESSION, and platform-independent by construction.
+    //
+    // The typed-path parse is debounced by 300ms, and its effect cleanup runs
+    // only when a DEPENDENCY CHANGES. Pressing Enter calls the parse
+    // synchronously but does not change `path`, so that pending timer survives.
+    // The listing then resolves and writes the resolved path back.
+    //
+    // Everything turns on whether the resolved path differs from what was
+    // typed. The engine always answers in forward slashes, so:
+    //
+    //   Linux/macOS  typed `/tmp`  -> engine `/tmp`  -> IDENTICAL -> no
+    //                dependency change -> cleanup never runs -> the stale timer
+    //                fires at 300ms, sets operatorDraft, and `target` collapses
+    //                to null. The confirm goes permanently disabled with no
+    //                error shown, and nothing clears it.
+    //
+    //   Windows      typed `C:\Users\...` -> engine `C:/Users/...` -> DIFFERENT
+    //                -> the effect re-runs -> the timer IS cleared -> masked.
+    //
+    // So the defect is invisible to every Windows developer and fatal on the
+    // two platforms most operators run. This test removes the platform from the
+    // question by typing the path in the spelling the engine itself uses, which
+    // reproduces the identical-string condition anywhere.
+    //
+    // It asserts the button is still enabled AFTER the debounce window has
+    // elapsed, rather than racing it. A test that merely clicks quickly enough
+    // passes while the bug is present.
+    const runtime = createTestLocalizationRuntime();
+    render(
+      <I18nextProvider i18n={runtime}>
+        <MenuTestProviders client={createMenuTestQueryClient()}>
+          <AddProjectDialog />
+        </MenuTestProviders>
+      </I18nextProvider>,
+    );
+    act(openAddProjectDialog);
+    const enginePath = resolve(tmpdir()).split(sep).join("/");
+    const confirmName = runtime.t("projects:addDialog.actions.pickFolder");
+    const pathInput = screen.getByRole("textbox", {
+      name: runtime.t("projects:addDialog.accessibility.folderPath"),
+    });
+    fireEvent.change(pathInput, { target: { value: enginePath } });
+    fireEvent.keyDown(pathInput, { key: "Enter" });
+    const confirm = () =>
+      screen.getByRole("button", { name: confirmName }) as HTMLButtonElement;
+    await waitFor(() => expect(confirm().disabled).toBe(false), ENGINE_WAIT);
+    // Past the 300ms debounce by a wide margin. A surviving timer fires here.
+    await act(async () => {
+      await new Promise((done) => setTimeout(done, 1200));
+    });
+    expect(confirm().disabled).toBe(false);
+  });
+
   it("keeps pending copy active through a real rejected registration", async () => {
     const runtime = createTestLocalizationRuntime();
     render(
@@ -182,9 +236,22 @@ describe("localized add project dialog", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: confirmName }));
     const dialog = screen.getByRole("dialog");
-    const adding = screen.getByRole("button", {
-      name: runtime.t("projects:addDialog.actions.adding"),
-    }) as HTMLButtonElement;
+    // AWAITED, not read in the same tick as the click. The confirm relabels to
+    // the pending copy when the registration mutation starts, and that is a
+    // state change the click SCHEDULES rather than one it completes - so a
+    // synchronous read races the re-render and fails with the confirm still
+    // reading its idle label. It did, on run 33363935433: "Unable to find an
+    // accessible element with the role button and name 'Adding project...'",
+    // with "Pick folder" still in the printed roles.
+    //
+    // This asserts exactly what the synchronous read asserted - the pending
+    // copy IS present, and everything below is locked while it is - without
+    // also requiring it to have rendered before the next statement runs.
+    const adding = (await screen.findByRole(
+      "button",
+      { name: runtime.t("projects:addDialog.actions.adding") },
+      ENGINE_WAIT,
+    )) as HTMLButtonElement;
     const cancel = screen.getByRole("button", {
       name: runtime.t("common:actions.cancel"),
     }) as HTMLButtonElement;

@@ -168,6 +168,74 @@ fn release_json(lock: &ComponentLock, mut mutate: impl FnMut(&mut serde_json::Va
     serde_json::to_string(&v).unwrap()
 }
 
+/// The same member with no bundled runtime: `a2a_component` removed outright,
+/// never emptied. Derived from the with-a2a builder so the two can differ only
+/// in the field under test.
+fn release_json_without_a2a(
+    lock: &ComponentLock,
+    mut mutate: impl FnMut(&mut serde_json::Value),
+) -> String {
+    release_json(lock, |v| {
+        v.as_object_mut().unwrap().remove("a2a_component");
+        mutate(v);
+    })
+}
+
+#[test]
+fn an_a2a_less_member_parses_and_joins_vacuously_to_the_real_lock() {
+    let lock = ComponentLock::parse(LOCK_JSON).unwrap();
+    let raw = release_json_without_a2a(&lock, |_| {});
+    let release = ReleaseSetManifest::parse(&raw).expect("an a2a-less member is a valid member");
+    // The lock still governs every member that pins a source. This one pins
+    // none, so the join has nothing to compare and is satisfied — which is what
+    // lets the CLI verify an a2a-less install against its embedded lock.
+    release
+        .verify_against_lock(&lock)
+        .expect("a member that pins no source joins vacuously");
+    let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
+    assert!(value.get("a2a_component").is_none());
+}
+
+#[test]
+fn an_a2a_less_member_that_declares_a_component_is_held_to_every_check() {
+    // Optionality is about the whole block, never about its contents: a member
+    // that puts the block back is validated exactly as strictly as before.
+    let lock = ComponentLock::parse(LOCK_JSON).unwrap();
+    for (pointer, value) in [
+        ("/a2a_component/commit", serde_json::json!("main")),
+        (
+            "/a2a_component/release_identity/version",
+            serde_json::json!("latest"),
+        ),
+        (
+            "/a2a_component/component_lock/path",
+            serde_json::json!("packaging/elsewhere.json"),
+        ),
+        ("/a2a_component/runtime/file_count", serde_json::json!(0)),
+        (
+            "/a2a_component/runtime/entrypoint",
+            serde_json::json!("elsewhere/vaultspec-a2a.exe"),
+        ),
+    ] {
+        let raw = release_json(&lock, |v| {
+            *v.pointer_mut(pointer).unwrap() = value.clone();
+        });
+        assert!(
+            ReleaseSetManifest::parse(&raw).is_err(),
+            "{pointer} must still be rejected when a2a_component is present"
+        );
+    }
+
+    // A half-block cannot be assembled either: the pin is whole or absent.
+    let raw = release_json(&lock, |v| {
+        v["a2a_component"]
+            .as_object_mut()
+            .unwrap()
+            .remove("runtime");
+    });
+    assert!(ReleaseSetManifest::parse(&raw).is_err());
+}
+
 #[test]
 fn valid_capsule_and_release_verify_against_the_real_lock() {
     let lock = ComponentLock::parse(LOCK_JSON).unwrap();

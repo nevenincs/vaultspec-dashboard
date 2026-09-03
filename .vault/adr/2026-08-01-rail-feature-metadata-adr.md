@@ -5,7 +5,7 @@ tags:
 date: '2026-08-01'
 modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:1ae9703d2405b5eb7768808b7db0484fe0bafbfe4058d979fe50e94ef8777829'
+body_hash: 'sha256:032560f7945e79608275378fd15a7cafb2f965cfd27e318137d491d8f81e20f2'
 related:
   - "[[2026-08-01-rail-feature-metadata-research]]"
 ---
@@ -36,6 +36,11 @@ Feature rows say only a name and a total count. The owner wants each feature to 
 - D4 — Composition line: the second line renders per-type counts in canonical pipeline order (research · decisions · plans …) from `type_counts`, replacing every duplicated-tag second line (rail filter field, feature search suggestions). Zero-count types are omitted; the line truncates with an honest ellipsis, never wraps rows taller.
 - D5 — One read: all three surfaces consume the roster query (scope-keyed, generation-invalidated as today); no surface adds a second per-feature fetch for this metadata.
 - D6 — Bounds: the engine computes the fields inside the existing roster projection memoized on the graph generation; no new subprocess, no unbounded accumulation; roster response size stays capped by the existing feature ceiling.
+
+Amendments recorded at execution (2026-08-01), from the closing review of this record's plan:
+
+- D4 placement note - the rail Features rows are SINGLE-line by the row-density law, so those rows carry the composition in their tooltip rather than on a second line; the two surfaces D4 names by name (rail filter field, feature search suggestions) render the line itself. D4 is met as written; the tooltip placement is recorded here so a later reader does not read the rows as unmet.
+- Scope note - the delivering commit also folds `docGroupMessage`/`docTypeCategory` in `vaultRowPresentation.ts` onto the canonical `docTypeVocabulary` home. That consolidation belongs to the concurrent deduplication lane, not to this record; it rode along because it touches the same rail presentation module. Its one user-visible effect is the unknown-doc-type group header falling back to "Document" instead of "Documents". Recorded rather than left silent.
 
 ## Implementation
 

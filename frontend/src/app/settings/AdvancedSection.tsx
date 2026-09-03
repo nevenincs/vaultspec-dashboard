@@ -4,14 +4,17 @@
 // settings VALUES, and consoles are not values. This is the sanctioned non-schema
 // extension the ADR records, not a precedent for hand-wiring settings.
 //
-// Four folds, one expanded at a time (`advancedConsole` accordion): the index
-// console (D4), the system-status block (D6), the project-health block, and the
-// agent lifecycle console (D5). Expansion is the MOUNT GATE — a collapsed fold
-// renders nothing, so none of the underlying polls run for someone who opened
-// Settings to change a theme (data-loading-activity).
+// Three folds, one expanded at a time (`advancedConsole` accordion): the index
+// console (D4), the system-status block (D6), and the project-health block.
+// Expansion is the MOUNT GATE — a collapsed fold renders nothing, so none of the
+// underlying polls run for someone who opened Settings to change a theme
+// (data-loading-activity). The agent lifecycle console D5 placed here is retired;
+// what remains of service monitoring is the two health blocks.
 //
 // Layer law: leaf chrome. Every console below reads its own stores hooks; this
 // frame owns nothing but the disclosure state and the labels.
+
+import { useEffect } from "react";
 
 import { SectionLabel } from "../kit";
 import { FoldSection } from "../kit/FoldSection";
@@ -19,11 +22,11 @@ import { useLocalizedMessageResolver } from "../../platform/localization/Localiz
 import {
   ADVANCED_CONSOLE_IDS,
   ADVANCED_CONSOLE_LABELS,
+  collapseAdvancedConsoles,
   toggleAdvancedConsole,
   useExpandedAdvancedConsole,
   type AdvancedConsoleId,
 } from "../../stores/view/advancedConsole";
-import { A2aLifecyclePanel } from "../panels/A2aLifecyclePanel";
 import { BackendHealthPanel } from "../panels/BackendHealthPanel";
 import { IndexConsole } from "../panels/IndexConsole";
 import { VaultHealthPanel } from "../panels/VaultHealthPanel";
@@ -39,14 +42,17 @@ function ConsoleBody({ console: consoleId }: { console: AdvancedConsoleId }) {
       return <BackendHealthPanel />;
     case "project":
       return <VaultHealthPanel />;
-    case "agent":
-      return <A2aLifecyclePanel />;
   }
 }
 
 export function AdvancedSection() {
   const resolve = useLocalizedMessageResolver();
   const expanded = useExpandedAdvancedConsole();
+  // Closing Settings collapses the accordion, so the mount gate holds on the
+  // SECOND open too: without this, one use of the deep-link command would leave
+  // the index console expanded forever and restart its polls every time someone
+  // opened Settings to change a theme.
+  useEffect(() => collapseAdvancedConsoles, []);
   const title = resolve(SECTION_TITLE);
   if (title.usedFallback) return null;
 

@@ -4,14 +4,20 @@ export const ltrSearchMaintenanceResources = {
   ...en.operations.searchMaintenance,
   actions: {
     ...en.operations.searchMaintenance.actions,
-    stop: "Arrêter la recherche",
-    update: "Mettre à jour la recherche",
+    stop: "Arrêter l’indexation",
+    update: "Reconstruire l’index",
+  },
+  searches: {
+    ...en.operations.searchMaintenance.searches,
+    results_one: "{{count, number}} résultat",
+    results_many: "{{count, number}} de résultats",
+    results_other: "{{count, number}} résultats",
   },
   jobs: {
     ...en.operations.searchMaintenance.jobs,
     count_many: "{{count, number}} mises à jour",
     partial_many: "{{shown, number}} mises à jour chargées sur {{count, number}}.",
-    update: "Mise à jour de recherche",
+    update: "Mise à jour de l’index",
   },
   projects: {
     ...en.operations.searchMaintenance.projects,
@@ -29,8 +35,17 @@ export const rtlSearchMaintenanceResources = {
   ...en.operations.searchMaintenance,
   actions: {
     ...en.operations.searchMaintenance.actions,
-    stop: "إيقاف البحث",
-    update: "تحديث البحث",
+    stop: "إيقاف الفهرسة",
+    update: "إعادة بناء الفهرس",
+  },
+  searches: {
+    ...en.operations.searchMaintenance.searches,
+    results_zero: "{{count, number}} نتيجة",
+    results_one: "{{count, number}} نتيجة",
+    results_two: "{{count, number}} نتيجتان",
+    results_few: "{{count, number}} نتائج",
+    results_many: "{{count, number}} نتيجةً",
+    results_other: "{{count, number}} نتيجة",
   },
   jobs: {
     ...en.operations.searchMaintenance.jobs,
@@ -42,7 +57,7 @@ export const rtlSearchMaintenanceResources = {
     partial_two: "تم تحميل {{shown, number}} من {{count, number}} تحديثين.",
     partial_few: "تم تحميل {{shown, number}} من {{count, number}} تحديثات.",
     partial_many: "تم تحميل {{shown, number}} من {{count, number}} تحديثًا.",
-    update: "تحديث البحث",
+    update: "تحديث الفهرس",
   },
   projects: {
     ...en.operations.searchMaintenance.projects,

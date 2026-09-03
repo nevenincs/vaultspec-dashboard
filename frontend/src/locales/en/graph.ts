@@ -222,7 +222,7 @@ export const graph = {
       featureLoading: "Loading related documents…",
       loading: "Loading details…",
       stale: "Out of date",
-      unavailable: "Details are unavailable. Refresh data, then try again.",
+      unavailable: "Could not load details. Refresh data, then try again.",
     },
   },
   hover: {

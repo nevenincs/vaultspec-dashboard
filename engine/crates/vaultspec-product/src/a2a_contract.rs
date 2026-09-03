@@ -157,6 +157,42 @@ pub const A2A_MAX_CLARIFICATION_REQUEST_ID_CHARS: usize = 128;
 /// type of the `answers` map the engine forwards.
 pub const A2A_MAX_CLARIFICATION_IDENTIFIER_CHARS: usize = 64;
 
+/// The closed vocabulary a failed run's provider condition is drawn from.
+///
+/// A provider can refuse work for reasons a user can act on, and the actions
+/// genuinely differ: wait, re-authenticate, top up, raise a spend ceiling,
+/// change the request, or report a bug. This is the set of answers to "what
+/// should the reader DO about it", and it is the machine-readable counterpart to
+/// a failure reason - which is prose for a person and may be reworded by a
+/// vendor at any time. Nothing may derive a condition from that prose.
+///
+/// `unknown` is a real member, not an error case: it is the floor a failure with
+/// no resolvable discriminator lands on, and saying so plainly is more useful
+/// than promising a classification that was never observed.
+///
+/// Declared ONCE here for the reason this module exists. a2a resolves the value
+/// and serves it; the dashboard models, validates, persists and renders it. Two
+/// lists would agree on the day they were written and diverge on the day one of
+/// them was edited, at which point a run whose classification a2a resolved
+/// correctly would be refused as unrecognised on arrival.
+///
+/// The producing side treats this vocabulary as ADDITIVE-ONLY: no member's
+/// spelling or meaning changes, but a member may be added. An addition there is
+/// therefore a required edit HERE - until it lands, a run carrying the new
+/// member is refused at the dashboard's write boundary, which is a loud,
+/// diagnosable failure by design rather than a silent one.
+pub const A2A_PROVIDER_CONDITIONS: &[&str] = &[
+    "network_unreachable",
+    "provider_overloaded",
+    "unauthenticated",
+    "throttled",
+    "usage_exhausted",
+    "credits_exhausted",
+    "budget_exhausted",
+    "invalid_request",
+    "unknown",
+];
+
 // Two build-time asserts stood here encoding the relationship that the request
 // id must exceed the identifier cap because a2a mints it as
 // `clarify-{thread_id}`. They were deleted on the reading that the served route
@@ -276,6 +312,46 @@ mod tests {
         assert_eq!(
             A2A_MAX_CLARIFICATION_IDENTIFIER_CHARS, 64,
             "a2a's MAX_IDENTIFIER_CHARS bounds QuestionId at 64"
+        );
+    }
+
+    /// PIN the provider-condition vocabulary to the members a2a actually emits.
+    ///
+    /// Held against literals for the same reason the clarification bounds are:
+    /// every other check of this set - the store's membership validator, its
+    /// round-trip coverage - derives both its fixture and its expectation from
+    /// the constant, so they would agree with each other whatever it said.
+    /// Rename a member here and all of them still pass, while every run
+    /// classified as that member starts being refused on arrival.
+    ///
+    /// The arbiter is a2a's own condition vocabulary, whose values are the wire
+    /// form. This test does not fetch it, so a simultaneous edit on both sides
+    /// goes unnoticed here and is caught only by a round-trip against a running
+    /// sibling.
+    #[test]
+    fn the_provider_conditions_are_pinned_to_the_members_a2a_emits() {
+        assert_eq!(
+            A2A_PROVIDER_CONDITIONS,
+            [
+                "network_unreachable",
+                "provider_overloaded",
+                "unauthenticated",
+                "throttled",
+                "usage_exhausted",
+                "credits_exhausted",
+                "budget_exhausted",
+                "invalid_request",
+                "unknown",
+            ],
+            "these are the exact wire spellings the producing side resolves to; \
+             a member missing here refuses a run a2a classified correctly, and a \
+             member spelled differently is the same defect wearing a typo"
+        );
+        assert!(
+            A2A_PROVIDER_CONDITIONS.contains(&"unknown"),
+            "the floor member is what an absent or unrecognised discriminator \
+             resolves to upstream; without it every unclassified failure is \
+             refused instead of reported"
         );
     }
 }

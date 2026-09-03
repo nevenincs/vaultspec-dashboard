@@ -55,9 +55,10 @@ pub(super) const MAX_A2A_QUESTION_ID_CHARS: usize = A2A_MAX_CLARIFICATION_IDENTI
 pub(super) const MAX_A2A_ANSWER_CHARS: usize = A2A_MAX_CLARIFICATION_ANSWER_CHARS;
 
 /// The sibling route this verb forwards to, named ONCE: this spelling and the
-/// `{"answers": {question_id: answer}}` body key below are the whole
-/// reconciliation surface with the a2a gateway's clarification route, and the
-/// only lines that change if the landed sibling route differs.
+/// `{"answers": {question_id: answer}}` / `{"prompt": text}` / `{"decline": true}`
+/// body keys below are the whole reconciliation surface with the a2a gateway's
+/// clarification route, and the only lines that change if the landed sibling
+/// route differs.
 fn respond_path(run_id: &str, request_id: &str) -> String {
     format!("/v1/runs/{run_id}/clarifications/{request_id}/respond")
 }
@@ -88,13 +89,79 @@ pub(super) fn build_call(
     let request_id =
         validate_path_safe_id(state, "request_id", request_id, MAX_A2A_REQUEST_ID_CHARS)?;
 
-    let answers = body.answers.as_ref().ok_or_else(|| {
-        super::super::super::api_error(
+    // The sibling resolves a parked node with EXACTLY ONE of three alternatives:
+    // `answers` (the questionnaire), `prompt` (a continuation that resumes the
+    // run with new instruction instead of answering), or `decline` (a
+    // payload-free refusal that resumes the run with no answer given). Refuse
+    // anything other than exactly one here, before any round-trip, so a
+    // malformed resume never reaches the parked graph.
+    let supplied = usize::from(body.answers.is_some())
+        + usize::from(body.prompt.is_some())
+        + usize::from(body.decline.is_some());
+    if supplied != 1 {
+        return Err(super::super::super::api_error(
             state,
             StatusCode::BAD_REQUEST,
-            "clarification-respond requires an `answers` object keyed by question id".to_string(),
-        )
-    })?;
+            "clarification-respond requires exactly one of an `answers` object keyed \
+             by question id, a `prompt` continuing the run, or `decline: true`"
+                .to_string(),
+        ));
+    }
+
+    if let Some(decline) = body.decline {
+        // Mirror the sibling schema's literal: `decline: false` is a client
+        // saying "not declining" while supplying no other outcome — refused
+        // here rather than interpreted, exactly as the sibling would.
+        if !decline {
+            return Err(super::super::super::api_error(
+                state,
+                StatusCode::BAD_REQUEST,
+                "clarification-respond `decline` admits only `true`".to_string(),
+            ));
+        }
+        return Ok(ForwardedCall {
+            method: Method::Post,
+            path: respond_path(&run_id, &request_id),
+            body: Some(json!({ "decline": true })),
+            budget: A2A_CONTROL_BUDGET,
+        });
+    }
+
+    if let Some(prompt) = body.prompt.as_deref() {
+        // A continuation is a NEW HUMAN TURN in the existing run, so it takes
+        // the run-start message posture, not the answer posture: the sibling
+        // types `ContinuationPrompt` against its run-message ceiling with NO
+        // line-safety rule (a composer turn is legitimately multiline), and its
+        // schema refuses only a blank prompt. Bounding it like an answer
+        // (single-line, answer-sized) refused prompts the sibling accepts and
+        // stranded the user on a parked run — the exact failure the header
+        // comment above warns against.
+        if prompt.trim().is_empty() {
+            return Err(super::super::super::api_error(
+                state,
+                StatusCode::BAD_REQUEST,
+                "clarification-respond requires a non-empty `prompt`".to_string(),
+            ));
+        }
+        if prompt.len() > super::MAX_A2A_MESSAGE_BYTES {
+            return Err(super::super::super::api_error(
+                state,
+                StatusCode::BAD_REQUEST,
+                format!(
+                    "clarification-respond `prompt` exceeds the {}-byte ceiling",
+                    super::MAX_A2A_MESSAGE_BYTES
+                ),
+            ));
+        }
+        return Ok(ForwardedCall {
+            method: Method::Post,
+            path: respond_path(&run_id, &request_id),
+            body: Some(json!({ "prompt": Value::String(prompt.to_string()) })),
+            budget: A2A_CONTROL_BUDGET,
+        });
+    }
+
+    let answers = body.answers.as_ref().expect("answers present in this arm");
     // A fifth answer cannot correspond to any question a bounded request asked.
     if answers.is_empty() || answers.len() > MAX_A2A_CLARIFICATION_ANSWERS {
         return Err(super::super::super::api_error(

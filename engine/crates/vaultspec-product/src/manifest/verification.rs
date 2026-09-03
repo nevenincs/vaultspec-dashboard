@@ -644,13 +644,17 @@ pub(super) fn verify_artifact_joins(
         manifest,
         observed,
     )?;
-    verify_digest_join(
-        "component lock",
-        &manifest.a2a_component.component_lock.path,
-        &manifest.a2a_component.component_lock.digest,
-        manifest,
-        observed,
-    )?;
+    // Joined only where it is declared: a member with no bundled runtime pins no
+    // component lock and the tree carries none, so there is no join to make.
+    if let Some(a2a) = &manifest.a2a_component {
+        verify_digest_join(
+            "component lock",
+            &a2a.component_lock.path,
+            &a2a.component_lock.digest,
+            manifest,
+            observed,
+        )?;
+    }
     verify_sized_join(
         "sbom",
         &manifest.sbom.path,
@@ -805,12 +809,17 @@ pub(super) fn read_installed_bounded(
 /// where the platform records modes, and the declared file count equals the number
 /// of installed files under the root, so a truncated or empty onedir cannot pass as
 /// a smaller tree that still verifies.
+///
+/// It takes the DECLARED runtime, not the whole member manifest: a member that
+/// declares no bundled runtime has no subtree to prove, and unwrapping is the
+/// caller's decision — a consumer that needs a runtime refuses outright rather
+/// than calling this with nothing.
 pub(super) fn verify_bundled_runtime(
-    release: &RawReleaseSetManifest,
+    runtime: &BundledRuntime,
+    file_digests: &BTreeMap<String, String>,
     observed: &BTreeMap<String, ObservedFile>,
 ) -> Result<()> {
-    let runtime = &release.a2a_component.runtime;
-    if !release.file_digests.contains_key(&runtime.entrypoint) {
+    if !file_digests.contains_key(&runtime.entrypoint) {
         return Err(ManifestError::MissingFile(format!(
             "bundled-runtime entrypoint {} is absent from file_digests",
             runtime.entrypoint
@@ -1035,7 +1044,20 @@ pub(crate) fn validate_portable_path(field: &str, path: &str) -> Result<()> {
         return invalid(field, "path must contain 1..=32 segments");
     }
     for segment in segments {
-        validate_portable_segment(field, segment, true)?;
+        // Name the whole path, not only the offending segment. The segment
+        // says WHAT is unportable; it does not say where the file came from,
+        // and a composed tree is tens of thousands of files deep. A rejection
+        // reading only `unsafe portable path segment "Lorem ipsum.txt"` sends
+        // the reader hunting for the emitter instead of straight to it - which
+        // is what happened when that exact segment failed the compose step on
+        // all four targets and the file was in neither repository's tree.
+        validate_portable_segment(field, segment, true).map_err(|error| match error {
+            ManifestError::InvalidField { field, detail } => ManifestError::InvalidField {
+                field,
+                detail: format!("{detail} in path {path:?}"),
+            },
+            other => other,
+        })?;
     }
     Ok(())
 }

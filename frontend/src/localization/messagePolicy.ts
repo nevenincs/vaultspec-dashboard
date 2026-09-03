@@ -6,9 +6,9 @@ import { HOVER_MESSAGE_POLICY } from "./messagePolicy.hover";
 import { GRAPH_CONTROLS_MESSAGE_POLICY } from "./messagePolicy.graphControls";
 import { LANGUAGE_DISPLAY_MESSAGE_POLICY } from "./messagePolicy.languageDisplay";
 import { SEARCH_MAINTENANCE_MESSAGE_POLICY } from "./messagePolicy.searchMaintenance";
+import { TIMELINE_MESSAGE_POLICY } from "./messagePolicy.timeline";
 import { SHELL_MESSAGE_POLICY } from "./messagePolicy.shell";
 import { AGENT_MESSAGE_POLICY } from "./messagePolicy.agent";
-import { AGENT_SERVICE_MESSAGE_POLICY } from "./messagePolicy.agentService";
 import { CODE_TREE_MESSAGE_POLICY } from "./messagePolicy.codeTree";
 
 export type MessageRole =
@@ -26,6 +26,9 @@ export type MessageRole =
 
 export const APPROVED_UI_TERMS = [
   "GitHub",
+  "Vaultspec",
+  "Qdrant",
+  "A2A",
   "Markdown",
   "JSON",
   "YAML",
@@ -51,7 +54,6 @@ export const ENGLISH_MESSAGE_POLICY = {
   ...HOVER_MESSAGE_POLICY,
   ...SEARCH_MAINTENANCE_MESSAGE_POLICY,
   ...AGENT_MESSAGE_POLICY,
-  ...AGENT_SERVICE_MESSAGE_POLICY,
   ...CODE_TREE_MESSAGE_POLICY,
   "common:accessibility.actionsForItem": { role: "accessibility" },
   "common:accessibility.actionsMenu": { role: "accessibility" },
@@ -169,14 +171,14 @@ export const ENGLISH_MESSAGE_POLICY = {
   "common:searchPalette.states.searching": { role: "status" },
   "common:advanced.title": { role: "label" },
   "common:advanced.description": { role: "description" },
-  "common:controlPanels.labels.projectHealth": { role: "label" },
-  "common:controlPanels.labels.systemStatus": { role: "label" },
-  "common:controlPanels.accessibility.group": { role: "accessibility" },
-  "common:controlPanels.accessibility.panelStatus": { role: "accessibility" },
-  "common:controlPanels.tones.workingNormally": { role: "status" },
-  "common:controlPanels.tones.needsAttention": { role: "status" },
-  "common:controlPanels.tones.unavailable": { role: "status" },
-  "common:controlPanels.tones.checking": { role: "status" },
+  "common:advanced.labels.projectHealth": { role: "label" },
+  "common:advanced.labels.systemStatus": { role: "label" },
+  "common:advanced.accessibility.group": { role: "accessibility" },
+  "common:advanced.accessibility.panelStatus": { role: "accessibility" },
+  "common:advanced.tones.workingNormally": { role: "status" },
+  "common:advanced.tones.needsAttention": { role: "status" },
+  "common:advanced.tones.unavailable": { role: "status" },
+  "common:advanced.tones.checking": { role: "status" },
   "common:disabledReasons.actionUnavailable": { role: "disabled-reason" },
   "common:disabledReasons.itemUnavailableOnCanvas": {
     role: "disabled-reason",
@@ -442,6 +444,7 @@ export const ENGLISH_MESSAGE_POLICY = {
   },
   "documents:reviewStation.actions.acknowledge": { role: "action" },
   "documents:reviewStation.actions.hideChanges": { role: "action" },
+  "documents:reviewStation.actions.reviewChanges": { role: "action" },
   "documents:reviewStation.actions.showChanges": { role: "action" },
   "documents:guardedActions.reviewStationApproveProposal": { role: "action" },
   "documents:guardedActions.reviewStationApplyChanges": { role: "action" },
@@ -490,6 +493,7 @@ export const ENGLISH_MESSAGE_POLICY = {
   "documents:reviewStation.statuses.draft": { role: "status" },
   // C4 stat card: the aggregate eyebrow and the two signed line tallies. The
   // tallies are numbers with a sign, not sentences, so they carry no verb.
+  "documents:reviewStation.diffstat.editedFiles": { role: "label" },
   "documents:reviewStation.diffstat.aggregate": { role: "label" },
   "documents:reviewStation.diffstat.atLeast": { role: "description" },
   "documents:reviewStation.diffstat.floorMarker": { role: "label" },
@@ -962,47 +966,7 @@ export const ENGLISH_MESSAGE_POLICY = {
   "settings:options.dark": { role: "label" },
   "settings:options.highContrast": { role: "label" },
   "settings:options.english": { role: "label" },
-  "timeline:accessibility.dateField": { role: "accessibility" },
-  "timeline:accessibility.loadingRange": { role: "accessibility" },
-  "timeline:accessibility.rangeEnd": { role: "accessibility" },
-  "timeline:accessibility.rangeStart": { role: "accessibility" },
-  "timeline:accessibility.selectedRange": { role: "accessibility" },
-  "timeline:actions.clearDateRange": { role: "action" },
-  "timeline:actions.filterByCreationDate": { role: "action" },
-  "timeline:actions.filterByCreationDateCurrent": { role: "action" },
-  "timeline:actions.filterByEditDate": { role: "action" },
-  "timeline:actions.filterByEditDateCurrent": { role: "action" },
-  "timeline:actions.filterByUpdateDate": { role: "action" },
-  "timeline:actions.filterByUpdateDateCurrent": { role: "action" },
-  "timeline:actions.showLast24Hours": { role: "action" },
-  "timeline:actions.showLast7Days": { role: "action" },
-  "timeline:actions.showLast30Days": { role: "action" },
-  "timeline:actions.showLast90Days": { role: "action" },
-  "timeline:actions.viewProjectAtVersion": { role: "action" },
-  "timeline:criteria.created": { role: "label" },
-  "timeline:criteria.modified": { role: "label" },
-  "timeline:criteria.stamped": { role: "label" },
-  "timeline:descriptions.useCreationDateForRange": { role: "description" },
-  "timeline:descriptions.useEditDateForRange": { role: "description" },
-  "timeline:descriptions.useUpdateDateForRange": { role: "description" },
-  "timeline:disabledReasons.codeFiles": { role: "disabled-reason" },
-  "timeline:disabledReasons.chooseProject": { role: "disabled-reason" },
-  "timeline:disabledReasons.current": { role: "disabled-reason" },
-  "timeline:disabledReasons.modifiedUnavailable": {
-    role: "disabled-reason",
-  },
-  "timeline:disabledReasons.refreshHistory": { role: "disabled-reason" },
-  "timeline:disabledReasons.stampedUnavailable": {
-    role: "disabled-reason",
-  },
-  "timeline:disabledReasons.switchToDocumentsForHistory": {
-    role: "disabled-reason",
-  },
-  "timeline:labels.timeline": { role: "label" },
-  "timeline:states.noDatedDocuments": { role: "status" },
-  "timeline:states.noDatedFiles": { role: "status" },
-  "timeline:states.rangeUnavailable": { role: "status" },
-  "timeline:summaries.selectedRange": { role: "status" },
+  ...TIMELINE_MESSAGE_POLICY,
 } as const satisfies Record<MessageKey, MessagePolicyEntry>;
 
 export const IMPERATIVE_ACTION_VERBS = [
@@ -1050,6 +1014,7 @@ export const IMPERATIVE_ACTION_VERBS = [
   "Pick",
   "Pin",
   "Prepare",
+  "Rebuild",
   "Refresh",
   "Reject",
   "Reload",
@@ -1062,6 +1027,10 @@ export const IMPERATIVE_ACTION_VERBS = [
   "Request",
   "Resolve",
   "Resume",
+  // The captured reference desktop agents label the affordance that opens a
+  // finished change "Review changes"; it is a plain imperative and earns a place
+  // beside Resolve and Retry rather than a rewording that would drift from them.
+  "Review",
   "Retry",
   "Restart",
   "Revert",
@@ -1183,6 +1152,35 @@ export const PROHIBITED_UI_TERMS: readonly ProhibitedUiTerm[] = Object.freeze([
   { id: "node", pattern: /\bnode\b/iu },
   { id: "internal-package", pattern: /\bvaultspec-(?:core|rag)\b/iu },
 ]);
+
+/**
+ * Scoped NARROWINGS of the prohibited-term list — never deletions. Settings ▸
+ * Advanced is the troubleshooting home for the people operating the programs
+ * behind the app, and the owner asked for the running programs to be named
+ * what they are there ("Search Service"), so the word "service" is correct
+ * operator vocabulary WITHIN those catalog namespaces while remaining jargon
+ * in every user-facing surface. The term stays banned everywhere else, and no
+ * exemption exists for the package names or the other bounded internal terms —
+ * "Search Service" is the on-screen name, never the package.
+ */
+export const PROHIBITED_TERM_EXEMPTIONS: Readonly<Record<string, readonly string[]>> =
+  Object.freeze({
+    service: Object.freeze([
+      "operations:searchMaintenance.",
+      "common:systemStatus.",
+      "common:advanced.",
+      // The agent plane's own unreachable sentence. The owner names this thing
+      // "the agent service" and asked for it verbatim; naming the program the
+      // user is being told about beats a generic noun, which is the same
+      // argument that admitted the word in the console namespaces above.
+      "common:agent.transcript.unavailable",
+    ]),
+  });
+
+function isProhibitedTermExempt(key: MessageKey, termId: string): boolean {
+  const prefixes = PROHIBITED_TERM_EXEMPTIONS[termId];
+  return prefixes !== undefined && prefixes.some((prefix) => key.startsWith(prefix));
+}
 
 export type MessagePolicyIssueCode =
   | "empty"
@@ -1460,7 +1458,9 @@ export function validateEnglishMessage(
   }
 
   for (const term of PROHIBITED_UI_TERMS) {
-    if (term.pattern.test(literalText)) issue(issues, "prohibited-term", term.id);
+    if (!term.pattern.test(literalText)) continue;
+    if (isProhibitedTermExempt(key, term.id)) continue;
+    issue(issues, "prohibited-term", term.id);
   }
 
   const approvedTerms = policy.allowedTerms ?? APPROVED_UI_TERMS;

@@ -1,23 +1,64 @@
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
-# The WinGet installer manifest (a2a-product-provisioning W04.P10.S83): points ONLY
-# at the complete product MSI (the whole offline tree + product receipt + clean
-# uninstall), with per-user product scope, manager-owned upgrade, and the
-# manager-owned rollback WinGet provides. The InstallerSha256 + ProductCode are
-# release-time facts (the MSI must exist) — placeholders here, reconciled when the
-# complete-MSI release publishes (gated on the product-release CI, which builds the
-# bundled A2A runtime from its pinned source). NEVER points at the binary-only archive.
+# The WinGet installer manifest. It consumes the SAME artefact Scoop installs:
+# the composed product archive `vaultspec-<version>-x86_64-pc-windows-msvc.zip`
+# — the whole offline tree, FLAT at the archive root —
+#
+#   bin/vaultspec.exe  bin/vaultspec-updater.exe
+#   licenses/LICENSE   release.json   sbom.cdx.json
+#
+# — installed as a WinGet portable that puts exactly ONE command on PATH,
+# `vaultspec`. `bin\vaultspec-updater.exe` is deliberately NOT listed as a
+# nested installer file: the dashboard invokes the updater, the user never
+# does, and a second NestedInstallerFiles entry would alias a second command.
+# Everything beside the two binaries stays in the extracted tree, which is what
+# lets `vaultspec verify-release` check the tree it is actually running from.
+#
+# WHY THIS IS NO LONGER AN MSI. This manifest previously declared
+# `InstallerType: wix` against `vaultspec-<version>-x86_64-pc-windows-msvc.msi`.
+# That MSI has never been built and, as the tree stands, cannot be:
+# `engine/crates/vaultspec-cli/wix/main.wxs` opens with
+# `<?ifndef ProductTreeDir ?><?error ...?>` and nothing in the repository ever
+# defines that preprocessor variable, and its component groups expect
+# heat-harvested fragments (`LicenseFiles`) that no build step generates. No CI
+# job invokes candle/light on it, and `dist-workspace.toml` sets
+# `installers = []`. The MSI path therefore pointed at an artefact with no
+# producer. The zip has one — `product-release.yml` composes and checksums it —
+# so the manifest now points at the thing the product actually ships.
+# `ProductCode` went with the MSI: it is a Windows Installer fact and there is
+# no Windows Installer package to have one.
+#
+# ARCHITECTURE. x64 only, deliberately. `product-release.yml` composes
+# `x86_64-pc-windows-msvc` alone; there is no Windows arm64 build, so no arm64
+# installer node is declared.
+#
+# SCHEMA VERSION. ManifestVersion 1.6.0 is retained and is sufficient:
+# `NestedInstallerType` / `NestedInstallerFiles` first appear in the 1.4.0
+# installer schema (they are absent from 1.1.0 and 1.2.0), so 1.6.0 already
+# supports every field used below and needs no raise. `InstallerType: zip`
+# itself requires WinGet client 1.5 or newer; `portable` requires 1.3.
+#
+# THE ALL-ZERO InstallerSha256 IS A SENTINEL, NOT AN OVERSIGHT.
+# See packaging/winget/README.md. `a2a-channel-feasibility.yml` matches
+# /InstallerSha256:\s*"?0{64}/ on this file to fail the WinGet channel closed;
+# keeping the 64-zero shape is what keeps that gate honest. This manifest is
+# UNPUBLISHABLE until a release actually attaches the archive named below and
+# the real digest replaces the zeros. Do not "tidy" the zeros away, and do not
+# substitute a plausible-looking fake digest — a wrong digest fails at install
+# time on a user's machine, where the zeros fail in our own gate.
 PackageIdentifier: vaultspec.vaultspec
-PackageVersion: 0.1.2
-InstallerType: wix
+PackageVersion: 0.1.10
+InstallerType: zip
+NestedInstallerType: portable
+NestedInstallerFiles:
+  - RelativeFilePath: bin\vaultspec.exe
+    PortableCommandAlias: vaultspec
 Scope: user
-InstallModes:
-  - silent
-  - silentWithProgress
+# No InstallModes: those describe how an installer EXECUTABLE is invoked, and a
+# portable package has none — WinGet extracts the archive and links the alias.
 UpgradeBehavior: install
 Installers:
   - Architecture: x64
-    InstallerUrl: https://github.com/nevenincs/vaultspec-dashboard/releases/download/v0.1.2/vaultspec-0.1.2-x86_64-pc-windows-msvc.msi
+    InstallerUrl: https://github.com/nevenincs/vaultspec-dashboard/releases/download/v0.1.10/vaultspec-0.1.10-x86_64-pc-windows-msvc.zip
     InstallerSha256: "0000000000000000000000000000000000000000000000000000000000000000"
-    ProductCode: "{51ED63D0-D794-406A-8F96-ED09840177B1}"
 ManifestType: installer
 ManifestVersion: 1.6.0

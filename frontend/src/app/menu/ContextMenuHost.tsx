@@ -51,8 +51,6 @@ import {
   contextMenuActionRowClassName,
   deriveContextMenuPanelPosition,
   deriveContextMenuCursorEdge,
-  deriveContextMenuKeyboardIntent,
-  deriveContextMenuCursorMove,
   deriveContextMenuCursorRepair,
   disarmContextMenu,
   setContextMenuCursor,
@@ -61,6 +59,7 @@ import {
   useContextMenuViewportDismiss,
 } from "../../stores/view/contextMenu";
 import { useFocusRestore } from "../chrome/useFocusRestore";
+import { useFocusZone } from "../chrome/useFocusZone";
 import { ActionConfirmationDialog } from "../chrome/ActionConfirmationDialog";
 
 const menuLog = logger.child("context-menu");
@@ -144,6 +143,7 @@ export function ContextMenuHost({
   }, [menu.groups, menu.orderedRows, resolveMessage]);
   const { rowGroups, runnableIndices } = localized;
   const activeRow = localized.rows[cursor];
+  const activeId = activeRow?.id ?? null;
   const menuAriaLabel = resolveMessage({
     key: "common:accessibility.actionsMenu",
   }).message;
@@ -185,6 +185,19 @@ export function ContextMenuHost({
   }, [open, menu, runnableIndices]);
 
   const menuInteractive = open && confirmationActionId === null;
+  const focusZone = useFocusZone({
+    orientation: "vertical",
+    wrap: false,
+    activeKey: activeId,
+    // Cursor, arming, and activation remain menu policy. FocusZone reports the
+    // next runnable DOM row; this host commits the corresponding menu cursor.
+    onActiveKeyChange: (id) => {
+      const row = localized.byId.get(id);
+      if (!row || row.disabled || !isRunnable(row.action)) return;
+      disarmContextMenu();
+      setContextMenuCursor(row.index);
+    },
+  });
   useFocusRestore(open, {
     onOpen: () =>
       setContextMenuCursor(deriveContextMenuCursorEdge(runnableIndices, "first") ?? 0),
@@ -204,22 +217,10 @@ export function ContextMenuHost({
   }, [open, anchor, actions]);
 
   // Move DOM focus to the active item so the role=menu reads correctly.
-  const activeId = activeRow?.id;
   useEffect(() => {
     if (!menuInteractive || position === null || !activeId) return;
-    document.getElementById(`${baseId}-item-${activeId}`)?.focus();
-  }, [menuInteractive, position, activeId, baseId]);
-
-  const moveCursor = useCallback(
-    (delta: 1 | -1) => {
-      const nextCursor = deriveContextMenuCursorMove(cursor, runnableIndices, delta);
-      if (nextCursor === null) return;
-      // Disarm any pending confirm when the cursor leaves the armed row.
-      disarmContextMenu();
-      setContextMenuCursor(nextCursor);
-    },
-    [cursor, runnableIndices],
-  );
+    focusZone.focusItem(activeId);
+  }, [menuInteractive, position, activeId, focusZone]);
 
   const performActivation = useCallback(
     (activation: ReturnType<typeof deriveContextMenuActivation>) => {
@@ -275,11 +276,9 @@ export function ContextMenuHost({
     const actionId = confirmationActionId;
     setConfirmationActionId(null);
     if (actionId !== null) {
-      requestAnimationFrame(() =>
-        document.getElementById(`${baseId}-item-${actionId}`)?.focus(),
-      );
+      requestAnimationFrame(() => focusZone.focusItem(actionId));
     }
-  }, [baseId, confirmationActionId]);
+  }, [confirmationActionId, focusZone]);
 
   useEffect(() => {
     if (
@@ -306,31 +305,16 @@ export function ContextMenuHost({
     );
   }, [armedItemId, canDispatch, localized.byId, pendingAction, performActivation]);
 
-  const onKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      const intent = deriveContextMenuKeyboardIntent(e.key);
-      if (intent === null) return;
+  const onMenuKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === "Escape" || e.key === "Tab") {
       e.preventDefault();
-      // Stop the consumed key (arrows/Enter/Escape) from bubbling to the one
-      // global keymap dispatcher's window listener, which binds bare arrows to
-      // graph cycling — an un-stopped menu arrow would move the cursor AND the
-      // graph selection (keyboard-navigation W06.P09.S28, the Class-B isolation).
+      // Escape/Tab are menu-level policy keys. FocusZone independently contains
+      // the widget-intrinsic arrow/Home/End keys on individual menu rows before
+      // they can reach the global keymap dispatcher's window listener.
       e.stopPropagation();
-      if (intent.kind === "close") {
-        closeContextMenu();
-      } else if (intent.kind === "move-cursor") {
-        moveCursor(intent.delta);
-      } else if (intent.kind === "cursor-edge") {
-        disarmContextMenu();
-        const edgeCursor = deriveContextMenuCursorEdge(runnableIndices, intent.edge);
-        if (edgeCursor !== null) setContextMenuCursor(edgeCursor);
-      } else {
-        const action = ordered[cursor];
-        if (action) activate(action);
-      }
-    },
-    [moveCursor, runnableIndices, ordered, cursor, activate],
-  );
+      closeContextMenu();
+    }
+  }, []);
 
   // Hidden until measured so the first paint never flashes at the wrong spot.
   const placed = position !== null;
@@ -360,7 +344,7 @@ export function ContextMenuHost({
               aria-label={menuAriaLabel}
               aria-activedescendant={activeRow ? itemId(activeRow.id) : undefined}
               tabIndex={-1}
-              onKeyDown={onKeyDown}
+              onKeyDown={onMenuKeyDown}
               onMouseDown={(e) => e.stopPropagation()}
               onContextMenu={(e) => {
                 // A right-click inside the open menu must not bubble to the catcher
@@ -398,13 +382,17 @@ export function ContextMenuHost({
                   {group.rows.map((row) => {
                     const Mark = row.icon;
                     const action = row.action;
+                    const focusProps = focusZone.rove(row.id, {
+                      disabled: row.disabled || !isRunnable(action),
+                    });
                     return (
                       <button
                         key={row.id}
+                        ref={focusProps.ref}
                         type="button"
                         id={itemId(row.id)}
                         role="menuitem"
-                        tabIndex={row.selected ? 0 : -1}
+                        tabIndex={focusProps.tabIndex}
                         aria-disabled={row.disabled || undefined}
                         title={row.disabledReason}
                         onMouseEnter={() => {
@@ -416,6 +404,15 @@ export function ContextMenuHost({
                         onClick={() => {
                           if (!row.disabled) setContextMenuCursor(row.index);
                           activate(action);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            activate(action);
+                            return;
+                          }
+                          focusProps.onKeyDown(event);
                         }}
                         className={`flex w-full items-center gap-fg-1 rounded-fg-xs px-fg-2 py-fg-0-5 text-left transition-colors duration-ui-fast ${row.className}`}
                       >

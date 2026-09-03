@@ -5,6 +5,7 @@ tags:
 date: '2026-08-01'
 modified: '2026-08-01'
 body_schema: 'body-v1'
+body_hash: 'sha256:b41ea8ed6f40e34b4c797d680b62f21123ea03aed197e19124cb235c0f709e71'
 related:
   - "[[2026-07-31-visual-review-authored-states-adr]]"
 ---

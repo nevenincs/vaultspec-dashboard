@@ -20,7 +20,6 @@ const preset = (capability?: string): TeamPreset => ({
   loadable: true,
   required_roles: [],
   is_mock: false,
-  profiles: [],
   ...(capability === undefined ? {} : { authoring_capability: capability }),
 });
 

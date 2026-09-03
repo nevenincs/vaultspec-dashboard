@@ -337,6 +337,40 @@ describe("source-locale message policy", () => {
     ).toEqual([]);
   });
 
+  it("admits the word service only inside the advanced-console namespaces", () => {
+    // The narrowing, not a deletion: operator vocabulary is correct in the
+    // Settings > Advanced console catalog slices and nowhere else.
+    expect(
+      validateEnglishMessage(
+        "operations:searchMaintenance.identity.title",
+        "Search service",
+      ),
+    ).toEqual([]);
+    expect(
+      validateEnglishMessage("common:systemStatus.sections.programs", "Services"),
+    ).toEqual([]);
+    for (const [key, template] of [
+      ["errors:unexpectedApplication.title", "Service unavailable"],
+      ["common:actions.retry", "Retry service"],
+    ] as const satisfies readonly (readonly [MessageKey, string])[]) {
+      expect(
+        validateEnglishMessage(key, template).map((item) => item.code),
+        key,
+      ).toContain("prohibited-term");
+    }
+    // The exemption never widens to the package names or the RAG initialism,
+    // even inside the exempted namespaces.
+    for (const template of ["Managed by vaultspec-rag", "RAG service running"]) {
+      expect(
+        validateEnglishMessage(
+          "operations:searchMaintenance.identity.title",
+          template,
+        ).map((item) => item.code),
+        template,
+      ).toContain("prohibited-term");
+    }
+  });
+
   it("rejects diagnostic paths and commands while allowing normal punctuation", () => {
     for (const template of DIAGNOSTIC_BOUNDARIES) {
       expect(

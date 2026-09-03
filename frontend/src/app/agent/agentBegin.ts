@@ -86,10 +86,15 @@ export function agentBeginHeadlineDescriptor(
 }
 
 /** One starter affordance: a user VERB (G4 — intent, never a feature name) that
- *  seeds the composer with a prompt opening rather than running anything. */
+ *  seeds the composer with a prompt opening rather than running anything. The
+ *  description states the OUTCOME the intent produces (D7 — the references'
+ *  intent cards say what each lane yields, which is what answers "what is this
+ *  panel for" without a tour). */
 export interface AgentStarter {
   id: string;
   label: MessageDescriptor;
+  /** One line naming what this intent PRODUCES. */
+  description: MessageDescriptor;
   /** The draft text the starter puts in the composer, ready to continue typing. */
   seed: MessageDescriptor;
 }
@@ -100,16 +105,19 @@ export const AGENT_STARTERS: readonly AgentStarter[] = Object.freeze([
   Object.freeze({
     id: "explore",
     label: { key: "common:agent.begin.starters.explore" } as const,
+    description: { key: "common:agent.begin.descriptions.explore" } as const,
     seed: { key: "common:agent.begin.seeds.explore" } as const,
   }),
   Object.freeze({
     id: "build",
     label: { key: "common:agent.begin.starters.build" } as const,
+    description: { key: "common:agent.begin.descriptions.build" } as const,
     seed: { key: "common:agent.begin.seeds.build" } as const,
   }),
   Object.freeze({
     id: "review",
     label: { key: "common:agent.begin.starters.review" } as const,
+    description: { key: "common:agent.begin.descriptions.review" } as const,
     seed: { key: "common:agent.begin.seeds.review" } as const,
   }),
 ] satisfies readonly AgentStarter[]);

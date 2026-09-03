@@ -3,8 +3,8 @@ tags:
   - '#plan'
   - '#agent-panel'
 date: '2026-08-01'
-modified: '2026-08-01'
-body_hash: 'sha256:c4ad1150356f97ac7572d2592405e9743db5c154af609a02948ebbae0aeae27f'
+modified: '2026-08-02'
+body_hash: 'sha256:9e4da426efd8e356fbc93dc6f46d124d838b02351c2080fe73fd55362a6798d1'
 tier: L2
 related:
   - '[[2026-08-01-agent-panel-shell-integration-adr]]'
@@ -119,9 +119,12 @@ Live-drive both archetypes end-to-end in the assembled app, run every gate, reco
 Cross-repository ripple from the owner's cornerstone ruling: presets carry role shape and personality only - never a provider; the user picks provider and model at team start; all providers must function through the harness. Supersedes the provider-baked preset lanes of the shipped v1.
 
 - [x] `P11.S46` - Amend the agent-flow ADR: teams are provider-free (shape and personality only), the user chooses provider and model at team start, the free-form selection contract event is un-deferred and specified, test-variant presets stay pinned to the deterministic provider as harness infrastructure; `.vault/adr/2026-08-01-a2a-agent-flow-adr.md`.
-- [ ] `P11.S47` - Strip provider identity from the served team presets and add the user selection to run-start (bounded provider and model fields, user choice as the highest precedence in the resolution chain, refused with a served reason when absent for a lane that needs it); `src/vaultspec_a2a/team/`.
-- [ ] `P11.S48` - Validate the new run-start selection fields at the engine boundary (bounded enums and caps per the edge discipline) and record the contract event in the edge ADR; `engine/crates/vaultspec-api/src/routes/ops/a2a.rs`.
-- [ ] `P11.S49` - Replace the composer model pill with a provider-and-model chooser the user must set at team start (functioning providers listed with honest served readiness, required binding like the feature chip), and re-drive an archetype to prove the chosen pair rides the wire; `frontend/src/app/agent/Composer.tsx`.
+- [ ] `P11.S47` - Implement and verify the provider-owned catalog, truthful health, required served run selection, frozen assignment, provider-free product presets, and legacy-run restart contract; `Y:/code/vaultspec-a2a-worktrees/main/.vault/plan/2026-08-02-provider-model-catalog-plan.md`.
+- [ ] `P11.S48` - Carry opaque provider catalog and selection references through the engine boundary, validate only bounded structure and caps, and forbid hard-coded provider or model enums; `engine/crates/vaultspec-api/src/routes/ops/a2a.rs`.
+- [ ] `P11.S49` - Replace the profile pill with the required served whole-team provider, model, and native-control chooser and preserve honest health and unselectable reasons; `frontend/src/app/agent/ComposerModelPicker.tsx, frontend/src/app/agent/Composer.tsx`.
+- [ ] `P11.S51` - Adapt provider catalog, structured health, explicit selection, bounded overrides, fallbacks, and frozen assignment wire state without inventing identifiers or tiers; `frontend/src/stores/server/agent/a2aTeam.ts`.
+- [ ] `P11.S52` - Add bounded per-role overrides and explicit served fallbacks and render the exact frozen assignment after run start; `frontend/src/app/agent/`.
+- [ ] `P11.S53` - Prove one real provider catalog and selected model-control pair across frontend, engine, A2A prompt setup, run status, and restart and reconcile findings; `frontend/src/stores/server/agent/, engine/crates/vaultspec-api/, Y:/code/vaultspec-a2a-worktrees/main/src/vaultspec_a2a/service_tests/`.
 
 ## Parallelization
 

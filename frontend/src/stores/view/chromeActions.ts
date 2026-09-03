@@ -162,22 +162,23 @@ export function openAdvancedSettingsAction(): ActionDescriptor {
 }
 
 /** The pending-changes chip's stable action id. The verb opens the Agent panel's
- *  pending-changes view, so it is enrolled on the AGENT plane
+ *  in-conversation pending-changes region, so it is enrolled on the AGENT plane
  *  (agent-panel-shell-integration D1) — the last trace of the retired Approvals
  *  modal, `panel:approvals`, is retired with the "Review" vocabulary it carried. */
 export const AGENT_PENDING_CHANGES_ACTION_ID = "agent:pending-changes";
 
-/** Open the pending-changes inbox (review-surface-flow ADR F1): the SHARED
- *  descriptor for the footer chip and its Cmd+K command. It gives the center slot
- *  to the Agent panel in its pending-changes view — not a modal — so the queue
- *  opens beside the work, never blocking it. */
+/** Open the pending changes (review-surface-flow ADR F1; agent-panel D9): the
+ *  SHARED descriptor for the footer chip and its Cmd+K command. It gives the
+ *  center slot to the Agent panel with the in-conversation pending-changes region
+ *  expanded — not a modal, not a second view — so the queue opens beside the
+ *  work, never blocking it. */
 export function agentPendingChangesAction(): ActionDescriptor {
   return withAccelerator({
     id: AGENT_PENDING_CHANGES_ACTION_ID,
     label: { key: "common:agent.pending.show" },
     section: "navigate",
     icon: ClipboardCheck,
-    run: () => openAgentPanel({ view: "pending" }),
+    run: () => openAgentPanel({ pendingChanges: true }),
   });
 }
 

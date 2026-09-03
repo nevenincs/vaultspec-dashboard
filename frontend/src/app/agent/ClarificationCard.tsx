@@ -50,6 +50,7 @@ const MSG = {
   submit: "common:agent.clarification.submit",
   required: "common:agent.clarification.required",
   answerPlaceholder: "common:agent.clarification.answerPlaceholder",
+  optionOrdinal: "common:agent.clarification.optionOrdinal",
   failed: "common:agent.clarification.failed",
   recapTitle: "common:agent.clarification.recapTitle",
 } as const;
@@ -68,21 +69,25 @@ export function ClarificationRecap({
   const recapHeading = resolveMessage({ key: MSG.recapTitle });
   if (entries.length === 0) return null;
   return (
+    // C8: a durable transcript OBJECT sitting between turns, so it is read at the
+    // transcript's own weight — body type, turn-level spacing. Rendering it at
+    // metadata size (as it was) made a decision the run turned on look like a
+    // footnote beside the answer it produced.
     <section
-      className="flex flex-col gap-fg-1 rounded-fg-md border border-rule bg-paper-sunken px-fg-2 py-fg-1-5"
+      className="flex flex-col gap-fg-2 rounded-fg-md border border-rule bg-paper-sunken px-fg-3 py-fg-2"
       aria-label={recapHeading.usedFallback ? undefined : recapHeading.message}
       data-clarification-recap
     >
       {!recapHeading.usedFallback && (
-        <p className="text-caption text-ink-faint">{recapHeading.message}</p>
+        <p className="text-meta text-ink-faint">{recapHeading.message}</p>
       )}
-      <dl className="flex flex-col gap-fg-1">
+      <dl className="flex flex-col gap-fg-2">
         {entries.map((entry) => (
           <div key={entry.id} className="flex flex-col gap-fg-0-5">
-            <dt className="text-meta font-medium text-ink">
+            <dt className="text-body-strong text-ink">
               {authoredDisplayText(entry.prompt)}
             </dt>
-            <dd className="text-meta text-ink-muted">
+            <dd className="text-body text-ink-muted">
               {authoredDisplayText(entry.answer)}
             </dd>
           </div>
@@ -127,14 +132,15 @@ export function ClarificationCard({
     setDraft((current) => ({ ...current, [questionId]: value }));
   };
 
-  const submit = async () => {
-    if (body === null) return;
+  const submit = async (answered: ClarificationDraft = draft) => {
+    const answers = clarificationAnswerBody(pending.questions, answered);
+    if (answers === null) return;
     setFailed(false);
     try {
       const result = await respond.mutateAsync({
         runId,
         requestId: pending.requestId,
-        answers: body,
+        answers,
       });
       // A refusal is a VALUE on this edge, not a throw — treat it exactly as a
       // failure so a refused answer never collapses the card and strands the run.
@@ -148,31 +154,51 @@ export function ClarificationCard({
       recordClarificationRecap(
         runId,
         pending.requestId,
-        clarificationRecap(pending.questions, body),
+        clarificationRecap(pending.questions, answers),
       );
     } catch {
       setFailed(true);
     }
   };
 
+  // A parked run asks its question the way the reference agent surfaces ask one:
+  // as part of the CONVERSATION, not as a form panel dropped into it. The assistant
+  // turn is open full-width text (C1), the question is prose at conversation size,
+  // and the choices are inline chips directly under it. The only chrome is a single
+  // accent rule marking the turn as awaiting the user — a panel border, a raised
+  // fill and a heading row all read as "form", which is what the owner rejected.
+  //
+  // One choice question answers on CLICK: picking the option IS the reply, the way
+  // a suggested-reply chip works in every reference. A submit affordance appears
+  // only when the answer cannot be one click — free text, or more than one question.
+  // A payload carrying no questions is nothing to answer: render nothing rather
+  // than a heading over an empty frame with a dead send control.
+  if (pending.questions.length === 0) return null;
+
+  const singleChoice =
+    pending.questions.length === 1 && pending.questions[0]!.kind === "choice";
+
   return (
+    // The question reads as a turn in the conversation: no rule, no heading row
+    // announcing that a decision exists — the question itself says that. Options are
+    // NUMBERED full-width rows, which is how every desktop agent renders a bounded
+    // choice: one per line, scannable, and answerable from the keyboard by its number.
     <section
-      className="flex flex-col gap-fg-2 rounded-fg-md border border-state-stale/40 bg-paper-raised px-fg-2 py-fg-2"
+      className="flex flex-col gap-fg-3 py-fg-2"
       aria-label={region.message}
       data-clarification-card={pending.requestId}
     >
-      <p className="text-label font-medium text-ink">{heading.message}</p>
-      <ol className="flex flex-col gap-fg-2">
+      <ol className="flex flex-col gap-fg-4">
         {pending.questions.map((question) => (
           <li
             key={question.id}
-            className="flex flex-col gap-fg-1"
+            className="flex flex-col gap-fg-2"
             data-clarification-question={question.id}
           >
-            <p className="text-meta text-ink">
+            <p className="text-body text-ink">
               {authoredDisplayText(question.prompt)}
               {question.required && !requiredLabel.usedFallback && (
-                <span className="ml-fg-1 text-caption text-ink-faint">
+                <span className="ml-fg-1 text-meta text-ink-faint">
                   {requiredLabel.message}
                 </span>
               )}
@@ -181,28 +207,95 @@ export function ClarificationCard({
               <div
                 role="radiogroup"
                 aria-label={authoredDisplayText(question.prompt)}
-                className="flex flex-wrap gap-fg-1"
+                className="flex flex-col gap-fg-1"
               >
-                {question.options.map((option) => {
+                {question.options.map((option, index) => {
                   const selected = draft[question.id] === option.id;
+                  const ordinal = index + 1;
                   return (
                     <button
                       key={option.id}
                       type="button"
                       role="radio"
                       aria-checked={selected}
-                      onClick={() => setAnswer(question.id, option.id)}
+                      // Roving arrow keys within the group, and the row's own number
+                      // as a direct accelerator — the two ways these are answered.
+                      onKeyDown={(event) => {
+                        const keyed = Number.parseInt(event.key, 10);
+                        if (
+                          Number.isInteger(keyed) &&
+                          keyed >= 1 &&
+                          keyed <= question.options.length
+                        ) {
+                          event.preventDefault();
+                          const picked = question.options[keyed - 1]!;
+                          setAnswer(question.id, picked.id);
+                          if (singleChoice) {
+                            void submit({ ...draft, [question.id]: picked.id });
+                          }
+                        }
+                      }}
+                      onClick={() => {
+                        setAnswer(question.id, option.id);
+                        // The only question, and it is a choice: the click is the
+                        // answer. Submit against the draft this click produces —
+                        // component state has not settled yet in this tick.
+                        if (singleChoice) {
+                          void submit({ ...draft, [question.id]: option.id });
+                        }
+                      }}
+                      disabled={respond.isPending}
                       data-clarification-option={option.id}
-                      className={`rounded-fg-pill border px-fg-3 py-fg-1 text-label transition-colors duration-ui-fast focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+                      className={`flex w-full items-baseline gap-fg-2 rounded-fg-md border px-fg-3 py-fg-2 text-body text-left transition-colors duration-ui-fast focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-60 ${
                         selected
-                          ? "border-accent bg-accent/12 text-ink"
-                          : "border-rule text-ink-muted hover:text-ink"
+                          ? "border-accent bg-accent-subtle text-ink"
+                          : "border-rule text-ink hover:bg-paper-sunken"
                       }`}
                     >
-                      {authoredDisplayText(option.label)}
+                      {/* The row marker is CATALOG copy, not a literal: its number is
+                          locale-formatted and its separator is part of the message, so
+                          a locale that marks lists differently can say so. */}
+                      <span aria-hidden className="shrink-0 text-meta text-ink-faint">
+                        {
+                          resolveMessage({
+                            key: MSG.optionOrdinal,
+                            values: { ordinal },
+                          }).message
+                        }
+                      </span>
+                      <span className="min-w-0">
+                        {authoredDisplayText(option.label)}
+                      </span>
                     </button>
                   );
                 })}
+                {/* The n+1 row: a bounded option set must never trap someone whose
+                    answer is not on it. It carries the next ordinal and answers as
+                    free text, so choosing it is the same act as picking a row. */}
+                <input
+                  type="text"
+                  value={
+                    question.options.some((o) => o.id === draft[question.id])
+                      ? ""
+                      : (draft[question.id] ?? "")
+                  }
+                  maxLength={CLARIFICATION_MAX_ANSWER_CHARS}
+                  onChange={(event) => setAnswer(question.id, event.target.value)}
+                  onKeyDown={(event) => {
+                    // Enter sends, exactly as it does in the composer. The card must
+                    // not teach a second way to send a sentence.
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      if (submittable) void submit();
+                    }
+                  }}
+                  placeholder={
+                    placeholder.usedFallback ? undefined : placeholder.message
+                  }
+                  aria-label={authoredDisplayText(question.prompt)}
+                  data-clarification-input={question.id}
+                  className="w-full rounded-fg-md border border-rule bg-paper px-fg-3 py-fg-2 text-body text-ink placeholder:text-ink-faint focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+                />
               </div>
             ) : (
               // SINGLE-LINE by contract: the engine refuses control characters in a
@@ -216,7 +309,7 @@ export function ClarificationCard({
                 placeholder={placeholder.usedFallback ? undefined : placeholder.message}
                 aria-label={authoredDisplayText(question.prompt)}
                 data-clarification-input={question.id}
-                className="w-full rounded-fg-sm border border-rule bg-paper-sunken px-fg-2 py-fg-1 text-body text-ink placeholder:text-ink-faint focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+                className="w-full rounded-fg-md border border-rule bg-paper px-fg-2 py-fg-1-5 text-body text-ink placeholder:text-ink-faint focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
               />
             )}
           </li>
@@ -231,16 +324,21 @@ export function ClarificationCard({
           {resolveMessage({ key: MSG.failed }).message}
         </p>
       )}
-      <div className="flex justify-end">
-        <Button
-          variant="primary"
-          disabled={!submittable}
-          onClick={() => void submit()}
-          data-clarification-submit
-        >
-          {submitLabel.message}
-        </Button>
-      </div>
+      {!singleChoice && (
+        // Secondary, not primary: the composer has NO filled send button (Enter
+        // sends), so a filled one here would teach two different send affordances
+        // for the same act in one panel.
+        <div className="flex">
+          <Button
+            variant="secondary"
+            disabled={!submittable}
+            onClick={() => void submit()}
+            data-clarification-submit
+          >
+            {submitLabel.message}
+          </Button>
+        </div>
+      )}
     </section>
   );
 }

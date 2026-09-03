@@ -152,13 +152,13 @@ export const documents = {
   },
   guardedActions: {
     moveCommentToThisSection: "Move comment to this section",
-    reviewStationApproveProposal: "Approve proposal",
-    reviewStationApplyChanges: "Apply changes",
-    reviewStationPrepareRollback: "Prepare rollback",
+    reviewStationApproveProposal: "Approve",
+    reviewStationApplyChanges: "Apply",
+    reviewStationPrepareRollback: "Revert",
   },
   destructiveActions: {
     deleteComment: "Delete comment",
-    reviewStationRejectProposal: "Reject proposal",
+    reviewStationRejectProposal: "Reject",
   },
   browserModes: {
     documents: "Documents",
@@ -350,6 +350,8 @@ export const documents = {
       added: "+{{lines, number}}",
       aggregate: "Changed lines",
       atLeast: "At least this many. The file was too large to read in full.",
+      editedFiles_one: "Edited {{count, number}} file",
+      editedFiles_other: "Edited {{count, number}} files",
       floorMarker: "Or more",
       removed: "−{{lines, number}}",
     },
@@ -360,6 +362,7 @@ export const documents = {
       acknowledge: "Acknowledge",
       hideChanges: "Hide changes",
       requestChanges: "Request changes",
+      reviewChanges: "Review changes",
       showChanges: "Show changes",
       submitForReview: "Submit for review",
     },
@@ -444,13 +447,13 @@ export const documents = {
     disabledReasons: {
       actionInProgress: "Wait for the current action to finish.",
       actionUnavailable: "Refresh the proposal and try again.",
-      rollbackUnavailable: "Refresh the proposal and check rollback availability.",
+      rollbackUnavailable: "Refresh the change and check whether it can be reverted.",
     },
     feedback: {
       actionAccepted: "Request accepted.",
       actionNotAllowed: "Review the proposal and choose an available action.",
       rollbackUnavailable: "Refresh the proposal and check rollback availability.",
-      reviewChanged: "Review the latest proposal, then try again.",
+      reviewChanged: "Review the latest change, then try again.",
       reviewerUnavailable:
         "This action could not be authorized. Refresh, then try again.",
     },
@@ -462,13 +465,13 @@ export const documents = {
     },
     states: {
       appliedAutomatically: "Applied automatically",
-      empty: "No proposals are waiting for review.",
+      empty: "No changes are waiting for your review.",
       informationMayBeOutOfDate:
         "Approval information may be out of date. Refresh to get the latest information.",
       loading: "Loading approvals…",
       moreAppliedChanges: "More automatically applied changes are available.",
-      moreProposals: "More proposals are available. Narrow the queue to see them.",
-      untitledProposal: "Untitled proposal",
+      moreProposals: "More changes are waiting. Narrow the list to see them.",
+      untitledProposal: "Untitled change",
     },
     sections: {
       appliedAutomatically: "Applied automatically",

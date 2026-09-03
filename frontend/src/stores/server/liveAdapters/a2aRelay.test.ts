@@ -10,6 +10,7 @@ import {
   relayAgentId,
   relayAgentState,
   relayContent,
+  relayErrorCode,
   relayErrorMessage,
   relayFrameForcesReconcile,
   relayFrameRetainedBytes,
@@ -89,6 +90,21 @@ describe("relay payload accessors", () => {
     expect(relayErrorMessage(frame({ message: "boom" }))).toBe("boom");
     // A mistyped field never throws — it degrades to the empty fallback.
     expect(relayContent(frame({ content: 42 }))).toBe("");
+  });
+
+  it("carries the refusal code only from a frame that classifies a failure", () => {
+    // The relay's own classification decides which frames may carry a code, so a
+    // `code` field on some other frame kind cannot reach a refusal presentation.
+    const failure = adaptRelayFrame({
+      channel: "error",
+      data: { code: "credits_exhausted", message: "Reconnecting… 1/5" },
+    });
+    expect(failure.kind).toBe("error");
+    expect(relayErrorCode(failure)).toBe("credits_exhausted");
+    expect(relayErrorCode(frame({ code: "credits_exhausted" }))).toBe("");
+    expect(
+      relayErrorCode(adaptRelayFrame({ channel: "error", data: { code: 42 } })),
+    ).toBe("");
   });
 
   it("flattens all three a2a ToolCallContent variants (text/diff/terminal)", () => {

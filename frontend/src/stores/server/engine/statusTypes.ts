@@ -29,7 +29,19 @@ export interface EngineStatus {
     watcher?: string;
     index?: string;
     jobs?: number;
+    // The indexing program's OWN listening port and process id, served verbatim
+    // under `/status` `backends.rag`. These are the only per-program address
+    // facts on the whole status surface, and they identify a real process on the
+    // machine — which is why the system-status console renders them. OPTIONAL:
+    // absent means the engine did not report one, never zero and never "unknown".
+    port?: number;
+    pid?: number;
   };
+  // Round-trip time in milliseconds for the status read that produced THIS
+  // snapshot, MEASURED by this client — the engine cannot observe a browser's own
+  // round trip, so this is never a served value and is always labelled as this
+  // window's own timing where it is shown. Absent until the first read settles.
+  observedRoundTripMs?: number;
 }
 
 export interface OpsResult {
@@ -236,103 +248,6 @@ export interface ProvisionJob {
     envelope?: { schema?: string; status?: string; [k: string]: unknown };
     output?: string;
   } | null;
-}
-
-// --- A2A component lifecycle plane ----------------------------------------------
-//
-// The stores-layer view of the served `/a2a/lifecycle/*` surface (engine
-// `routes/a2a_lifecycle.rs`). Tolerant shapes: an additive wire field is absorbed,
-// never a break (engine-read-and-infer). Degradation of the agent ORCHESTRATION
-// tier is read from the `tiers.agent` block (`readAgentTierAvailability`), NEVER
-// re-derived here; these types carry the INSTALL / readiness lifecycle truth the
-// controller serves, distinct from the orchestration-availability the tier reports.
-
-/** The closed set of lifecycle intents the wire accepts (engine `LifecycleOpArg`,
- *  kebab-case). The run body carries ONLY one of these — never a path, never a
- *  free-form argument. */
-export type A2aLifecycleOp =
-  | "install"
-  | "ensure"
-  | "start"
-  | "stop"
-  | "restart"
-  | "repair"
-  | "update"
-  | "rollback"
-  | "remove"
-  | "doctor";
-
-/** The single served readiness model (engine `Readiness`, tagged on `state`). A
- *  cold worker on a live gateway is still service-ready (`gateway-ready`), NOT a
- *  degradation — an installed-but-stopped generation is a valid cold state. */
-export type A2aReadiness =
-  | { state: "uninstalled" }
-  | { state: "installed-stopped" }
-  | { state: "gateway-ready"; worker: "cold" | "ready" };
-
-/** The `install_state` label the controller reports (engine `ReleaseObservation`).
- *  `recovery-required` / `busy` / `unverifiable` are the degraded, install-level
- *  states — orthogonal to the orchestration tier. */
-export type A2aInstallState =
-  | "absent"
-  | "settled"
-  | "recovery-required"
-  | "busy"
-  | "unverifiable";
-
-/** `GET /a2a/lifecycle/status` projection over the machine-global product state.
- *  Backend-served truth the panel renders without inventing semantics. `tiers`
- *  rides the envelope (`unwrapEnvelope` flattens it on) so the store reads the
- *  agent orchestration tier from the SAME response. */
-export interface A2aLifecycleStatus {
-  installed: boolean | null;
-  installed_known: boolean;
-  install_state: A2aInstallState;
-  recovery_required: boolean;
-  degraded: boolean;
-  readiness: A2aReadiness | null;
-  ownership: { owner: string; retained: boolean };
-  active_generation: string | null;
-  /** The operations the engine says a client may offer, served — never derived.
-   *  Eligibility is the intersection of what the state permits and what is
-   *  actually implemented, and only the engine knows the second half. Optional
-   *  because an older engine will not send it; consumers fail CLOSED on absence
-   *  rather than falling back to guessing. */
-  eligible_ops?: readonly string[];
-  tiers?: TiersBlock;
-}
-
-/** The bounded `POST /a2a/lifecycle/run` body: a single semantic operation — no
- *  path, no free-form argument (engine `RunRequest`). The dispatcher validates
- *  this closed shape before it reaches the wire. */
-export interface A2aLifecycleRunBody {
-  op: A2aLifecycleOp;
-}
-
-/** The typed refusal kind an errored lifecycle run carries in its error envelope
- *  (engine `refusal_status_kind` plus the atomic at-capacity path), so the client
- *  branches on the CAUSE and renders its own localized remediation rather than
- *  parsing a human message. */
-export type A2aLifecycleRefusalKind =
-  | "at_capacity"
-  | "not_installed"
-  | "no_active_receipt"
-  | "not_owner"
-  | "foreign_resident"
-  | "incompatible"
-  | "recovery_required"
-  | "unverifiable"
-  | "stale_unproven";
-
-/** A tracked lifecycle job as `POST /a2a/lifecycle/run` and `GET
- *  /a2a/lifecycle/jobs/{id}` report it (engine `Job::to_wire`). `outcome` is the
- *  operation's own result payload (`null` while running); its shape varies by op,
- *  so it stays an open record the panel narrows by op. */
-export interface A2aLifecycleJob {
-  id: string;
-  op: A2aLifecycleOp;
-  state: "running" | "succeeded" | "failed";
-  outcome: Record<string, unknown> | null;
 }
 
 // The structured shapes below are the `DiffView` component's prop contract — what

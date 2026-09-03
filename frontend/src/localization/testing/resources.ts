@@ -158,15 +158,13 @@ export const ltrTestResources = {
       title: "Avancé",
       description:
         "État et commandes des outils utilisés par cette application. Tout ceci sert au dépannage.",
-    },
-    controlPanels: {
+
       labels: {
         projectHealth: "Santé du projet",
         systemStatus: "État du système",
-        agentService: "Agents locaux",
       },
       accessibility: {
-        group: "État du projet",
+        group: "Travaux en attente",
         panelStatus: "{{panel}} : {{status}}",
       },
       tones: {
@@ -874,15 +872,13 @@ export const rtlTestResources = {
       title: "متقدم",
       description:
         "حالة الأدوات التي يعمل عليها التطبيق وعناصر التحكم بها، لاستكشاف الأخطاء.",
-    },
-    controlPanels: {
+
       labels: {
         projectHealth: "سلامة المشروع",
         systemStatus: "حالة النظام",
-        agentService: "الوكلاء",
       },
       accessibility: {
-        group: "حالة المشروع",
+        group: "الأعمال المعلقة",
         panelStatus: "{{panel}}: {{status}}",
       },
       tones: {

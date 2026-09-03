@@ -43,16 +43,16 @@ function renderPanel() {
 describe("VaultHealthPanel localization", () => {
   it("localizes the Project health heading in place", async () => {
     const { runtime } = renderPanel();
-    const heading = screen.getByText(en.common.controlPanels.labels.projectHealth);
+    const heading = screen.getByText(en.common.advanced.labels.projectHealth);
 
     await act(async () => runtime.changeLanguage(ltrTestLocale));
     expect(
-      screen.getByText(ltrTestResources.common.controlPanels.labels.projectHealth),
+      screen.getByText(ltrTestResources.common.advanced.labels.projectHealth),
     ).toBe(heading);
 
     await act(async () => runtime.changeLanguage(rtlTestLocale));
     expect(
-      screen.getByText(rtlTestResources.common.controlPanels.labels.projectHealth),
+      screen.getByText(rtlTestResources.common.advanced.labels.projectHealth),
     ).toBe(heading);
   });
 

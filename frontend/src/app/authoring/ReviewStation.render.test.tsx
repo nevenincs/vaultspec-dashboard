@@ -263,7 +263,7 @@ describe("ProposalCard", () => {
       expect(text).not.toContain(privateValue);
     }
     expect(screen.queryByRole("button", { name: "Action unavailable" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Approve proposal" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Approve" })).toBeTruthy();
   });
 
   it("requests changes via an INLINE in-card composer (no modal) and submits the edit verdict", async () => {
@@ -335,7 +335,7 @@ describe("ProposalCard", () => {
         actions={actionCallbacks(counts)}
       />,
     );
-    const approve = screen.getByRole("button", { name: "Approve proposal" });
+    const approve = screen.getByRole("button", { name: "Approve" });
     expect(approve.getAttribute("disabled")).not.toBeNull();
     expect(approve.getAttribute("title")).toBe("Refresh the proposal and try again.");
 
@@ -349,8 +349,8 @@ describe("ProposalCard", () => {
         />
       </I18nextProvider>,
     );
-    expect(screen.queryByRole("button", { name: "Approve proposal" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Reject proposal" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reject" })).toBeNull();
   });
 
   it("reaches every review action with zero prior editing (ambient provenance)", () => {
@@ -364,9 +364,9 @@ describe("ProposalCard", () => {
         actions={actionCallbacks(counts)}
       />,
     );
-    const reject = screen.getByRole("button", { name: "Reject proposal" });
+    const reject = screen.getByRole("button", { name: "Reject" });
     expect(reject.getAttribute("disabled")).toBeNull();
-    const approve = screen.getByRole("button", { name: "Approve proposal" });
+    const approve = screen.getByRole("button", { name: "Approve" });
     expect(approve.getAttribute("disabled")).toBeNull();
   });
 
@@ -394,16 +394,16 @@ describe("ProposalCard", () => {
       proposal: needsReviewProposal({
         eligibility: [{ command: "approve", allowed: true }],
       }),
-      trigger: "Approve proposal",
-      confirm: "Approve proposal",
+      trigger: "Approve",
+      confirm: "Approve",
     },
     {
       name: "reject",
       proposal: needsReviewProposal({
         eligibility: [{ command: "reject", allowed: true }],
       }),
-      trigger: "Reject proposal",
-      confirm: "Reject proposal",
+      trigger: "Reject",
+      confirm: "Reject",
     },
     {
       name: "apply",
@@ -411,8 +411,8 @@ describe("ProposalCard", () => {
         status: "approved",
         eligibility: [{ command: "request_apply", allowed: true }],
       }),
-      trigger: "Apply changes",
-      confirm: "Apply changes",
+      trigger: "Apply",
+      confirm: "Apply",
     },
     {
       name: "rollback",
@@ -421,8 +421,8 @@ describe("ProposalCard", () => {
         eligibility: [],
         rollback: { available: true, child_key: "child_1" },
       }),
-      trigger: "Prepare rollback",
-      confirm: "Prepare rollback",
+      trigger: "Revert",
+      confirm: "Revert",
     },
   ] as const;
 
@@ -466,10 +466,10 @@ describe("ProposalCard", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Approve proposal" }));
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
     fireEvent.click(
       within(screen.getByRole("dialog")).getByRole("button", {
-        name: "Approve proposal",
+        name: "Approve",
       }),
     );
     const feedback = await screen.findByText(
@@ -496,14 +496,14 @@ describe("ProposalCard", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Approve proposal" }));
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
     fireEvent.click(
       within(screen.getByRole("dialog")).getByRole("button", {
-        name: "Approve proposal",
+        name: "Approve",
       }),
     );
     const feedback = await screen.findByText(
-      "Review the latest proposal, then try again.",
+      "Review the latest change, then try again.",
     );
     expect(feedback.getAttribute("data-card-feedback")).toBe("error");
     expect(document.body.textContent).not.toContain("private-error-message");
@@ -527,11 +527,116 @@ describe("ProposalCard", () => {
       </I18nextProvider>,
     );
 
-    const toggle = screen.getByRole("button", { name: "Show changes" });
+    const toggle = screen.getByRole("button", { name: "Review changes" });
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     fireEvent.click(toggle);
     expect(screen.getByRole("button", { name: "Hide changes" })).toBeTruthy();
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("hosts the change disclosure INSIDE the stat card when one is supplied", () => {
+    // The captured reference grammar puts the affordance that opens a change
+    // terminal-right inside the card that describes it, not trailing the verdict
+    // buttons where it read as a fourth decision. This pins the placement, since
+    // the slot is the only thing that decides it.
+    const counts = emptyCounts();
+    const runtime = createTestLocalizationRuntime();
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <I18nextProvider i18n={runtime}>
+        <QueryClientProvider client={queryClient}>
+          <ProposalCard
+            proposal={needsReviewProposal()}
+            actions={actionCallbacks(counts)}
+            diffstat={(action) => <div data-test-stat-slot>{action}</div>}
+          />
+        </QueryClientProvider>
+      </I18nextProvider>,
+    );
+
+    const slot = document.querySelector("[data-test-stat-slot]");
+    expect(slot).not.toBeNull();
+    expect(slot?.querySelector("[data-toggle-diff]")).not.toBeNull();
+    // Exactly one disclosure in the card: the fallback row must not double up.
+    expect(document.querySelectorAll("[data-toggle-diff]").length).toBe(1);
+  });
+});
+
+describe("verdict vocabulary and marks", () => {
+  it("names each verdict by the act alone, without restating the object", () => {
+    // The captured reference agents label a verdict with the verb only — the card
+    // you are looking at IS the proposal, so "Approve proposal" restates it. This
+    // pins the shortening so a later well-meaning "be more explicit" pass cannot
+    // quietly drift back to the longer form.
+    const counts = emptyCounts();
+    localized(
+      <ProposalCard
+        proposal={needsReviewProposal()}
+        actions={actionCallbacks(counts)}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Approve" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Reject" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Approve proposal" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reject proposal" })).toBeNull();
+  });
+
+  it("marks each verdict without stealing its accessible name", () => {
+    // The mark restates the label for the eye; a screen reader must still hear the
+    // verb and nothing else, so every mark is aria-hidden and the name is the word.
+    const counts = emptyCounts();
+    localized(
+      <ProposalCard
+        proposal={needsReviewProposal()}
+        actions={actionCallbacks(counts)}
+      />,
+    );
+    const approve = screen.getByRole("button", { name: "Approve" });
+    const mark = approve.querySelector("svg");
+    expect(mark).not.toBeNull();
+    expect(mark?.getAttribute("aria-hidden")).toBe("true");
+    expect(approve.textContent).toBe("Approve");
+  });
+
+  it("sends the unchanged wire verdict behind the new label", () => {
+    // Re-labelling and re-iconing is presentation. The engine-side verdict set is a
+    // contract, so the shortened label must still dispatch `approve`.
+    const counts = emptyCounts();
+    localized(
+      <ProposalCard
+        proposal={needsReviewProposal()}
+        actions={actionCallbacks(counts)}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Approve" }),
+    );
+    expect(counts.approve).toBe(1);
+  });
+});
+
+describe("AutonomyControl consequence", () => {
+  it("states what applying automatically means, beside the switch that does it", () => {
+    // This is the only place approval mode changes now that the composer's
+    // permission pill is gone. A user turning off review must read what that costs
+    // at the moment they do it, not discover it afterwards.
+    localized(<AutonomyControl mode="autonomous" onSelect={async () => accepted} />);
+    const line = document.querySelector("[data-autonomy-consequence]");
+    expect(line).not.toBeNull();
+    expect(line?.textContent).toContain("without your review");
+  });
+
+  it("says nothing when review is on, and nothing when the mode is neither", () => {
+    // Manual review is the safe default and needs no caveat; a served "assisted"
+    // mode is neither segment, so the control must not guess a consequence for it.
+    localized(<AutonomyControl mode="manual" onSelect={async () => accepted} />);
+    expect(document.querySelector("[data-autonomy-consequence]")).toBeNull();
+    cleanup();
+    localized(<AutonomyControl mode="assisted" onSelect={async () => accepted} />);
+    expect(document.querySelector("[data-autonomy-consequence]")).toBeNull();
   });
 });
 
@@ -547,7 +652,7 @@ describe("AutonomyControl", () => {
         }}
       />,
     );
-    const group = screen.getByRole("radiogroup", { name: "Autonomy" });
+    const group = screen.getByRole("radiogroup", { name: "Approvals" });
     const reviewEach = within(group).getByRole("radio", {
       name: "Review each change",
     });
@@ -578,7 +683,7 @@ describe("AutonomyControl", () => {
       <AutonomyControl mode="assisted" onSelect={() => Promise.resolve(accepted)} />,
     );
     const radios = within(
-      screen.getByRole("radiogroup", { name: "Autonomy" }),
+      screen.getByRole("radiogroup", { name: "Approvals" }),
     ).getAllByRole("radio");
     for (const radio of radios) {
       expect(radio.getAttribute("aria-checked")).toBe("false");
@@ -622,7 +727,7 @@ describe("AutonomyControl", () => {
     );
     fireEvent.click(screen.getByRole("radio", { name: "Apply automatically" }));
     const feedback = await screen.findByText(
-      "Review the latest proposal, then try again.",
+      "Review the latest change, then try again.",
     );
     expect(feedback.getAttribute("data-autonomy-feedback")).toBe("error");
     expect(document.body.textContent).not.toContain("private-error");
@@ -644,7 +749,7 @@ describe("ReviewStation states", () => {
     );
 
     const states = [
-      [view({ empty: true }), "No proposals are waiting for review."],
+      [view({ empty: true }), "No changes are waiting for your review."],
       [
         view({
           degraded: true,
@@ -658,7 +763,7 @@ describe("ReviewStation states", () => {
       ],
       [
         view({ truncated: true, afterFactTruncated: true }),
-        "More proposals are available. Narrow the queue to see them.",
+        "More changes are waiting. Narrow the list to see them.",
       ],
     ] as const;
     for (const [state, expected] of states) {

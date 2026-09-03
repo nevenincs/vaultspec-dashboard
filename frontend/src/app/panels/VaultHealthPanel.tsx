@@ -64,8 +64,26 @@ export function deriveVaultHealthView(
     : { tone: "attention", word: { key: "common:vaultHealth.attention" } };
 }
 
-/** Project health status and check action. */
-export function VaultHealthPanel() {
+export interface VaultHealthPanelBodyProps {
+  /** The derived status word and tone. */
+  view: VaultHealthView;
+  /** The check action is in flight. */
+  checking: boolean;
+  /** The receipt THIS panel's action produced, or `null` when it produced none. */
+  receipt: OpsReceipt | null;
+  onCheck: () => void;
+}
+
+/** The wire-free body: the project-health fold Settings ▸ Advanced hosts. It takes
+ *  the resolved view, the pending flag, and the receipt as normal required props,
+ *  so the review desk renders every tone and receipt without the panel growing a
+ *  harness affordance (production-dev-separation). */
+export function VaultHealthPanelBody({
+  view,
+  checking,
+  receipt,
+  onCheck,
+}: VaultHealthPanelBodyProps) {
   const checkingLabel = useLocalizedMessage({
     key: "common:systemStatus.states.checking",
   });
@@ -73,13 +91,7 @@ export function VaultHealthPanel() {
     key: "operations:actions.checkVault",
   });
   const projectHealthLabel = useLocalizedMessage(ADVANCED_CONSOLE_LABELS.project);
-  const core = useCoreStatus();
-  const view = deriveVaultHealthView(core);
   const healthWord = useLocalizedMessage(view.word);
-  const check = useOpsRunMutation();
-  // Show only the receipt produced by this panel's action.
-  const lastReceipt = useOpsReceipt();
-  const receipt = lastReceipt?.verb === "vault-check" ? lastReceipt : null;
 
   return (
     <div className="flex flex-col gap-fg-3 px-fg-4 py-fg-3" data-vault-health-panel>
@@ -99,11 +111,11 @@ export function VaultHealthPanel() {
       <div className="flex flex-col gap-fg-2">
         <Button
           variant="secondary"
-          onClick={() => check.mutate({ target: "core", verb: "vault-check" })}
-          disabled={check.isPending}
+          onClick={onCheck}
+          disabled={checking}
           data-vault-check
         >
-          {check.isPending ? checkingLabel : checkVaultLabel}
+          {checking ? checkingLabel : checkVaultLabel}
         </Button>
         {receipt && (
           <p
@@ -116,5 +128,22 @@ export function VaultHealthPanel() {
         )}
       </div>
     </div>
+  );
+}
+
+/** The container: derives the health view from the served project status and owns
+ *  the check mutation, showing only the receipt its OWN action produced. */
+export function VaultHealthPanel() {
+  const core = useCoreStatus();
+  const check = useOpsRunMutation();
+  const lastReceipt = useOpsReceipt();
+
+  return (
+    <VaultHealthPanelBody
+      view={deriveVaultHealthView(core)}
+      checking={check.isPending}
+      receipt={lastReceipt?.verb === "vault-check" ? lastReceipt : null}
+      onCheck={() => check.mutate({ target: "core", verb: "vault-check" })}
+    />
   );
 }

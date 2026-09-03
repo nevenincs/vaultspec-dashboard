@@ -82,6 +82,11 @@ pub struct CohortEmission {
 /// A2A commit, component-lock join, release schema, protocol, and state schema. A
 /// member cannot self-authorize its lock — the join is checked against the same
 /// independently trusted `lock`.
+///
+/// Whether a member bundles the a2a runtime is part of that shared identity: all
+/// four bundle it or none do. A MIXED cohort — three targets shipping a runtime
+/// and one shipping none — is a release the four members disagree about, and is
+/// rejected on the same footing as four members disagreeing on the A2A commit.
 pub fn emit_cohort_descriptor(
     members: &[(Target, String)],
     lock: &ComponentLock,
@@ -177,8 +182,12 @@ pub fn emit_cohort_descriptor(
 struct Identity {
     id: String,
     target: String,
-    a2a_commit: String,
-    component_lock_digest: String,
+    /// `None` for a member that carries no bundled a2a runtime. Modelled as an
+    /// option rather than defaulted to a placeholder so a MIXED cohort — some
+    /// members bundling a runtime, some not — differs on this field and is
+    /// rejected, exactly as two members bundling different runtimes are.
+    a2a_commit: Option<String>,
+    component_lock_digest: Option<String>,
     schema_version: String,
     protocol: String,
     state_schema: String,
@@ -198,11 +207,22 @@ impl Identity {
                 other => Ok(other.to_string()),
             }
         };
+        // The optional counterpart to `get`: absent is a value here, not a fault.
+        let optional = |path: &[&str]| -> Option<String> {
+            let mut cursor = value;
+            for key in path {
+                cursor = cursor.get(key)?;
+            }
+            Some(match cursor {
+                Value::String(s) => s.clone(),
+                other => other.to_string(),
+            })
+        };
         Ok(Self {
             id: get(&["cohort", "id"])?,
             target: get(&["target"])?,
-            a2a_commit: get(&["a2a_component", "commit"])?,
-            component_lock_digest: get(&["a2a_component", "component_lock", "digest"])?,
+            a2a_commit: optional(&["a2a_component", "commit"]),
+            component_lock_digest: optional(&["a2a_component", "component_lock", "digest"]),
             schema_version: get(&["schema_version"])?,
             protocol: value["protocol"].to_string(),
             state_schema: value["state_schema"].to_string(),

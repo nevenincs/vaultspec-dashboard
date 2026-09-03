@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
 
 import {
@@ -88,7 +88,10 @@ const GROUP_MESSAGE = {
 const GRID =
   "grid grid-cols-[minmax(6rem,2fr)_6rem_minmax(6rem,2fr)_7rem_6rem] items-center gap-fg-2";
 
-function relativeStart(locale: string, startedAt: number | undefined): string | null {
+export function relativeStart(
+  locale: string,
+  startedAt: number | undefined,
+): string | null {
   if (startedAt === undefined) return null;
   const milliseconds = startedAt < 1e12 ? startedAt * 1000 : startedAt;
   const seconds = Math.round((milliseconds - Date.now()) / 1000);
@@ -206,11 +209,15 @@ export function RagJobsTableBody({
   selectedJobId,
   offline,
   pending,
+  action,
 }: {
   table: RagJobsTableView;
   selectedJobId: string | null;
   offline: boolean;
   pending: boolean;
+  /** An index-domain control rendered beside the section heading (the rebuild
+   *  verb lives here with the index it acts on, not in the service lifecycle). */
+  action?: ReactNode;
 }) {
   const resolve = useLocalizedMessageResolver();
   const locale = useActiveLocale();
@@ -219,7 +226,10 @@ export function RagJobsTableBody({
   const count = formatNumber(locale, table.servedCount) ?? "";
   return (
     <div data-rag-jobs-region className="flex min-h-0 flex-col gap-fg-2">
-      <SectionLabel count={count}>{resolve(M.title).message}</SectionLabel>
+      <div className="flex items-center justify-between gap-fg-2">
+        <SectionLabel count={count}>{resolve(M.title).message}</SectionLabel>
+        {action}
+      </div>
       <div className="flex flex-wrap items-center gap-fg-2">
         <div className="min-w-[10rem] flex-1">
           <SearchField
@@ -325,7 +335,7 @@ export function RagJobsTableBody({
   );
 }
 
-export function RagJobsTable() {
+export function RagJobsTable({ action }: { action?: ReactNode } = {}) {
   const scope = useActiveScope();
   const jobsQuery = useRagJobs(scope, RAG_JOBS_LIMIT_CAP);
   const sort = useRagDashboardSort();
@@ -346,6 +356,7 @@ export function RagJobsTable() {
       selectedJobId={selectedJobId}
       offline={ragQuerySemanticOffline(jobsQuery)}
       pending={jobsQuery.isPending}
+      action={action}
     />
   );
 }

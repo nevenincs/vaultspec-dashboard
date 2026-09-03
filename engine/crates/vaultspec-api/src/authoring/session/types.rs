@@ -194,6 +194,31 @@ pub struct RunRecord {
     /// non-terminal run, and for a `Failed` run whose caller supplied no reason.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub failure_reason: Option<String>,
+    /// Which member of the closed provider-condition vocabulary a `Failed` run
+    /// resolved to — the machine-readable counterpart to `failure_reason`. The
+    /// reason says what happened for a person to read; this says what the reader
+    /// should DO about it (wait, re-authenticate, top up, raise a ceiling, or
+    /// change the request). The two are INDEPENDENT fields: this is never
+    /// derived from the reason text, which a provider may reword at any time,
+    /// and a reason can be misleading while the condition is exactly right.
+    ///
+    /// Only a `Failed` run carries one — a completed or non-terminal run with a
+    /// condition is a contradiction the store refuses at the write boundary,
+    /// where membership in the vocabulary is checked too, so an unrecognised
+    /// value can never be recorded.
+    ///
+    /// Deliberately a plain string rather than an enum: a value that somehow
+    /// reached the record must not take the whole record down on read. This
+    /// field exists because a classification was once destroyed in transit, and
+    /// an unreadable record is undiagnosable where an odd but readable one is
+    /// not. JSON-only like `failure_reason` — nothing queries a column — so
+    /// every record written before this field existed still loads: `deny_unknown_fields`
+    /// governs fields that are PRESENT and unexpected, and an absent optional
+    /// field is already `None`. The `default` is written out to match the
+    /// optional fields beside it, not because the read depends on it; a probe
+    /// removing it left the old-record read passing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_condition: Option<String>,
     pub created_at_ms: i64,
     pub updated_at_ms: i64,
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -7,6 +7,9 @@
 //   - at most ONE console is expanded, so opening a second closes the first;
 //   - every operational console lives HERE and nowhere else — the retired modal
 //     panel ids resolve to nothing at the boundary (no legacy alias);
+//   - the agent LIFECYCLE console is retired outright: `agent` is not a console
+//     id, nothing mounts it, and no `/a2a/lifecycle/*` read is registered from
+//     anywhere in this section;
 //   - the fold labels re-render in place across locales.
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -65,10 +68,8 @@ describe("Settings ▸ Advanced", () => {
     const { container, client } = renderSection();
     expect(container.querySelector("[data-advanced-section]")).toBeTruthy();
     expect(container.querySelector("[data-index-console]")).toBeNull();
-    expect(container.querySelector("[data-a2a-lifecycle-panel]")).toBeNull();
     expect(container.querySelector("[data-backend-health-panel]")).toBeNull();
     expect(container.querySelector("[data-vault-health-panel]")).toBeNull();
-    expect(hasQueryPart(client, "a2a-lifecycle")).toBe(false);
     expect(hasQueryPart(client, "logs")).toBe(false);
   });
 
@@ -86,14 +87,16 @@ describe("Settings ▸ Advanced", () => {
     expect(container.querySelector("[data-rag-footer-region]")).toBeTruthy();
   });
 
-  it("mounts the agent lifecycle console and its status read only when expanded", () => {
+  it("hosts no agent lifecycle console — the id is retired, not aliased", () => {
+    // The install / start / stop / repair / update / rollback / remove / doctor
+    // surface is gone. `agent` is no longer a console id, so the deep-link path
+    // cannot revive it, and nothing under this section reads `/a2a/lifecycle/*`.
+    expect(normalizeAdvancedConsoleId("agent")).toBeNull();
     expandAdvancedConsole("agent");
+    expect(useAdvancedConsole.getState().expanded).toBeNull();
     const { container, client } = renderSection();
-    expect(container.querySelector("[data-a2a-lifecycle-panel]")).toBeTruthy();
-    expect(hasQueryPart(client, "a2a-lifecycle")).toBe(true);
-    // The index console is a sibling fold, so its reads stayed collapsed.
-    expect(container.querySelector("[data-index-console]")).toBeNull();
-    expect(hasQueryPart(client, "logs")).toBe(false);
+    expect(container.querySelector("[data-a2a-lifecycle-panel]")).toBeNull();
+    expect(hasQueryPart(client, "a2a-lifecycle")).toBe(false);
   });
 
   it("keeps one console expanded at a time", () => {
@@ -137,18 +140,18 @@ describe("Settings ▸ Advanced", () => {
   it("localizes the section and its console labels in place", async () => {
     const { runtime } = renderSection();
     const title = screen.getByText(en.common.advanced.title);
-    const systemLabel = screen.getByText(en.common.controlPanels.labels.systemStatus);
+    const systemLabel = screen.getByText(en.common.advanced.labels.systemStatus);
 
     await act(async () => runtime.changeLanguage(ltrTestLocale));
     expect(screen.getByText(ltrTestResources.common.advanced.title)).toBe(title);
-    expect(
-      screen.getByText(ltrTestResources.common.controlPanels.labels.systemStatus),
-    ).toBe(systemLabel);
+    expect(screen.getByText(ltrTestResources.common.advanced.labels.systemStatus)).toBe(
+      systemLabel,
+    );
 
     await act(async () => runtime.changeLanguage(rtlTestLocale));
     expect(screen.getByText(rtlTestResources.common.advanced.title)).toBe(title);
-    expect(
-      screen.getByText(rtlTestResources.common.controlPanels.labels.systemStatus),
-    ).toBe(systemLabel);
+    expect(screen.getByText(rtlTestResources.common.advanced.labels.systemStatus)).toBe(
+      systemLabel,
+    );
   });
 });

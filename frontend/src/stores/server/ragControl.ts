@@ -26,24 +26,31 @@ import {
 } from "@tanstack/react-query";
 import { create } from "zustand";
 
+import { engineClient, type OpsResult, type RagLogsEnvelope } from "./engine";
+
 import {
-  engineClient,
-  readTierAvailability,
-  tiersFromQuery,
-  type OpsResult,
-  type RagLogsEnvelope,
-  type TiersBlock,
-} from "./engine";
+  RAG_CONTROL_READ_GC_MS,
+  normalizeRagControlScope,
+  normalizeRagControlKeyPart,
+  normalizeRagJobNumber,
+  normalizeRagJobText,
+  ragControlKeys,
+  ragControlSemanticOffline,
+  ragSemanticOffline,
+  type BrokeredResult,
+} from "./ragControlBase";
+
+// One import path for the whole rag control plane: the base, log-tail, and
+// served-search submodules (split under the module-size gate) surface here.
+export * from "./ragControlBase";
+export * from "./ragLogs";
+export * from "./ragSearchActivity";
 
 // The rag logs wire shape lives with the ops wire family (`statusTypes`) so the
 // low-level client method stays typed without a client↔stores cycle; re-exported
 // here beside the other rag envelopes for the panel's consumers.
 export type { RagLogsEnvelope };
-import {
-  engineKeys,
-  invalidateScopedSemanticReads,
-  normalizeGraphSliceScope,
-} from "./queries";
+import { engineKeys, invalidateScopedSemanticReads } from "./queries";
 import { dispatchOps } from "./opsActions";
 
 // --- brokered wire shapes (forwarded verbatim from rag) ------------------------
@@ -79,6 +86,20 @@ export interface RagJobsSnapshot {
   total?: number;
   returned?: number;
   summary?: { running?: number; phases?: Record<string, number> };
+  /** The service-quiesce (pause) block rag stamps on every jobs snapshot. */
+  quiesce?: RagQuiesceBlock;
+}
+
+/** rag's service-quiesce block, forwarded verbatim on the `/jobs` snapshot: the
+ *  pause lifecycle (`running` | `pausing` | `quiesced` | `warming`) plus its
+ *  transition timestamps. Tolerant — every field optional. */
+export interface RagQuiesceBlock {
+  state?: string;
+  admissions_open?: boolean;
+  pause_requested_at?: number | null;
+  quiesced_at?: number | null;
+  warming_started_at?: number | null;
+  failure_reason?: string | null;
 }
 
 export interface RagWatcherState {
@@ -184,31 +205,7 @@ export interface RagCollectionHealthEnvelope {
   };
 }
 
-/** The unwrapped brokered result: rag's value (or null when degraded) + tiers. */
-export interface BrokeredResult<T> {
-  envelope: T | null;
-  tiers: TiersBlock;
-}
-
-// --- cache keys ----------------------------------------------------------------
-//
-// One sub-namespace under the shared engine keys. The reads operate on the
-// engine's ACTIVE scope (the `/ops/rag/*` surface carries no scope param), so the
-// active scope folds into each key — a scope swap re-reads, mirroring the other
-// per-scope read families.
-
-export const normalizeRagControlScope = normalizeGraphSliceScope;
-export const RAG_CONTROL_KEY_PART_MAX_CHARS = 2048;
-export const RAG_JOB_TEXT_MAX_CHARS = 2048;
 export const RAG_PROJECT_SLOTS_MAX_ITEMS = 64;
-
-export function normalizeRagControlKeyPart(value: unknown, fallback = ""): string {
-  if (typeof value !== "string") return fallback;
-  const normalized = value.trim();
-  return normalized.length > 0 && normalized.length <= RAG_CONTROL_KEY_PART_MAX_CHARS
-    ? normalized
-    : fallback;
-}
 
 export function normalizeRagProjectRoot(root: unknown): string | null {
   return normalizeRagControlScope(root);
@@ -254,64 +251,12 @@ function skippedRagProjectEvictResult(): OpsResult {
   };
 }
 
-export const ragControlKeys = {
-  all: [...engineKeys.all, "ops-rag"] as const,
-  serviceState: (scope: unknown) =>
-    [
-      ...ragControlKeys.all,
-      "service-state",
-      normalizeRagControlKeyPart(scope),
-    ] as const,
-  jobs: (scope: unknown, jobId?: unknown) =>
-    [
-      ...ragControlKeys.all,
-      "jobs",
-      normalizeRagControlKeyPart(scope),
-      normalizeRagControlKeyPart(jobId, "all"),
-    ] as const,
-  logs: (scope: unknown, lines: unknown, jobId?: unknown) =>
-    [
-      ...ragControlKeys.all,
-      "logs",
-      normalizeRagControlKeyPart(scope),
-      String(boundedRagLogLines(lines)),
-      normalizeRagControlKeyPart(jobId, "all"),
-    ] as const,
-  watcher: (scope: unknown) =>
-    [...ragControlKeys.all, "watcher", normalizeRagControlKeyPart(scope)] as const,
-  projects: (scope: unknown) =>
-    [...ragControlKeys.all, "projects", normalizeRagControlKeyPart(scope)] as const,
-  readiness: (scope: unknown) =>
-    [...ragControlKeys.all, "readiness", normalizeRagControlKeyPart(scope)] as const,
-  opsState: (scope: unknown) =>
-    [...ragControlKeys.all, "ops-state", normalizeRagControlKeyPart(scope)] as const,
-  collectionHealth: (scope: unknown, collection: unknown) =>
-    [
-      ...ragControlKeys.all,
-      "collection-health",
-      normalizeRagControlKeyPart(scope),
-      normalizeRagControlKeyPart(collection),
-    ] as const,
-};
-
 // --- pure interpreters (unit-tested without a render) --------------------------
 
 /** rag's terminal job phases — anything that is not still in flight. A job in
  *  `queued`/`running` is live; everything else (done/ok/error/failed/cancelled)
  *  is terminal and stops the poll. */
 const LIVE_PHASES = new Set(["queued", "running", "pending"]);
-
-function normalizeRagJobText(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
-  const normalized = value.trim();
-  return normalized.length > 0 && normalized.length <= RAG_JOB_TEXT_MAX_CHARS
-    ? normalized
-    : undefined;
-}
-
-function normalizeRagJobNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
-}
 
 function normalizeRagJobId(value: unknown): string | null {
   return normalizeRagJobText(value) ?? null;
@@ -357,170 +302,6 @@ export function requestedJob(
   const requestedId = normalizeRagJobId(jobId);
   if (requestedId === null) return undefined;
   return envelope?.jobs?.find((job) => normalizeRagJobId(job.id) === requestedId);
-}
-
-/** The semantic tier is unavailable in a brokered rag response. */
-export function ragSemanticOffline(data: BrokeredResult<unknown> | undefined): boolean {
-  return data !== undefined && readTierAvailability(data.tiers, ["semantic"]).degraded;
-}
-
-/** The semantic tier is unavailable, reading BOTH a successful envelope's tiers AND
- *  a fresh error envelope's tiers — never a bare transport fault (this module's own
- *  documented contract: "success OR a fresh error envelope", never guessed). A
- *  component holding a LIVE query result (not just its settled `.data`) must read
- *  through this, not `ragSemanticOffline(query.data)` alone: `query.data` goes
- *  `undefined` on a genuine fetch failure, so a query-error-only check for the tier
- *  is invisible to that call and the surface silently falls through to "empty"
- *  instead of degraded (`tiersFromQuery` is the shared precedence: a fresh error's
- *  tiers win over a stale held-success block). */
-export function ragQuerySemanticOffline(query: {
-  data?: BrokeredResult<unknown> | undefined;
-  error?: unknown;
-}): boolean {
-  return readTierAvailability(tiersFromQuery(query), ["semantic"]).degraded;
-}
-
-/** Whether any brokered rag control read reports the semantic tier unavailable. */
-export function ragControlSemanticOffline(
-  ...reads: Array<BrokeredResult<unknown> | undefined>
-): boolean {
-  return reads.some(ragSemanticOffline);
-}
-
-// --- log tail interpreters -----------------------------------------------------
-//
-// rag's `/logs/json` serves an array of RAW, pre-formatted log strings. The pane
-// parses each into a bounded, tone-tagged row: a level word and a leading
-// timestamp are pulled out WHEN present (Python-logging format), otherwise the
-// row is the verbatim text with no tone. Every accumulator is bounded — line
-// count AND per-line length — so a pathological tail cannot grow the view
-// unboundedly (bounded-by-default). The window is honest: the pane renders what
-// the served envelope carried, never a client-accumulated backlog.
-
-/** Default/min/max for the `lines` request window. 500 mirrors the engine's own
- *  server-side clamp (`MAX_RAG_LOG_LINES`) so a request never asks for more than
- *  the broker will serve. */
-export const RAG_LOGS_LINES_DEFAULT = 200;
-export const RAG_LOGS_LINES_MIN = 1;
-export const RAG_LOGS_LINES_MAX = 500;
-/** Hard ceiling on rendered rows regardless of the served count (defence in depth
- *  over the server clamp) and on each row's rendered text length. */
-export const RAG_LOG_ROWS_CAP = RAG_LOGS_LINES_MAX;
-export const RAG_LOG_LINE_MAX_CHARS = 4096;
-
-/** The parsed level tone for a log row. `warn` folds into `warning`; an
- *  unrecognized or absent level leaves the row untoned (`undefined`). */
-export type RagLogLevel = "debug" | "info" | "warning" | "error" | "critical";
-
-/** One parsed log row: the verbatim text plus the level tone and leading
- *  timestamp when the raw line carried them. */
-export interface RagLogLine {
-  /** The raw log-line text, verbatim (the monospace row body), length-bounded. */
-  text: string;
-  /** The parsed level word driving the row tone, when recognized. */
-  level?: RagLogLevel;
-  /** The leading `YYYY-MM-DD HH:MM:SS,mmm` timestamp when present, verbatim. */
-  timestamp?: string;
-}
-
-/** The interpreted log-tail view (data-derived; the hook layers query state). */
-export interface RagLogsView {
-  lines: RagLogLine[];
-  /** rag's reported returned-line count (the served window size). */
-  total: number;
-  /** The job id the served window was filtered to (echoed by rag), or null. */
-  jobFilter: string | null;
-  /** The semantic tier reported unavailable — rag is down; the tail is empty. */
-  semanticOffline: boolean;
-}
-
-/** The log-tail view a CONSUMER receives: the interpreted window plus the query
- *  state its loading treatment renders from. `interpretRagLogs` stays pure over
- *  the served window; only the hook can know a read is still in flight. */
-export interface RagLogsHookView extends RagLogsView {
-  /** The window read is in flight with nothing held yet. */
-  pending: boolean;
-}
-
-/** Clamp a requested `lines` window to `[MIN, MAX]`, defaulting a missing or
- *  malformed value to `RAG_LOGS_LINES_DEFAULT`. */
-export function boundedRagLogLines(lines: unknown): number {
-  const parsed =
-    typeof lines === "number"
-      ? lines
-      : typeof lines === "string" && lines.trim() !== ""
-        ? Number(lines)
-        : Number.NaN;
-  if (!Number.isFinite(parsed)) return RAG_LOGS_LINES_DEFAULT;
-  return Math.max(RAG_LOGS_LINES_MIN, Math.min(RAG_LOGS_LINES_MAX, Math.floor(parsed)));
-}
-
-const RAG_LOG_TIMESTAMP_RE = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}[.,]\d+)/;
-const RAG_LOG_LEVEL_RE = /\b(DEBUG|INFO|WARNING|WARN|ERROR|CRITICAL|FATAL)\b/;
-
-function mapRagLogLevel(token: string | undefined): RagLogLevel | undefined {
-  switch (token) {
-    case "DEBUG":
-      return "debug";
-    case "INFO":
-      return "info";
-    case "WARNING":
-    case "WARN":
-      return "warning";
-    case "ERROR":
-      return "error";
-    case "CRITICAL":
-    case "FATAL":
-      return "critical";
-    default:
-      return undefined;
-  }
-}
-
-/** Parse one raw rag log string into a tone-tagged row. A recognizable Python-
- *  logging prefix yields a timestamp + level; an unstructured line keeps only its
- *  (length-bounded) text. Returns null for a non-string or blank line. */
-export function parseRagLogLine(raw: unknown): RagLogLine | null {
-  if (typeof raw !== "string") return null;
-  const text =
-    raw.length > RAG_LOG_LINE_MAX_CHARS ? raw.slice(0, RAG_LOG_LINE_MAX_CHARS) : raw;
-  if (text.trim().length === 0) return null;
-  const timestamp = RAG_LOG_TIMESTAMP_RE.exec(text)?.[1];
-  const level = mapRagLogLevel(RAG_LOG_LEVEL_RE.exec(text)?.[1]);
-  return {
-    text,
-    ...(level !== undefined ? { level } : {}),
-    ...(timestamp !== undefined ? { timestamp } : {}),
-  };
-}
-
-/** Parse and bound the served log lines into rendered rows (blank/non-string
- *  lines dropped, count capped at `RAG_LOG_ROWS_CAP`). */
-export function normalizeRagLogLines(
-  envelope: RagLogsEnvelope | null | undefined,
-): RagLogLine[] {
-  const raw = envelope?.lines;
-  if (!Array.isArray(raw)) return [];
-  const rows: RagLogLine[] = [];
-  for (const entry of raw) {
-    const parsed = parseRagLogLine(entry);
-    if (parsed !== null) rows.push(parsed);
-    if (rows.length >= RAG_LOG_ROWS_CAP) break;
-  }
-  return rows;
-}
-
-/** Interpret a brokered logs read into the data-derived tail view. A down rag
- *  (semantic tier unavailable, read from tiers — never a transport error) yields
- *  an empty, offline-flagged tail. */
-export function interpretRagLogs(
-  data: BrokeredResult<RagLogsEnvelope> | undefined,
-): RagLogsView {
-  const semanticOffline = ragSemanticOffline(data);
-  const lines = semanticOffline ? [] : normalizeRagLogLines(data?.envelope);
-  const total = normalizeRagJobNumber(data?.envelope?.total) ?? lines.length;
-  const jobFilter = normalizeRagJobId(data?.envelope?.filters?.job_id);
-  return { lines, total, jobFilter, semanticOffline };
 }
 
 export interface RagControlView {
@@ -672,6 +453,53 @@ export function interpretJobProgress(
   };
 }
 
+// --- service quiesce (pause / resume) ------------------------------------------
+//
+// rag's pause is a QUIESCE HOLD, never a stop: admissions close and in-flight
+// work drains to a safe checkpoint while the daemon stays alive and reachable;
+// resume releases the hold. The hold's lifecycle rides the `/jobs` snapshot's
+// `quiesce` block, so the pause STATE costs no dedicated read. Both verbs are
+// idempotent on the service side and MACHINE-GLOBAL — a hold affects every
+// consumer of the one machine service, which the control's copy must say.
+
+/** The interpreted hold state. rag's `quiesced` renders as paused and its
+ *  `warming` as resuming; an absent/unrecognized block yields `unknown`. */
+export type RagQuiesceWord = "running" | "pausing" | "paused" | "resuming" | "unknown";
+
+export interface RagQuiesceView {
+  word: RagQuiesceWord;
+  paused: boolean;
+  /** A hold transition is in flight (pausing or resuming) — poll stays warm. */
+  transitional: boolean;
+  /** rag reported the transition failed (verbatim reason withheld from screen). */
+  failed: boolean;
+  semanticOffline: boolean;
+}
+
+const QUIESCE_WORDS: Record<string, RagQuiesceWord> = {
+  running: "running",
+  pausing: "pausing",
+  quiesced: "paused",
+  warming: "resuming",
+};
+
+export function interpretRagQuiesce(
+  data: BrokeredResult<RagJobsSnapshot> | undefined,
+): RagQuiesceView {
+  const semanticOffline = ragSemanticOffline(data);
+  const block = semanticOffline ? undefined : data?.envelope?.quiesce;
+  const raw = typeof block?.state === "string" ? block.state.toLowerCase() : "";
+  const word = QUIESCE_WORDS[raw] ?? "unknown";
+  return {
+    word,
+    paused: word === "paused",
+    transitional: word === "pausing" || word === "resuming",
+    failed:
+      typeof block?.failure_reason === "string" && block.failure_reason.length > 0,
+    semanticOffline,
+  };
+}
+
 export function shouldAcceptRagJobReceipt({
   currentScope,
   requestScope,
@@ -771,7 +599,6 @@ export function useRagReindexJobIdentity(scope: unknown): {
 // `readTierAvailability`; these hooks never throw on a degraded read because the
 // broker degrades to a tiers-bearing 200, not an error.
 
-const READ_GC_MS = 30_000;
 export const RAG_JOBS_LIMIT_CAP = 50;
 
 export interface RagJobsRequestIdentity {
@@ -812,6 +639,7 @@ export function invalidateRagControlQueries(queryClient: QueryClient): void {
     "jobs",
     "projects",
     "watcher",
+    "search-activity",
   ] as const) {
     void queryClient.invalidateQueries({
       queryKey: [...ragControlKeys.all, family],
@@ -867,7 +695,7 @@ export function useRagServiceState(scope: unknown) {
         signal,
       ),
     enabled,
-    gcTime: READ_GC_MS,
+    gcTime: RAG_CONTROL_READ_GC_MS,
   });
   return enabled ? query : { ...query, data: undefined };
 }
@@ -880,7 +708,7 @@ export function useRagWatcher(scope: unknown) {
     queryFn: ({ signal }) =>
       engineClient.opsRagGet<RagWatcherState>("watcher", undefined, signal),
     enabled,
-    gcTime: READ_GC_MS,
+    gcTime: RAG_CONTROL_READ_GC_MS,
   });
   return enabled ? query : { ...query, data: undefined };
 }
@@ -893,7 +721,7 @@ export function useRagProjects(scope: unknown) {
     queryFn: ({ signal }) =>
       engineClient.opsRagGet<RagProjectsState>("projects", undefined, signal),
     enabled,
-    gcTime: READ_GC_MS,
+    gcTime: RAG_CONTROL_READ_GC_MS,
   });
   return enabled ? query : { ...query, data: undefined };
 }
@@ -906,7 +734,7 @@ export function useRagReadiness(scope: unknown) {
     queryFn: ({ signal }) =>
       engineClient.opsRagGet<RagReadinessEnvelope>("readiness", undefined, signal),
     enabled,
-    gcTime: READ_GC_MS,
+    gcTime: RAG_CONTROL_READ_GC_MS,
   });
   return enabled ? query : { ...query, data: undefined };
 }
@@ -921,7 +749,7 @@ export function useRagOpsState(scope: unknown) {
     queryFn: ({ signal }) =>
       engineClient.opsRagGet<RagOpsStateEnvelope>("ops-state", undefined, signal),
     enabled,
-    gcTime: READ_GC_MS,
+    gcTime: RAG_CONTROL_READ_GC_MS,
   });
   return enabled ? query : { ...query, data: undefined };
 }
@@ -944,7 +772,7 @@ export function useRagCollectionHealth(scope: unknown, collection: unknown) {
         signal,
       ),
     enabled,
-    gcTime: READ_GC_MS,
+    gcTime: RAG_CONTROL_READ_GC_MS,
   });
   return enabled ? query : { ...query, data: undefined };
 }
@@ -997,7 +825,7 @@ export function useRagJobProgress(scope: unknown, jobId: unknown): RagJobProgres
         signal,
       ),
     enabled,
-    gcTime: READ_GC_MS,
+    gcTime: RAG_CONTROL_READ_GC_MS,
     refetchInterval: (q) => {
       const data = q.state.data as BrokeredResult<RagJobsSnapshot> | undefined;
       // Stop when rag is down (tiers-gated) so a dead service is not polled.
@@ -1014,6 +842,44 @@ export function useRagJobProgress(scope: unknown, jobId: unknown): RagJobProgres
   );
 }
 
+/** The quiesce poll cadences: fast while a hold transition (pausing/resuming)
+ *  is in flight — the drain settles in seconds — and a steady bounded monitor
+ *  cadence otherwise. A settled-word-only poll was tried first and proved
+ *  blind live: a pause requested while the last read said `running` stopped
+ *  the poll, so the console never saw the hold it had just asked for. */
+export const RAG_QUIESCE_TRANSITION_POLL_MS = 2000;
+export const RAG_QUIESCE_POLL_MS = 5000;
+
+/**
+ * The service-hold state hook: a bounded `jobs` read (limit 1 — the quiesce
+ * block rides every jobs snapshot) interpreted into the pause lifecycle.
+ * Mount-gated with the console that consumes it, polling on the steady monitor
+ * cadence (fast during transitions) while rag is up; a degraded read stops the
+ * poll and the view holds honestly (tiers-gated, never a transport guess).
+ */
+export function useRagQuiesce(scope: unknown): RagQuiesceView {
+  const normalizedScope = normalizeRagControlScope(scope);
+  const enabled = normalizedScope !== null;
+  const query = useQuery({
+    queryKey: ragControlKeys.jobs(normalizedScope ?? "", "quiesce"),
+    queryFn: ({ signal }) =>
+      engineClient.opsRagGet<RagJobsSnapshot>("jobs", { limit: 1 }, signal),
+    enabled,
+    gcTime: RAG_CONTROL_READ_GC_MS,
+    refetchInterval: (q) => {
+      const data = q.state.data as BrokeredResult<RagJobsSnapshot> | undefined;
+      if (ragSemanticOffline(data)) return false;
+      return interpretRagQuiesce(data).transitional
+        ? RAG_QUIESCE_TRANSITION_POLL_MS
+        : RAG_QUIESCE_POLL_MS;
+    },
+    refetchIntervalInBackground: false,
+  });
+  return interpretRagQuiesce(
+    enabled ? (query.data as BrokeredResult<RagJobsSnapshot> | undefined) : undefined,
+  );
+}
+
 /** A non-polling read of the recent jobs (for the activity list). */
 export function useRagJobs(scope: unknown, limit: unknown = 10) {
   const request = normalizeRagJobsRequestIdentity(scope, limit);
@@ -1023,61 +889,9 @@ export function useRagJobs(scope: unknown, limit: unknown = 10) {
     queryFn: ({ signal }) =>
       engineClient.opsRagGet<RagJobsSnapshot>("jobs", { limit: request.limit }, signal),
     enabled,
-    gcTime: READ_GC_MS,
+    gcTime: RAG_CONTROL_READ_GC_MS,
   });
   return enabled ? query : { ...query, data: undefined };
-}
-
-/** The log-tail poll cadence while the dashboard is open (rag-job-dashboard ADR
- *  D4): a bounded steady interval — logs never reach a terminal phase, so unlike
- *  the jobs progress poll there is no backoff-to-done, just a mount-gated tail. */
-export const RAG_LOGS_POLL_MS = 5000;
-
-export interface UseRagLogsOptions {
-  /** The requested window; clamped to `[MIN, MAX]`, defaulting to 200. */
-  lines?: unknown;
-  /** Filter the tail to one job id (joined from the jobs table selection). */
-  jobId?: unknown;
-  /** The panel-open gate: poll only while the dashboard consumes the tail. */
-  enabled?: boolean;
-}
-
-/**
- * The bounded rag log-tail hook: a mount-gated read of
- * the brokered `/ops/rag/logs` window, parsed into tone-tagged rows. Polls on a
- * bounded steady cadence ONLY while `enabled` (the open panel) and rag is up —
- * a down rag (read from the tiers block, never a transport error) stops the poll
- * and holds an empty, offline-flagged tail. No client-side accumulation: each
- * render reflects the last served window, capped at `RAG_LOG_ROWS_CAP`.
- */
-export function useRagLogs(
-  scope: unknown,
-  options: UseRagLogsOptions = {},
-): RagLogsHookView {
-  const normalizedScope = normalizeRagControlScope(scope);
-  const lines = boundedRagLogLines(options.lines);
-  const jobId = normalizeRagJobId(options.jobId);
-  const active = normalizedScope !== null && options.enabled !== false;
-  const query = useQuery({
-    queryKey: ragControlKeys.logs(normalizedScope ?? "", lines, jobId ?? undefined),
-    queryFn: ({ signal }) =>
-      engineClient.opsRagLogs({ lines, job_id: jobId ?? undefined }, signal),
-    enabled: active,
-    gcTime: READ_GC_MS,
-    refetchInterval: (q) => {
-      const data = q.state.data as BrokeredResult<RagLogsEnvelope> | undefined;
-      // Stop polling a down rag (tiers-gated) — the pane holds the offline state.
-      if (ragSemanticOffline(data)) return false;
-      return RAG_LOGS_POLL_MS;
-    },
-    refetchIntervalInBackground: false,
-  });
-  const data = active
-    ? (query.data as BrokeredResult<RagLogsEnvelope> | undefined)
-    : undefined;
-  const view = useMemo(() => interpretRagLogs(data), [data]);
-  const pending = active && query.isPending;
-  return useMemo(() => ({ ...view, pending }), [view, pending]);
 }
 
 // --- control mutations (dispatched through the platform seam) ------------------
@@ -1216,6 +1030,30 @@ export function useRagServiceStop(scope: unknown) {
   return useMutation({
     mutationFn: () => dispatchOps({ target: "rag", verb: "server-stop" }),
     onSuccess: () => invalidate("server-stop"),
+  });
+}
+
+/**
+ * Hold the ONE machine service at safe checkpoints (rag's quiesce). A hold,
+ * never a stop: the daemon stays alive and reachable, but admissions close for
+ * EVERY consumer on the machine until resume — the UI copy must say so. The
+ * settled state is read back through `useRagQuiesce` (the jobs snapshot's
+ * quiesce block), which the invalidation refreshes.
+ */
+export function useRagServicePause(scope: unknown) {
+  const invalidate = useInvalidateAfterRagOpsRun(scope);
+  return useMutation({
+    mutationFn: () => dispatchOps({ target: "rag", verb: "pause" }),
+    onSuccess: () => invalidate("pause"),
+  });
+}
+
+/** Release a held (paused) machine service. Idempotent like the hold. */
+export function useRagServiceResume(scope: unknown) {
+  const invalidate = useInvalidateAfterRagOpsRun(scope);
+  return useMutation({
+    mutationFn: () => dispatchOps({ target: "rag", verb: "resume" }),
+    onSuccess: () => invalidate("resume"),
   });
 }
 

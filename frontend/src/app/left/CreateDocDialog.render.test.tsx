@@ -169,12 +169,20 @@ describe("CreateDocDialog feature-group panel (store-driven mount)", () => {
       act(() => openCreateDocDialog("some-feature"));
       act(() => goToCreateDocDocumentStage());
       const group = screen.getByRole("radiogroup", { name: "Document type" });
-      fireEvent.keyDown(group, { key: "End" });
-      expect(document.activeElement).toBe(screen.getByRole("radio", { name: "Audit" }));
-      fireEvent.keyDown(group, { key: "Home" });
+      const research = within(group).getByRole("radio", { name: "Research" });
+      research.focus();
+      fireEvent.keyDown(research, { key: "End" });
+      const audit = within(group).getByRole("radio", { name: "Audit" });
+      expect(document.activeElement).toBe(audit);
+      // Audit is unavailable in the seeded coverage: it remains reachable, while
+      // the eligible selection keeps the group's one tab stop.
+      expect(audit.getAttribute("tabindex")).toBe("-1");
+      expect(research.getAttribute("tabindex")).toBe("0");
+      fireEvent.keyDown(audit, { key: "Home" });
       expect(document.activeElement).toBe(
         screen.getByRole("radio", { name: "Research" }),
       );
+      expect(research.getAttribute("tabindex")).toBe("0");
       expect(windowKeydownCount).toBe(0);
     } finally {
       window.removeEventListener("keydown", countWindowKeydown);
@@ -262,11 +270,16 @@ describe("CreateDocDialog feature-group panel (store-driven mount)", () => {
       // With no served coverage the always-open entry points are the eligible radios:
       // research (default) → reference.
       const group = screen.getByRole("radiogroup", { name: "Document type" });
+      const research = within(group).getByRole("radio", { name: "Research" });
+      research.focus();
       expect(useCreateDocChromeStore.getState().docType).toBe("research");
 
-      fireEvent.keyDown(group, { key: "ArrowDown" });
+      fireEvent.keyDown(research, { key: "ArrowDown" });
       // The selection moved (roving worked) ...
       expect(useCreateDocChromeStore.getState().docType).toBe("reference");
+      expect(document.activeElement).toBe(
+        within(group).getByRole("radio", { name: "Reference" }),
+      );
       // ... and the arrow was stopped before the window dispatcher.
       expect(windowKeydownCount).toBe(0);
 
@@ -417,6 +430,15 @@ describe("CreateDocDialog feature-group panel (live engine coverage)", () => {
     );
     expect(reason).toBeTruthy();
     expect(adr.getAttribute("aria-describedby")).toBe(reason.id);
+    // Roving through the unavailable row keeps its prerequisite reason reachable
+    // but does not select it; eligibility remains local dialog policy.
+    const research = within(group).getByRole("radio", { name: "Research" });
+    research.focus();
+    fireEvent.keyDown(research, { key: "ArrowDown" });
+    const reference = within(group).getByRole("radio", { name: "Reference" });
+    fireEvent.keyDown(reference, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(adr);
+    expect(useCreateDocChromeStore.getState().docType).toBe("reference");
     adr.focus();
     expect(document.activeElement).toBe(adr);
     // Activating the ineligible type NEVER selects it — it routes to the

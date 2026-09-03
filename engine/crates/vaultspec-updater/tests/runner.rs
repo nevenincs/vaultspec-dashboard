@@ -1,4 +1,4 @@
-//! Integration proofs for the copied-updater runner (W03.P07.S58).
+//! Integration proofs for the copied-updater runner.
 //!
 //! Real filesystem + the production `vaultspec-product` authority (no fakes): the
 //! runner consumes a one-time owner-restricted descriptor, acquires the

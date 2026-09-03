@@ -150,6 +150,37 @@ mod tests {
     }
 
     #[test]
+    fn pagination_cursor_is_exclusive() {
+        let items = ["id-00", "id-01", "id-02"];
+        let (page, next) = paginate(&items, |item| item, Some("id-01"), 10);
+
+        assert_eq!(page, ["id-02"]);
+        assert_eq!(next, None, "the last item exhausts the listing");
+    }
+
+    #[test]
+    fn pagination_coerces_a_zero_page_size_to_one_item() {
+        let items = ["id-00", "id-01"];
+        let (page, next) = paginate(&items, |item| item, None, 0);
+
+        assert_eq!(page, ["id-00"]);
+        assert_eq!(next.as_deref(), Some("id-00"));
+    }
+
+    #[test]
+    fn pagination_is_exhausted_when_the_cursor_is_at_or_after_the_last_id() {
+        let items = ["id-00", "id-01"];
+
+        let (at_last, at_last_next) = paginate(&items, |item| item, Some("id-01"), 1);
+        let (past_last, past_last_next) = paginate(&items, |item| item, Some("id-99"), 1);
+
+        assert!(at_last.is_empty());
+        assert_eq!(at_last_next, None);
+        assert!(past_last.is_empty());
+        assert_eq!(past_last_next, None);
+    }
+
+    #[test]
     fn degradation_block_reports_every_tier_truthfully() {
         let block = tiers_block(&[("semantic", "rag service down")]);
         assert!(block["declared"].available);

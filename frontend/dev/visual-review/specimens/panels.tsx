@@ -8,14 +8,9 @@
 // directly as props (no seed, no QueryClient involvement). The retired
 // `panels-ragjobdashboard` container cell went with `RagJobDashboard` itself: its
 // header is now `IndexConsoleHeader`, reviewed here from authored identity props
-// rather than from a seeded engine status.
-
-import {
-  deriveA2aLifecycleView,
-  type A2aLifecycleJob,
-  type A2aLifecycleStatus,
-} from "@app/stores/server/a2aLifecycle";
-import { A2aLifecyclePanelBody } from "@app/app/panels/A2aLifecyclePanel";
+// rather than from a seeded engine status. The `panels-a2alifecyclepanel` cell went
+// the same way, with the agent lifecycle console itself — a development metastate
+// the owner ruled off the product surface entirely.
 
 import {
   type RagJob,
@@ -32,42 +27,21 @@ import {
 import { RagJobsTableBody } from "@app/app/panels/RagJobsTable";
 import { IndexConsoleHeader } from "@app/app/panels/IndexConsole";
 import { IndexLogTailBody } from "@app/app/panels/IndexLogTail";
+import { SearchActivityLaneBody } from "@app/app/panels/SearchActivityLane";
+import type { RagSearchActivityView } from "@app/stores/server/ragControl";
 import type { RagServiceIdentityView } from "@app/stores/server/ragServiceIdentity";
+import { BackendHealthPanelBody } from "@app/app/panels/BackendHealthPanel";
+import {
+  VaultHealthPanelBody,
+  deriveVaultHealthView,
+} from "@app/app/panels/VaultHealthPanel";
+import { type CoreStatusView } from "@app/stores/server/queries";
+import {
+  deriveSystemPrograms,
+  type SystemProgramsInput,
+} from "@app/stores/server/systemPrograms";
 
 import type { SpecimenDef } from "../registry";
-
-// --- panels-a2alifecyclepanel --------------------------------------------------
-
-const A2A_STATUS_NORMAL: A2aLifecycleStatus = {
-  installed: true,
-  installed_known: true,
-  install_state: "settled",
-  recovery_required: false,
-  degraded: false,
-  readiness: { state: "gateway-ready", worker: "ready" },
-  ownership: { owner: "review-workspace", retained: true },
-  active_generation: "generation-042",
-  tiers: {},
-};
-
-const A2A_STATUS_EMPTY: A2aLifecycleStatus = {
-  installed: false,
-  installed_known: true,
-  install_state: "absent",
-  recovery_required: false,
-  degraded: false,
-  readiness: null,
-  ownership: { owner: "", retained: false },
-  active_generation: null,
-  tiers: {},
-};
-
-const A2A_JOB_NORMAL: A2aLifecycleJob = {
-  id: "job-771",
-  op: "restart",
-  state: "succeeded",
-  outcome: {},
-};
 
 // --- panels-ragdashboardfooter --------------------------------------------------
 
@@ -169,7 +143,8 @@ const RAG_JOBS_VIEW_STATE: RagJobsTableViewState = {
 // "reachable but nothing served" case the header renders as an empty state.
 
 const INDEX_IDENTITY_NORMAL: RagServiceIdentityView = {
-  name: "vaultspec-rag",
+  port: 8766,
+  processId: 82300,
   version: null,
   installedVersion: "0.2.25",
   requiredVersion: "0.2.20",
@@ -184,7 +159,8 @@ const INDEX_IDENTITY_NORMAL: RagServiceIdentityView = {
 };
 
 const INDEX_IDENTITY_EMPTY: RagServiceIdentityView = {
-  name: null,
+  port: null,
+  processId: null,
   version: null,
   installedVersion: null,
   requiredVersion: null,
@@ -225,57 +201,118 @@ function logsView(over: Partial<RagLogsHookView>): RagLogsHookView {
   };
 }
 
-export const panelsSpecimens: Readonly<Record<string, SpecimenDef>> = {
-  "panels-a2alifecyclepanel": {
-    note: "Mounts the exported wire-free A2aLifecyclePanelBody directly; the four states are authored props (loading→loading, degraded→statusUnavailable, empty→an absent install), not a seeded query.",
-    render: (state) => {
-      if (state === "loading") {
-        return (
-          <A2aLifecyclePanelBody
-            view={deriveA2aLifecycleView(undefined)}
-            job={undefined}
-            busy={false}
-            runError={false}
-            loading
-            onRun={() => {}}
-          />
-        );
-      }
-      if (state === "degraded") {
-        return (
-          <A2aLifecyclePanelBody
-            view={deriveA2aLifecycleView(undefined)}
-            job={undefined}
-            busy={false}
-            runError={false}
-            statusUnavailable
-            onRun={() => {}}
-          />
-        );
-      }
-      if (state === "empty") {
-        return (
-          <A2aLifecyclePanelBody
-            view={deriveA2aLifecycleView(A2A_STATUS_EMPTY)}
-            job={undefined}
-            busy={false}
-            runError={false}
-            onRun={() => {}}
-          />
-        );
-      }
-      return (
-        <A2aLifecyclePanelBody
-          view={deriveA2aLifecycleView(A2A_STATUS_NORMAL)}
-          job={A2A_JOB_NORMAL}
-          busy={false}
-          runError={false}
-          onRun={() => {}}
-        />
-      );
-    },
-  },
+// --- panels-backendhealthpanel / panels-vaulthealthpanel -----------------------
+//
+// Authored inputs fed to the REAL projections, so the cells prove what the shipped
+// code emits rather than restating it. The system-status cells exercise
+// `deriveSystemPrograms`, whose whole point is that a program row states the
+// identity facts the wire carried and NAMES the ones it did not — so the normal
+// cell authors a fully-reporting machine (a port, a process, versions, a
+// discovered agent gateway) and the empty cell authors the opposite: everything
+// reachable, nothing identifying reported. Both are states the real wire produces.
 
+/** The slice `deriveVaultHealthView` actually reads, authored per cell. */
+const coreStatus = (over: Partial<CoreStatusView> = {}): CoreStatusView => ({
+  loading: false,
+  errored: false,
+  reachable: true,
+  ...over,
+});
+
+/** A fully-reporting machine: every fact the status envelope can carry is
+ *  present, which is what a healthy installed setup actually serves. */
+const programsInput = (
+  over: Partial<SystemProgramsInput> = {},
+): SystemProgramsInput => ({
+  engineUnreachable: false,
+  observedRoundTripMs: 7.4,
+  degradations: [],
+  coreLoading: false,
+  coreErrored: false,
+  coreReachable: true,
+  ragLoading: false,
+  ragDegraded: false,
+  ragErrored: false,
+  ragPort: 8766,
+  ragPid: 75828,
+  ragInstalledVersion: "vaultspec-rag v0.4.1",
+  declaredComponent: {
+    name: "core",
+    floor: "0.1.36",
+    version: "0.1.55",
+    meets_floor: true,
+  },
+  agentComponent: {
+    name: "agent",
+    floor: "v1",
+    version: null,
+    ...{
+      installed: true,
+      gateway: {
+        endpoint: "127.0.0.1:8823",
+        pid: 41288,
+        ownership: "owned",
+      },
+      release_set: { version: "0.3.2", active_generation: "generation-042" },
+    },
+  } as SystemProgramsInput["declaredComponent"],
+  agentAvailable: true,
+  ...over,
+});
+
+const PROGRAMS_NORMAL = deriveSystemPrograms(programsInput());
+
+const PROGRAMS_LOADING = deriveSystemPrograms(
+  programsInput({
+    observedRoundTripMs: null,
+    coreLoading: true,
+    ragLoading: true,
+    ragPort: undefined,
+    ragPid: undefined,
+    ragInstalledVersion: null,
+    declaredComponent: undefined,
+    agentComponent: undefined,
+    agentAvailable: false,
+  }),
+);
+
+// The app's own server is unreachable, so every dependent row falls to `down` —
+// the honest cascade the projection already encodes. There is also no snapshot to
+// read identity from when the read itself failed, so NO facts survive: authoring
+// a port beside "Unavailable" would review a state the app cannot reach.
+const PROGRAMS_DEGRADED = deriveSystemPrograms(
+  programsInput({
+    engineUnreachable: true,
+    observedRoundTripMs: null,
+    ragPort: undefined,
+    ragPid: undefined,
+    ragInstalledVersion: null,
+    declaredComponent: undefined,
+    agentComponent: undefined,
+    agentAvailable: false,
+  }),
+);
+
+// Everything reachable, nothing identifying reported: no port, no process, no
+// versions, no agent install. This is the state the gap lines exist for.
+const PROGRAMS_EMPTY = deriveSystemPrograms(
+  programsInput({
+    observedRoundTripMs: null,
+    ragPort: undefined,
+    ragPid: undefined,
+    ragInstalledVersion: null,
+    declaredComponent: undefined,
+    agentComponent: {
+      name: "agent",
+      floor: "v1",
+      version: null,
+      ...{ installed: false },
+    } as SystemProgramsInput["declaredComponent"],
+    agentAvailable: false,
+  }),
+);
+
+export const panelsSpecimens: Readonly<Record<string, SpecimenDef>> = {
   "panels-ragdashboardfooter": {
     note: "Mounts the exported wire-free RagDashboardFooterBody directly; the four states are authored props (pending→loading, offline→degraded, storage undefined→the honest 'never surveyed' empty caption), not a seeded query.",
     render: (state) => {
@@ -377,7 +414,7 @@ export const panelsSpecimens: Readonly<Record<string, SpecimenDef>> = {
   },
 
   "panels-indexconsole": {
-    note: "Mounts the exported wire-free IndexConsoleHeader directly — the redesigned identity line the owner asked for: the SERVED tool name (never the word Search), the running/installed/required versions, the store's address, process, version and location, and normal-weight lifecycle actions instead of a row of large buttons. States are authored props: loading is the identity read in flight, degraded is the semantic tier reporting unavailable, empty is a reachable tool that served no identity fact at all.",
+    note: "Mounts the exported wire-free IndexConsoleHeader directly — the search-service identity line: health word first, then the service's own port and process (served verbatim), the versions, and the store facts, with the lifecycle verbs as compact icon controls (start / pause / stop / restart / check) and the index-domain rebuild deliberately absent (it lives with the index monitor). States are authored props: loading is the identity read in flight, degraded is the semantic tier reporting unavailable, empty is a reachable service that served no identity fact at all.",
     render: (state) => {
       if (state === "loading") {
         return (
@@ -390,12 +427,12 @@ export const panelsSpecimens: Readonly<Record<string, SpecimenDef>> = {
             healthTone="stale"
             actionsPending={false}
             doctorPending={false}
-            reindexActive={false}
             onStart={() => {}}
             onStop={() => {}}
             onRestart={() => {}}
             onDoctor={() => {}}
-            onReindex={() => {}}
+            onPause={() => {}}
+            onResume={() => {}}
           />
         );
       }
@@ -411,12 +448,12 @@ export const panelsSpecimens: Readonly<Record<string, SpecimenDef>> = {
             errored
             actionsPending={false}
             doctorPending={false}
-            reindexActive={false}
             onStart={() => {}}
             onStop={() => {}}
             onRestart={() => {}}
             onDoctor={() => {}}
-            onReindex={() => {}}
+            onPause={() => {}}
+            onResume={() => {}}
           />
         );
       }
@@ -431,12 +468,12 @@ export const panelsSpecimens: Readonly<Record<string, SpecimenDef>> = {
             healthTone="active"
             actionsPending={false}
             doctorPending={false}
-            reindexActive={false}
             onStart={() => {}}
             onStop={() => {}}
             onRestart={() => {}}
             onDoctor={() => {}}
-            onReindex={() => {}}
+            onPause={() => {}}
+            onResume={() => {}}
           />
         );
       }
@@ -450,13 +487,75 @@ export const panelsSpecimens: Readonly<Record<string, SpecimenDef>> = {
           healthTone="active"
           actionsPending={false}
           doctorPending={false}
-          reindexActive
-          reindexFraction={0.42}
+          quiesceWord="running"
           onStart={() => {}}
           onStop={() => {}}
           onRestart={() => {}}
           onDoctor={() => {}}
-          onReindex={() => {}}
+          onPause={() => {}}
+          onResume={() => {}}
+        />
+      );
+    },
+  },
+
+  "panels-searchactivitylane": {
+    note: "Mounts the exported wire-free SearchActivityLaneBody directly — the QUERY half of the one activity panel, mirroring the service's own watch interface: state dot, the searched kind (Documents / Code), the verbatim query, the SERVED result count, and timing. The count chip is the ledger's own total over the full retained set (503 with two rows shown), never a re-count of the slice. States are authored views: loading is the read in flight, degraded is the tiers-read offline flag, empty is a reachable service that has served no searches.",
+    render: (state) => {
+      const base: RagSearchActivityView & { pending: boolean } = {
+        active: [],
+        recent: [],
+        activeCount: 0,
+        totalCount: 0,
+        semanticOffline: false,
+        pending: false,
+      };
+      if (state === "loading") {
+        return <SearchActivityLaneBody view={{ ...base, pending: true }} />;
+      }
+      if (state === "degraded") {
+        return <SearchActivityLaneBody view={{ ...base, semanticOffline: true }} />;
+      }
+      if (state === "empty") {
+        return <SearchActivityLaneBody view={base} />;
+      }
+      return (
+        <SearchActivityLaneBody
+          view={{
+            ...base,
+            active: [
+              {
+                request_id: "a-1",
+                state: "active",
+                type: "code",
+                query: "retry backoff around failed webhook delivery",
+              },
+            ],
+            recent: [
+              {
+                request_id: "r-1",
+                state: "terminal",
+                outcome: "success",
+                type: "vault",
+                query: "decision on gpu lock scope around the forward pass",
+                result_count: 10,
+                total_seconds: 0.99,
+                finished_at: Date.now() / 1000 - 22,
+              },
+              {
+                request_id: "r-2",
+                state: "terminal",
+                outcome: "unavailable",
+                type: "code",
+                query: "fixture setup helpers exclude:tests",
+                result_count: 0,
+                total_seconds: 4.2,
+                finished_at: Date.now() / 1000 - 95,
+              },
+            ],
+            activeCount: 1,
+            totalCount: 503,
+          }}
         />
       );
     },
@@ -488,6 +587,66 @@ export const panelsSpecimens: Readonly<Record<string, SpecimenDef>> = {
         <IndexLogTailBody
           view={logsView({ lines: INDEX_LOG_LINES })}
           scopedToSelection
+        />
+      );
+    },
+  },
+
+  "panels-backendhealthpanel": {
+    note: "Mounts the exported wire-free BackendHealthPanelBody directly — the system-status console (advanced-service-console ADR D6) as rebuilt for the owner's \"cryptic / unrelatable\" note. States are authored SystemProgramsInput run through the real deriveSystemPrograms: normal is a fully-reporting machine (port, process, versions, a discovered agent gateway), loading is the pre-resolution unknown tone, degraded is the app's own server unreachable cascading to every dependent, and empty is everything reachable but nothing identifying reported — the state the gap lines exist for.",
+    render: (state) => {
+      if (state === "loading")
+        return <BackendHealthPanelBody view={PROGRAMS_LOADING} />;
+      if (state === "degraded")
+        return <BackendHealthPanelBody view={PROGRAMS_DEGRADED} />;
+      if (state === "empty") return <BackendHealthPanelBody view={PROGRAMS_EMPTY} />;
+      return <BackendHealthPanelBody view={PROGRAMS_NORMAL} />;
+    },
+  },
+
+  "panels-vaulthealthpanel": {
+    note: "Mounts the exported wire-free VaultHealthPanelBody directly — the project-health fold, moved out of the retired modal host. States are authored props over the real deriveVaultHealthView: loading is the checking tone, degraded is the engine unreachable, empty is healthy with no receipt yet, and the normal cell shows the needs-attention tone beside the receipt its own check produced.",
+    render: (state) => {
+      if (state === "loading") {
+        return (
+          <VaultHealthPanelBody
+            view={deriveVaultHealthView(coreStatus({ loading: true }))}
+            checking
+            receipt={null}
+            onCheck={() => {}}
+          />
+        );
+      }
+      if (state === "degraded") {
+        return (
+          <VaultHealthPanelBody
+            view={deriveVaultHealthView(coreStatus({ errored: true }))}
+            checking={false}
+            receipt={{
+              verb: "vault-check",
+              tone: "down",
+              text: "Project is unreachable.",
+            }}
+            onCheck={() => {}}
+          />
+        );
+      }
+      if (state === "empty") {
+        return (
+          <VaultHealthPanelBody
+            view={deriveVaultHealthView(coreStatus({}))}
+            checking={false}
+            receipt={null}
+            onCheck={() => {}}
+          />
+        );
+      }
+      return (
+        <VaultHealthPanelBody
+          view={deriveVaultHealthView(coreStatus({ vaultHealth: "warnings" }))}
+          checking={false}
+          receipt={{ verb: "vault-check", tone: "ok", text: "Checked 128 documents." }}
+          onCheck={() => {}}
         />
       );
     },

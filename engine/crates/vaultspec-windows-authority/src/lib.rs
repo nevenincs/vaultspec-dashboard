@@ -80,7 +80,7 @@ pub enum ProcessExistence {
 }
 
 /// Durably flush one directory's metadata through a handle the caller already
-/// retains (W01.P01.S177) — the Windows counterpart of `fsync` on a directory
+/// retains — the Windows counterpart of `fsync` on a directory
 /// descriptor.
 ///
 /// `FlushFileBuffers` requires append access, and a directory handle opened

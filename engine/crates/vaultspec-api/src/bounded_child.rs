@@ -157,7 +157,7 @@ pub(crate) async fn run_bounded(
         Ok(reads) => reads,
         Err(_) => {
             // Timed out: kill the child so it cannot linger as a zombie.
-            let _ = child.kill().await;
+            child.kill().await.map_err(BoundedFault::Wait)?;
             return Err(BoundedFault::Timeout);
         }
     };
@@ -168,7 +168,7 @@ pub(crate) async fn run_bounded(
 
     let at_cap = stdout.len() as u64 >= limits.cap || stderr.len() as u64 >= limits.cap;
     if at_cap {
-        let _ = child.kill().await;
+        child.kill().await.map_err(BoundedFault::Wait)?;
         return match cap_policy {
             CapPolicy::Refuse => Err(BoundedFault::OverCap),
             CapPolicy::KeepPartial => Ok(BoundedOutcome {

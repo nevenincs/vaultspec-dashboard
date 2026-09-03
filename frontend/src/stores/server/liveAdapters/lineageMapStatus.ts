@@ -334,6 +334,12 @@ export function adaptStatus(body: unknown): EngineStatus {
             ? RAG_RUNNING
             : "stopped",
       reason: typeof rag.reason === "string" ? rag.reason : undefined,
+      // The indexing program's own port and process id, carried through verbatim.
+      // PRESERVE undefined when the wire omits them (absent ≠ 0): the system-status
+      // console states an unreported address as unreported rather than printing a
+      // zero that names no real process.
+      port: numOrUndef(rag.port),
+      pid: numOrUndef(rag.pid),
     },
   };
 }

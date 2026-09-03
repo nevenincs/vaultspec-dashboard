@@ -203,7 +203,8 @@ fn collect(
             // and serve logs under `.vault/logs/`. Watching them makes the
             // watcher self-trigger on every cache write — an endless
             // rebuild→write→rebuild churn. Mirrors the
-            // `vault_documents` walk skip of `data`/`logs`.
+            // canonical `ingest_struct::corpus::worktree_vault_documents` skip
+            // of `data`/`logs`.
             if is_engine_owned_path(&path) || is_git_noise_path(&path) {
                 continue;
             }

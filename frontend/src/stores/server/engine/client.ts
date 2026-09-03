@@ -75,9 +75,6 @@ import type {
   EngineStatus,
   GitChangesSummary,
   GitOpResponse,
-  A2aLifecycleJob,
-  A2aLifecycleRunBody,
-  A2aLifecycleStatus,
   OpsArchiveBody,
   OpsAutofixBody,
   OpsResult,
@@ -803,35 +800,6 @@ export class EngineClient {
    *  the caller surfaces as "job expired". */
   provisionJob(id: string, signal?: AbortSignal): Promise<{ job: ProvisionJob }> {
     return this.get(`/provision/jobs/${encodeURIComponent(id)}`, undefined, signal);
-  }
-
-  /** The A2A component lifecycle plane: the
-   *  served install / readiness / ownership projection over the machine-global
-   *  product state (engine `GET /a2a/lifecycle/status`). Bearer-gated by the same
-   *  browser bearer every other route carries — the dashboard reaches the gateway
-   *  ONLY through the engine, never a browser→A2A transport. The `tiers`
-   *  block rides through, so the store reads the agent orchestration tier from the
-   *  same response. */
-  a2aLifecycleStatus(signal?: AbortSignal): Promise<A2aLifecycleStatus> {
-    return this.get("/a2a/lifecycle/status", undefined, signal);
-  }
-
-  /** Dispatch one lifecycle operation as a bounded, single-flight JOB (engine
-   *  `POST /a2a/lifecycle/run`): the body carries ONLY the typed `op` —
-   *  no path, no free-form argument. Returns the job envelope plus whether the
-   *  request ATTACHED to an already-in-flight identical operation. A refusal is an
-   *  `EngineError` whose typed `errorKind` (`not_owner`, `at_capacity`, …) names
-   *  the cause. */
-  a2aLifecycleRun(
-    body: A2aLifecycleRunBody,
-  ): Promise<{ job: A2aLifecycleJob; attached: boolean }> {
-    return this.post("/a2a/lifecycle/run", body);
-  }
-
-  /** Poll one lifecycle job by id (engine `GET /a2a/lifecycle/jobs/{id}`). A
-   *  reclaimed / unknown id is a 404 the caller surfaces as "job expired". */
-  a2aLifecycleJob(id: string, signal?: AbortSignal): Promise<{ job: A2aLifecycleJob }> {
-    return this.get(`/a2a/lifecycle/jobs/${encodeURIComponent(id)}`, undefined, signal);
   }
 
   /** The read-only git pass-through: a whitelisted read-only git verb

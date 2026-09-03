@@ -27,7 +27,10 @@ import { useState } from "react";
 
 import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 import type { MessageDescriptor } from "../../platform/localization/message";
-import { useAgentPanelOpen, useAgentPanelView } from "../../stores/view/agentPanel";
+import {
+  useAgentPanelOpen,
+  useAgentPendingChangesOpen,
+} from "../../stores/view/agentPanel";
 import { agentPendingChangesAction } from "../../stores/view/chromeActions";
 import {
   useApprovalsStatusView,
@@ -49,15 +52,15 @@ const TONE_DOT_CLASS: Record<FrameworkStatusTone, string> = {
 };
 
 const TONE_MESSAGES: Readonly<Record<FrameworkStatusTone, MessageDescriptor>> = {
-  ok: { key: "common:controlPanels.tones.workingNormally" },
-  attention: { key: "common:controlPanels.tones.needsAttention" },
-  down: { key: "common:controlPanels.tones.unavailable" },
-  unknown: { key: "common:controlPanels.tones.checking" },
+  ok: { key: "common:advanced.tones.workingNormally" },
+  attention: { key: "common:advanced.tones.needsAttention" },
+  down: { key: "common:advanced.tones.unavailable" },
+  unknown: { key: "common:advanced.tones.checking" },
 };
 
-const GROUP_MESSAGE = { key: "common:controlPanels.accessibility.group" } as const;
+const GROUP_MESSAGE = { key: "common:advanced.accessibility.group" } as const;
 const PANEL_STATUS_MESSAGE = {
-  key: "common:controlPanels.accessibility.panelStatus",
+  key: "common:advanced.accessibility.panelStatus",
 } as const;
 const PENDING_LABEL_MESSAGE = { key: "common:agent.pending.label" } as const;
 
@@ -67,7 +70,7 @@ export interface StatusChipProps {
   label: MessageDescriptor;
   chip: FrameworkStatusChip;
   /** Whether this chip's surface is the open one (for the pending chip, the Agent
-   *  panel's pending-changes view). */
+   *  panel with its pending-changes region expanded). */
   open: boolean;
   /** Activate this chip's surface (the shared descriptor's run). */
   onToggle: () => void;
@@ -149,10 +152,11 @@ export function FrameworkStatusCluster() {
   const pending = useApprovalsStatusView();
   const resolve = useLocalizedMessageResolver();
   const group = resolve(GROUP_MESSAGE);
-  // The pending chip's pressed state tracks the Agent panel's pending view (its
-  // surface is that view, not a modal), so read the slot + view flags once.
+  // The pending chip's pressed state tracks the Agent panel's expanded
+  // pending-changes region (agent-panel D9 — a disclosure inside the one
+  // conversation view, not a view), so read the slot + region flags once.
   const agentOpen = useAgentPanelOpen();
-  const agentView = useAgentPanelView();
+  const pendingOpen = useAgentPendingChangesOpen();
   // On touch-first devices the chips grow to the 2.75rem tap floor (the compact
   // rail pins this same strip as its footer); mouse pointers keep the slim strip.
   const coarse = usePointerCoarse();
@@ -184,7 +188,7 @@ export function FrameworkStatusCluster() {
         <StatusChip
           label={PENDING_LABEL_MESSAGE}
           chip={pending}
-          open={agentOpen && agentView === "pending"}
+          open={agentOpen && pendingOpen}
           onToggle={pendingAction.run}
           chipRef={pendingItem.ref}
           tabIndex={pendingItem.tabIndex}

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { RelayTranscriptFrame } from "../../stores/server/liveAdapters/a2aRelay";
 import { adaptRelayFrame } from "../../stores/server/liveAdapters/a2aRelay";
-import { assembleTeamRun, TEAM_RUN_ENTRY_CAP } from "./teamRun";
+import { assembleTeamRun, groupTeamEntries, TEAM_RUN_ENTRY_CAP } from "./teamRun";
 
 // Build a frame the way the wire delivers it: through `adaptRelayFrame`, so the
 // classification the reducer switches on is the REAL adapter's output — never a
@@ -361,5 +361,50 @@ describe("assembleTeamRun (live-captured golden frames)", () => {
     );
     expect(confirmed.terminal).toBe(true);
     expect(confirmed.activeAgents).toEqual([]);
+  });
+});
+
+describe("groupTeamEntries (C2/C3 work stretches)", () => {
+  const thinking = (key: string, live = false) =>
+    ({ kind: "thinking", key, agentId: "planner", text: "…", live }) as const;
+  const tool = (key: string, live = false) =>
+    ({
+      kind: "tool",
+      key,
+      agentId: "coder",
+      toolCallId: key,
+      title: "edit",
+      status: live ? "running" : "completed",
+      args: null,
+      result: null,
+      live,
+    }) as const;
+  const message = (key: string) =>
+    ({ kind: "message", key, agentId: "planner", text: "done", live: false }) as const;
+
+  it("folds consecutive thinking/tool activity into ONE stretch per run of work", () => {
+    const blocks = groupTeamEntries([
+      thinking("t1"),
+      tool("c1"),
+      message("m1"),
+      tool("c2"),
+      tool("c3", true),
+    ]);
+    expect(blocks.map((b) => b.kind)).toEqual(["stretch", "message", "stretch"]);
+    const first = blocks[0] as Extract<(typeof blocks)[number], { kind: "stretch" }>;
+    expect(first.entries.map((e) => e.key)).toEqual(["t1", "c1"]);
+    expect(first.toolCount).toBe(1);
+    expect(first.live).toBe(false);
+    const second = blocks[2] as Extract<(typeof blocks)[number], { kind: "stretch" }>;
+    expect(second.toolCount).toBe(2);
+    // A stretch is live while ANY grouped entry still is.
+    expect(second.live).toBe(true);
+  });
+
+  it("passes messages through untouched and yields nothing for no activity", () => {
+    expect(groupTeamEntries([])).toEqual([]);
+    const only = groupTeamEntries([message("m1")]);
+    expect(only).toHaveLength(1);
+    expect(only[0]!.kind).toBe("message");
   });
 });

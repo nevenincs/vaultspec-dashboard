@@ -122,9 +122,10 @@ function allMissingCoverage(feature: string): FeatureCoverage {
 
 /** The served per-doc-type count map → the internal shape. Only positive whole
  *  counts survive (the engine already omits the zeroes; a malformed value is
- *  dropped rather than shown). A wholly absent or non-object map stays UNDEFINED:
- *  an engine that serves no composition leaves it UNKNOWN, which a row omits —
- *  an empty map would claim the feature holds nothing. */
+ *  dropped rather than shown). A map that carries no surviving count stays
+ *  UNDEFINED — absent, non-object, and all-invalid alike: an engine that serves
+ *  no composition leaves it UNKNOWN, which a row omits, where an empty map would
+ *  claim the feature holds nothing. */
 function adaptTypeCounts(raw: unknown): Record<string, number> | undefined {
   if (!isRec(raw)) return undefined;
   const counts: Record<string, number> = {};
@@ -133,7 +134,7 @@ function adaptTypeCounts(raw: unknown): Record<string, number> | undefined {
       counts[docType] = Math.trunc(value);
     }
   }
-  return counts;
+  return Object.keys(counts).length === 0 ? undefined : counts;
 }
 
 /** The served binding-decision span → the internal shape. Both ends must be

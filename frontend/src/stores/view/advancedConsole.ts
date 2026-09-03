@@ -1,32 +1,37 @@
 // Shared expansion state for the Settings ▸ Advanced consoles
 // (advanced-service-console ADR D1). Advanced is the ONE home for every
 // operational surface: the index console (the indexing tool's own face), the
-// system-status block, the project-health block, and the agent lifecycle
-// console. The retired modal `ControlPanels` host and its rail-footer status
-// chips are gone — nothing opens an operational panel outside this section any
-// more (ADR D2, no legacy alias).
+// system-status block, and the project-health block. The retired modal
+// `ControlPanels` host and its rail-footer status chips are gone — nothing opens
+// an operational panel outside this section any more (ADR D2, no legacy alias).
+//
+// The agent lifecycle console the ADR's D5 placed here is RETIRED (D5 anticipated
+// exactly this: "if the agent-panel campaign later supersedes it, it retires from
+// ONE place"). Install / start / stop / repair / update / rollback / remove /
+// doctor were development metastate on a product surface; the monitoring D5 was
+// really after is what the system-status and project-health blocks already do.
+// The `agent` id is GONE rather than aliased — an unknown id normalizes to null.
 //
 // The consoles are an ACCORDION: at most one is expanded, so the open state is
-// one nullable id rather than four flags. Expansion is also the MOUNT GATE — a
+// one nullable id rather than three flags. Expansion is also the MOUNT GATE — a
 // collapsed console renders nothing, so its heavy reads (the jobs/log/ops-state
-// polls, the agent lifecycle status) never run for someone who just opened
-// Settings (data-loading-activity: a heavy data hook lives only under the tree
-// that renders its data). Non-persisted, like the settings dialog itself.
+// polls) never run for someone who just opened Settings
+// (data-loading-activity: a heavy data hook lives only under the tree that
+// renders its data). Non-persisted, like the settings dialog itself.
 
 import { create } from "zustand";
 
 import type { MessageDescriptor } from "../../platform/localization/message";
 import { openSettingsDialog } from "./settingsDialog";
 
-/** The four consoles hosted by the Advanced section (ADR D4/D5/D6). */
-export type AdvancedConsoleId = "index" | "system" | "project" | "agent";
+/** The three consoles hosted by the Advanced section (ADR D4/D6). */
+export type AdvancedConsoleId = "index" | "system" | "project";
 
 /** Every console id, in rendered order. */
 export const ADVANCED_CONSOLE_IDS: readonly AdvancedConsoleId[] = [
   "index",
   "system",
   "project",
-  "agent",
 ];
 
 /** The console whose deep link the palette command runs — the one the owner's
@@ -34,16 +39,15 @@ export const ADVANCED_CONSOLE_IDS: readonly AdvancedConsoleId[] = [
 export const PRIMARY_ADVANCED_CONSOLE: AdvancedConsoleId = "index";
 
 /** The plain-language name of each console, resolved at the render boundary. The
- *  index console's label is a FALLBACK only: when the wire carries the tool's own
- *  served name, the header renders that instead (ADR D4 — name the tool, never
- *  "Search"). */
+ *  index console names itself from this catalog label alone: the served component
+ *  handshake carries the backend package identifier, which the labels law keeps
+ *  off screen (ADR D4 as amended — never "Search", and never the package name). */
 export const ADVANCED_CONSOLE_LABELS: Readonly<
   Record<AdvancedConsoleId, MessageDescriptor>
 > = Object.freeze({
   index: Object.freeze({ key: "operations:searchMaintenance.identity.title" }),
-  system: Object.freeze({ key: "common:controlPanels.labels.systemStatus" }),
-  project: Object.freeze({ key: "common:controlPanels.labels.projectHealth" }),
-  agent: Object.freeze({ key: "common:controlPanels.labels.agentService" }),
+  system: Object.freeze({ key: "common:advanced.labels.systemStatus" }),
+  project: Object.freeze({ key: "common:advanced.labels.projectHealth" }),
 } as const);
 
 /** Validate unknown input at the boundary (a palette id, a persisted blob). */

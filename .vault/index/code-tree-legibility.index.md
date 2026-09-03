@@ -6,6 +6,7 @@ tags:
 date: '2026-08-01'
 modified: '2026-08-01'
 body_schema: 'body-v1'
+body_hash: 'sha256:397dbdd8d501aaadc76ee4a1926de1365f6088a15bfdca2b27f37a3fae35080c'
 related:
   - '[[2026-08-01-code-tree-legibility-adr]]'
   - '[[2026-08-01-code-tree-legibility-plan]]'

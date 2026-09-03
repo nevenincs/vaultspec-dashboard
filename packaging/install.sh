@@ -2,13 +2,24 @@
 # The product-owned vaultspec installer for macOS and Linux.
 #
 # It installs the COMPLETE offline product tree — the dashboard binary, the
-# copied external updater, the bundled A2A runtime (a frozen onedir built and
-# shipped by this product, not fetched at install time), the release manifest,
-# the component lock, licenses, and the SBOM — never a bare binary. The composed
-# tree is offline-complete: nothing here resolves a runtime dependency over the
-# network, and the only network touch is the optional release-archive download.
+# copied external updater, the release manifest, licenses, and the SBOM — never
+# a bare binary. The composed tree is offline-complete: nothing here resolves a
+# runtime dependency over the network, and the only network touch is the
+# optional release-archive download.
 #
-# Operations (exactly one per invocation):
+# That list is the WHOLE tree: no agent-to-agent runtime is bundled, and the
+# absence is deliberate rather than an oversight. The dashboard resolves that
+# runtime from the machine app home (`~/.vaultspec/a2a/generations/`), never
+# from its own install directory, and no shipped operation populates that
+# location yet — adoption is declared but not implemented. Bundling one would
+# add several hundred megabytes this product never reads. It returns to the
+# tree when adoption is implemented; the receipt-state and removal verbs below
+# read the app home either way, so they are unaffected by its absence.
+#
+# Operations (at most one per invocation). Selecting NONE installs the newest
+# published release, which is the only shape a piped invocation can take:
+# `curl -fsSL <release-url>/install.sh | sh` carries no arguments, so a script
+# that demanded one could never be served from its own release page.
 #   --source <path>   Install from an ALREADY-COMPOSED local product tree (the
 #                     generation directory the product builder emits). Fully
 #                     offline.
@@ -33,6 +44,7 @@
 # best-effort continuation.
 #
 # Usage:
+#   install.sh                 [--install-dir <dir>]
 #   install.sh --source <tree> [--install-dir <dir>]
 #   install.sh --version <ver> [--install-dir <dir>]
 #   install.sh --update        [--install-dir <dir>]
@@ -78,8 +90,11 @@ if [ -n "$SOURCE" ]; then selected=$((selected + 1)); fi
 if [ -n "$VERSION" ]; then selected=$((selected + 1)); fi
 if [ "$UPDATE" -eq 1 ]; then selected=$((selected + 1)); fi
 if [ "$UNINSTALL" -eq 1 ]; then selected=$((selected + 1)); fi
-if [ "$selected" -ne 1 ]; then
-    fail "choose exactly one of --source <path>, --version <ver>, --update, --uninstall"
+# The operations remain mutually exclusive, so two or more is still a refusal.
+# Zero is not: it is the piped-installer shape, and it resolves the newest
+# published release below rather than exiting on the release page's own URL.
+if [ "$selected" -gt 1 ]; then
+    fail "choose at most one of --source <path>, --version <ver>, --update, --uninstall"
 fi
 
 require_command() {
@@ -230,20 +245,42 @@ if [ -n "$SOURCE" ]; then
 else
     require_command curl
     require_command tar
-    target="$(host_target)"
-    archive="vaultspec-${VERSION}-${target}.tar.gz"
-    base="https://github.com/${REPO}/releases/download/v${VERSION}"
     tmp="$(mktemp -d)"
-    note "fetching ${archive}"
     # One bounded attempt per file: connect timeout, wall-clock ceiling, and size
-    # cap. A failure is reported, never retried in a loop.
+    # cap. A failure is reported, never retried in a loop. The optional third
+    # argument replaces the failure message so a caller can say what it could not
+    # resolve instead of leaking a bare URL at the user.
     fetch() {
         curl --fail --silent --show-error --location \
             --connect-timeout "$FETCH_CONNECT_TIMEOUT" \
             --max-time "$FETCH_MAX_TIME" \
             --max-filesize "$FETCH_MAX_FILESIZE" \
-            "$1" -o "$2" || fail "download failed: $1"
+            "$1" -o "$2" || fail "${3:-download failed: $1}"
     }
+    # Resolve the newest published release from the GitHub API, reading nothing
+    # from it but `tag_name`. That tag is remote input, not a trusted path
+    # segment, so it is matched against a version shape BEFORE it is pasted into
+    # a download URL; an unparseable or missing tag is a loud stop, never a
+    # guessed version. Parsed with sed and grep, which this script already
+    # depends on, so the piped one-liner needs no tool a release host lacks.
+    resolve_latest_version() {
+        local body candidate
+        body="${tmp}/releases-latest.json"
+        fetch "https://api.github.com/repos/${REPO}/releases/latest" "$body" \
+            "could not resolve the latest release of ${REPO}: the GitHub release API was unreachable, rate-limited, or has no published release; pass --version <ver> to install a specific one"
+        candidate="$(sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"v\{0,1\}\([^"]*\)".*/\1/p' "$body" | head -n 1)"
+        printf '%s' "$candidate" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$' \
+            || fail "could not resolve the latest release of ${REPO}: the GitHub release API returned no usable tag_name (got '${candidate}'); pass --version <ver> to install a specific one"
+        echo "$candidate"
+    }
+    if [ -z "$VERSION" ]; then
+        VERSION="$(resolve_latest_version)"
+        note "latest published release is ${VERSION}"
+    fi
+    target="$(host_target)"
+    archive="vaultspec-${VERSION}-${target}.tar.gz"
+    base="https://github.com/${REPO}/releases/download/v${VERSION}"
+    note "fetching ${archive}"
     fetch "${base}/${archive}" "${tmp}/${archive}"
     fetch "${base}/${archive}.sha256" "${tmp}/${archive}.sha256"
     # Transport integrity only — the published checksum proves the download was

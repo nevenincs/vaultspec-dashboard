@@ -5,11 +5,14 @@
 //! snapshots, chunks, proposal operations, and routes to these primitives.
 #![allow(dead_code)]
 
-use std::collections::VecDeque;
 use std::path::{Component, Path, PathBuf};
 
 use engine_model::{ScopeRef, scope_token};
-use ingest_struct::reader::{DocumentBody, StructError};
+use engine_query::envelope::paginate;
+use ingest_struct::{
+    corpus::{self, CorpusError},
+    reader::{DocumentBody, StructError},
+};
 
 use super::model::{AuthoringModelError, DocumentRef, ProvisionalCollisionStatus, RevisionToken};
 
@@ -130,24 +133,12 @@ impl DocumentResolver {
         let page_size = page_size
             .unwrap_or(DEFAULT_DOCUMENT_LIST_LIMIT)
             .clamp(1, MAX_DOCUMENT_LIST_LIMIT);
-        let start = match cursor {
-            None => 0,
-            Some(cursor) => candidates
-                .iter()
-                .position(|candidate| candidate.path.as_str() > cursor)
-                .unwrap_or(candidates.len()),
-        };
-        let page: Vec<_> = candidates
-            .iter()
-            .skip(start)
-            .take(page_size)
-            .cloned()
-            .collect();
-        let next_cursor = if start + page.len() < candidates.len() {
-            page.last().map(|candidate| candidate.path.clone())
-        } else {
-            None
-        };
+        let (page, next_cursor) = paginate(
+            &candidates,
+            |candidate| candidate.path.as_str(),
+            cursor,
+            page_size,
+        );
         let documents: Vec<_> = page
             .into_iter()
             .map(|candidate| candidate.catalog_entry())
@@ -321,10 +312,29 @@ impl DocumentResolver {
 
     fn scan_stem(&self, stem: &str) -> Result<StemScan> {
         let filename = format!("{stem}.md");
-        match &self.scope {
-            ScopeRef::Worktree { .. } => scan_worktree_stem(&self.root, &filename),
-            ScopeRef::Ref { name } => scan_ref_stem(&self.root, name, &filename),
-        }
+        let paths = match &self.scope {
+            ScopeRef::Worktree { .. } => {
+                corpus::try_worktree_vault_documents(&self.root).map_err(document_corpus_error)?
+            }
+            ScopeRef::Ref { name } => {
+                let repo = gix::open(&self.root).map_err(|err| {
+                    DocumentResolveError::Struct(StructError::Git(format!("open: {err}")))
+                })?;
+                let commit_id = repo.rev_parse_single(name.as_str()).map_err(|err| {
+                    DocumentResolveError::Struct(StructError::Git(format!(
+                        "rev-parse {name}: {err}"
+                    )))
+                })?;
+                let commit = repo.find_commit(commit_id.detach()).map_err(|err| {
+                    DocumentResolveError::Struct(StructError::Git(err.to_string()))
+                })?;
+                let tree = commit.tree().map_err(|err| {
+                    DocumentResolveError::Struct(StructError::Git(err.to_string()))
+                })?;
+                corpus::tree_vault_documents(&tree).map_err(document_corpus_error)?
+            }
+        };
+        stem_scan_from_corpus(paths, &filename)
     }
 
     fn stem_collides(&self, stem: &str, _doc_type: &str) -> Result<bool> {
@@ -434,81 +444,24 @@ impl DocumentCandidate {
 }
 
 fn discover_worktree_documents(root: &Path) -> Result<DocumentCatalog> {
-    let vault = root.join(".vault");
-    let mut documents = Vec::new();
-    let mut total = 0;
-    if !vault.is_dir() {
-        return Ok(DocumentCatalog {
-            candidates: documents,
-            total,
-        });
-    }
-
-    let mut stack = VecDeque::from([vault]);
-    while let Some(dir) = stack.pop_front() {
-        let mut entries = std::fs::read_dir(&dir)?.collect::<std::io::Result<Vec<_>>>()?;
-        entries.sort_by_key(|entry| entry.path());
-        for entry in entries {
-            let path = entry.path();
-            let name = entry.file_name().to_string_lossy().into_owned();
-            if path.is_dir() {
-                if !name.starts_with('.') && name != "data" && name != "logs" {
-                    stack.push_back(path);
-                }
-                continue;
-            }
-
-            if !name.ends_with(".md") {
-                continue;
-            }
-            total += 1;
-            if documents.len() >= MAX_DOCUMENT_DISCOVERY {
-                continue;
-            }
-            let rel = path
-                .strip_prefix(root)
-                .map_err(|_| DocumentResolveError::InvalidPath(path.display().to_string()))?
-                .to_string_lossy()
-                .replace('\\', "/");
-            documents.push(DocumentCandidate::from_rel_path(rel)?);
-        }
-    }
+    let paths = corpus::try_worktree_vault_documents(root).map_err(document_corpus_error)?;
+    let total = paths.len();
+    let documents = paths
+        .into_iter()
+        .take(MAX_DOCUMENT_DISCOVERY)
+        .map(DocumentCandidate::from_rel_path)
+        .collect::<Result<Vec<_>>>()?;
     Ok(DocumentCatalog {
         candidates: documents,
         total,
     })
 }
 
-fn scan_worktree_stem(root: &Path, filename: &str) -> Result<StemScan> {
-    let vault = root.join(".vault");
+fn stem_scan_from_corpus(paths: Vec<String>, filename: &str) -> Result<StemScan> {
     let mut scan = StemScan::new();
-    if !vault.is_dir() {
-        return Ok(scan);
-    }
-
-    let mut stack = VecDeque::from([vault]);
-    while let Some(dir) = stack.pop_front() {
-        let mut entries = std::fs::read_dir(&dir)?.collect::<std::io::Result<Vec<_>>>()?;
-        entries.sort_by_key(|entry| entry.path());
-        for entry in entries {
-            let path = entry.path();
-            let name = entry.file_name().to_string_lossy().into_owned();
-            if path.is_dir() {
-                if !name.starts_with('.') && name != "data" && name != "logs" {
-                    stack.push_back(path);
-                }
-                continue;
-            }
-
-            if name != filename {
-                continue;
-            }
-            let rel = path
-                .strip_prefix(root)
-                .map_err(|_| DocumentResolveError::InvalidPath(path.display().to_string()))?
-                .to_string_lossy()
-                .replace('\\', "/");
-            scan.record(DocumentCandidate::from_rel_path(rel)?);
+    for path in paths {
+        if path.rsplit('/').next() == Some(filename) {
+            scan.record(DocumentCandidate::from_rel_path(path)?);
         }
     }
     Ok(scan)
@@ -526,61 +479,24 @@ fn discover_ref_documents(root: &Path, reference: &str) -> Result<DocumentCatalo
     let tree = commit
         .tree()
         .map_err(|err| DocumentResolveError::Struct(StructError::Git(err.to_string())))?;
-    let mut documents = Vec::new();
-    let mut total = 0;
-    for entry in tree
-        .traverse()
-        .breadthfirst
-        .files()
-        .map_err(|err| DocumentResolveError::Struct(StructError::Git(err.to_string())))?
-    {
-        let path = entry.filepath.to_string();
-        if !path.starts_with(".vault/") || !path.ends_with(".md") {
-            continue;
-        }
-        total += 1;
-        if documents.len() >= MAX_DOCUMENT_DISCOVERY {
-            continue;
-        }
-        documents.push(DocumentCandidate::from_rel_path(path)?);
-    }
+    let paths = corpus::tree_vault_documents(&tree).map_err(document_corpus_error)?;
+    let total = paths.len();
+    let documents = paths
+        .into_iter()
+        .take(MAX_DOCUMENT_DISCOVERY)
+        .map(DocumentCandidate::from_rel_path)
+        .collect::<Result<Vec<_>>>()?;
     Ok(DocumentCatalog {
         candidates: documents,
         total,
     })
 }
 
-fn scan_ref_stem(root: &Path, reference: &str, filename: &str) -> Result<StemScan> {
-    let repo = gix::open(root)
-        .map_err(|err| DocumentResolveError::Struct(StructError::Git(format!("open: {err}"))))?;
-    let commit_id = repo.rev_parse_single(reference).map_err(|err| {
-        DocumentResolveError::Struct(StructError::Git(format!("rev-parse {reference}: {err}")))
-    })?;
-    let commit = repo
-        .find_commit(commit_id.detach())
-        .map_err(|err| DocumentResolveError::Struct(StructError::Git(err.to_string())))?;
-    let tree = commit
-        .tree()
-        .map_err(|err| DocumentResolveError::Struct(StructError::Git(err.to_string())))?;
-    let mut scan = StemScan::new();
-    for entry in tree
-        .traverse()
-        .breadthfirst
-        .files()
-        .map_err(|err| DocumentResolveError::Struct(StructError::Git(err.to_string())))?
-    {
-        let path = entry.filepath.to_string();
-        if !path.starts_with(".vault/") || !path.ends_with(filename) {
-            continue;
-        }
-        let Some(entry_filename) = path.rsplit('/').next() else {
-            continue;
-        };
-        if entry_filename == filename {
-            scan.record(DocumentCandidate::from_rel_path(path)?);
-        }
+fn document_corpus_error(error: CorpusError) -> DocumentResolveError {
+    match error {
+        CorpusError::Io(error) => DocumentResolveError::Io(error),
+        CorpusError::Git(error) => DocumentResolveError::Struct(StructError::Git(error)),
     }
-    Ok(scan)
 }
 
 fn normalize_doc_path(path: &str) -> Result<String> {
@@ -988,6 +904,80 @@ mod tests {
     }
 
     #[test]
+    fn listing_uses_canonical_worktree_and_ref_corpus_membership() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        git(root, &["init", "-b", "main", "."]);
+        write_doc(root, ".vault/plan/committed-plan.md", "committed\n");
+        write_doc(root, ".vault/data/committed-cache.md", "cache\n");
+        git(root, &["add", "."]);
+        git(root, &["commit", "-m", "committed corpus"]);
+
+        write_doc(root, ".vault/adr/worktree-adr.md", "worktree\n");
+        write_doc(root, ".vault/.hidden.md", "hidden\n");
+
+        let ref_listing = DocumentResolver::for_ref(root, "HEAD")
+            .list_documents(None, Some(16))
+            .unwrap();
+        assert_eq!(
+            ref_listing
+                .documents
+                .iter()
+                .map(|document| document.path.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                ".vault/data/committed-cache.md",
+                ".vault/plan/committed-plan.md",
+            ],
+            "the ref listing reports normalized committed tree membership"
+        );
+
+        let worktree_listing = DocumentResolver::for_worktree(root)
+            .list_documents(None, Some(16))
+            .unwrap();
+        assert_eq!(
+            worktree_listing
+                .documents
+                .iter()
+                .map(|document| document.path.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                ".vault/adr/worktree-adr.md",
+                ".vault/plan/committed-plan.md",
+            ],
+            "the worktree listing excludes corpus-owner hidden/data auxiliary paths"
+        );
+    }
+
+    #[test]
+    fn stem_resolution_filters_the_ref_and_worktree_corpus_independently() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        git(root, &["init", "-b", "main", "."]);
+        write_doc(root, ".vault/adr/shared.md", "committed\n");
+        git(root, &["add", "."]);
+        git(root, &["commit", "-m", "committed stem"]);
+
+        write_doc(root, ".vault/plan/shared.md", "worktree duplicate\n");
+
+        let committed = DocumentResolver::for_ref(root, "HEAD")
+            .resolve_existing(ExistingDocumentLookup::Stem("shared".to_string()))
+            .unwrap();
+        assert!(matches!(
+            committed,
+            DocumentRef::Existing { path, .. } if path == ".vault/adr/shared.md"
+        ));
+
+        let worktree_error = DocumentResolver::for_worktree(root)
+            .resolve_existing(ExistingDocumentLookup::Stem("shared".to_string()))
+            .unwrap_err();
+        assert!(matches!(
+            worktree_error,
+            DocumentResolveError::DuplicateStem { stem, count: 2 } if stem == "shared"
+        ));
+    }
+
+    #[test]
     fn bounded_listing_uses_stable_path_cursor_without_overlap() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
@@ -1009,6 +999,24 @@ mod tests {
         assert_eq!(second.documents.len(), 1);
         assert_eq!(second.documents[0].path, ".vault/research/c.md");
         assert_eq!(second.next_cursor, None);
+    }
+
+    #[test]
+    fn bounded_listing_uses_the_first_path_after_an_absent_cursor_and_clamps_zero() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_doc(root, ".vault/adr/a.md", "a\n");
+        write_doc(root, ".vault/plan/b.md", "b\n");
+        write_doc(root, ".vault/research/c.md", "c\n");
+        let resolver = DocumentResolver::for_worktree(root);
+
+        let page = resolver
+            .list_documents(Some(".vault/adr/a~.md"), Some(0))
+            .unwrap();
+
+        assert_eq!(page.documents.len(), 1);
+        assert_eq!(page.documents[0].path, ".vault/plan/b.md");
+        assert_eq!(page.next_cursor.as_deref(), Some(".vault/plan/b.md"));
     }
 
     #[test]

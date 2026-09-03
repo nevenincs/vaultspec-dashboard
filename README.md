@@ -1,4 +1,4 @@
-<img src="docs/assets/logo.svg" width="150" alt="vaultspec-dashboard logo">
+<img src="docs/assets/logo.png" width="150" alt="vaultspec-dashboard logo">
 
 # vaultspec-dashboard
 
@@ -69,13 +69,17 @@ channel places the same set:
 | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `vaultspec`                               | The dashboard executable: engine, API, live event stream, and web interface in one native Rust binary. Run `vaultspec serve` from a managed worktree. The command prints a local URL. |
 | `vaultspec-updater`                       | A separate executable that installs a new release while the dashboard is stopped, so an update never rewrites files the running application holds open.                               |
-| The A2A runtime                           | A self-contained build of [vaultspec-a2a](https://github.com/nevenincs/vaultspec-a2a), the headless agent-to-agent orchestrator, including its own private Python interpreter.        |
-| Manifest, licenses, and bill of materials | The digest of every installed file, the pinned source identity of the A2A runtime, third-party license texts, and the software bill of materials (SBOM).                              |
+| Manifest, licenses, and bill of materials | The digest of every installed file, third-party license texts, and the software bill of materials (SBOM).                                                                             |
 
-This project builds the A2A runtime itself: it freezes one pinned revision of the
-vaultspec-a2a source into a self-contained directory and ships that directory inside the
-release. You don't install Python, and nothing downloads on first run. The tree is
-complete on its own, so the network is needed only to fetch the release.
+That list is the whole tree. No agent-to-agent runtime is bundled, and its absence is a
+decision rather than an omission: the dashboard resolves that runtime from
+`~/.vaultspec/a2a/generations/` in your home directory, never from its own install
+directory, and no shipped operation populates that location yet — adoption is declared
+but not implemented. Bundling one would therefore have added roughly 269 MB, the
+overwhelming majority of the download, for a directory the dashboard never reads. It
+returns to the release when adoption is implemented; until then the agent-to-agent
+capabilities are unavailable rather than half-present. Nothing downloads on first run
+either way, so the network is needed only to fetch the release.
 
 After placing the tree, every installer checks it against the release manifest with the
 shipped verifier, `vaultspec verify-release`. A tree that fails that check is a failed
@@ -105,11 +109,17 @@ against this worktree. Its lifecycle fields may be newer than the latest release
 vaultspec-dashboard supports four platforms:
 
 - macOS on Apple silicon
-- glibc-based Linux on arm64
-- glibc-based Linux on x64
+- Linux on arm64, glibc 2.28 or newer
+- Linux on x64, glibc 2.28 or newer
 - Windows on x64
 
 Intel macOS isn't supported.
+
+Both Linux binaries are built inside a digest-pinned `manylinux_2_28` image, so that
+floor is enforced by the build environment rather than inherited from whichever machine
+happened to run the build. It covers the current enterprise LTS releases — RHEL 8 and 9
+and their rebuilds, Debian 12 and 13, Ubuntu 22.04 and newer, Amazon Linux 2023 — and a
+repository guard fails the build if this sentence and the pinned image ever disagree.
 
 The routes below target the latest published GitHub Release. Development on `main` may
 contain lifecycle changes that haven't been released yet.
@@ -118,45 +128,88 @@ Every channel installs the same complete tree described under
 [Installed runtime](#installed-runtime), and verifies it before the install counts as
 done.
 
-| Channel                           | Platforms    | Who installs and updates it                    | Status        |
-| --------------------------------- | ------------ | ---------------------------------------------- | ------------- |
-| Shell script                      | macOS, Linux | This project's installer and updater           | Supported     |
-| PowerShell script                 | Windows      | This project's installer and updater           | Supported     |
-| MSI                               | Windows      | Windows Installer, with this project's updater | Supported     |
-| Scoop                             | Windows      | Scoop                                          | Pending proof |
-| WinGet                            | Windows      | WinGet                                         | Pending proof |
-| `cargo install`, `cargo binstall` | —            | —                                              | Not supported |
+| Channel                           | Platforms    | Who installs and updates it                    | Status           |
+| --------------------------------- | ------------ | ---------------------------------------------- | ---------------- |
+| Shell script                      | macOS, Linux | This project's installer and updater           | Awaiting release |
+| PowerShell script                 | Windows      | This project's installer and updater           | Awaiting release |
+| MSI                               | Windows      | Windows Installer, with this project's updater | Not built        |
+| Scoop                             | Windows      | Scoop                                          | Pending proof    |
+| WinGet                            | Windows      | WinGet                                         | Pending proof    |
+| `cargo install`, `cargo binstall` | —            | —                                              | Not supported    |
+
+*Awaiting release* means the artifact is produced and attached by the release
+pipeline, but no release has yet completed to carry it. *Not built* means the
+release does not currently carry that artifact at all.
+`dist-workspace.toml` sets `installers = []`, disabling dist's generated shell
+and PowerShell installers in favour of the product-owned `packaging/install.sh`
+and `packaging/install.ps1`, which install the complete tree rather than a bare
+binary. Those two are now published as release assets by the same job that
+attaches the product archives, so an installer can never appear on a release
+whose archives are missing — but that job has not yet completed successfully for
+any release, so no published release carries either script today. No MSI has
+ever been built.
 
 A channel marked *pending proof* must still prove install, upgrade, downgrade, repair,
 and uninstall on a clean machine before it counts as supported. Until it does, prefer a
 supported channel.
 
-**Shell script** (macOS and Linux). Name the release you want:
+**Shell script and PowerShell script** are *awaiting their first release*. Once a
+release carries them, these are the commands — with no argument, each installs
+the newest published release:
 
-```sh
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/nevenincs/vaultspec-dashboard/releases/latest/download/install.sh | sh -s -- --version <version>
+```console
+curl -fsSL https://github.com/nevenincs/vaultspec-dashboard/releases/latest/download/install.sh | bash
 ```
 
-**PowerShell script** (Windows):
-
-```powershell
-powershell -ExecutionPolicy Bypass -c "& ([scriptblock]::Create((irm https://github.com/nevenincs/vaultspec-dashboard/releases/latest/download/install.ps1))) -Version <version>"
+```console
+& ([scriptblock]::Create((irm https://github.com/nevenincs/vaultspec-dashboard/releases/latest/download/install.ps1)))
 ```
 
-**MSI** (Windows). Download `vaultspec-<version>-x86_64-pc-windows-msvc.msi` from
-[Releases](https://github.com/nevenincs/vaultspec-dashboard/releases) and run it. The
-package carries every product file and removes what it installed on uninstall.
+`bash`, not `sh`: the script uses `set -o pipefail`, which dash — `/bin/sh` on
+Debian and Ubuntu — does not accept. Pass `--version <ver>` (`-Version` in
+PowerShell) to pin a release instead of taking the newest. Both verify the
+downloaded archive against its published `.sha256` before placing anything, and
+run `vaultspec verify-release` over the installed tree afterwards; a tree that
+fails either check is a failed install.
+
+Until that first release lands, download the platform archive from
+[Releases](https://github.com/nevenincs/vaultspec-dashboard/releases) and run
+the binary directly.
 
 **Scoop** (Windows):
 
 ```console
-scoop bucket add vaultspec https://github.com/nevenincs/vaultspec-dashboard
-scoop install vaultspec/vaultspec
+scoop bucket add nevenincs https://github.com/nevenincs/homebrew-tap
+scoop install nevenincs/vaultspec-dashboard
 ```
 
-The `bucket/` directory in this repository is a self-hosted Scoop bucket.
+The bucket is the ORGANISATION tap `nevenincs/homebrew-tap`, which serves
+`bucket/` for Scoop and `Formula/` for Homebrew across every nevenincs product -
+a package manager resolves one bucket per organisation, not one per repository.
+The `bucket/` directory that used to live in this repository is no longer the
+published source. This channel stays *pending proof* until a release actually
+publishes a manifest there; `vaultspec-core` and `vaultspec-rag` are present
+today and this product is not.
 
 **WinGet** (Windows): `winget install vaultspec.vaultspec` installs the same MSI.
+
+**Homebrew** (macOS on Apple Silicon; Linux on x86-64 and arm64):
+
+```console
+brew tap nevenincs/tap
+brew install nevenincs/tap/vaultspec
+```
+
+`brew tap nevenincs/tap` resolves to the same organisation tap by convention, so
+unlike Scoop it needs no explicit URL. The product ships as a **formula**, not a
+cask: cask-on-Linux is restricted to portable artifact types, and brew's
+`quarantine` opt-out has been removed, so a cask would hand macOS users a
+quarantined un-notarized binary. The formula places the whole release tree under
+the Cellar's `libexec` and puts only the `vaultspec` command on PATH, so the
+updater, licences, `release.json` and the SBOM stay beside the binary where
+`vaultspec verify-release` can find them. Intel Mac is not served - there is no
+`x86_64-apple-darwin` build. Like Scoop, this channel stays *pending proof*
+until a release actually publishes a formula to the tap.
 
 #### Updating
 
@@ -169,8 +222,16 @@ How you update depends on how you installed.
   Installer rather than editing installed files. To return to an earlier release, install
   its package.
 - **Scoop or WinGet:** update through the manager — `scoop update vaultspec` or
-  `winget upgrade vaultspec.vaultspec`. `vaultspec update` refuses on a
-  manager-installed copy and names the command to run instead.
+  `winget upgrade vaultspec.vaultspec`.
+- **Homebrew:** `brew upgrade vaultspec`, and `brew uninstall vaultspec` to
+  remove it.
+
+On any manager-installed copy, `vaultspec update` refuses and names that
+manager's own command. It recognises the copy from the layout the manager put it
+in — Scoop's `apps` directory beside its `shims`, Homebrew's `Cellar`, WinGet's
+packages directory — because no manager records which one installed a copy, so
+the layout is the only evidence there is. A copy the product installed itself is
+recognised by none of those rules and updates normally.
 
 #### Removing it, and what stays
 
@@ -188,7 +249,7 @@ in your project's Git repository, and per-user application state stays in `.vaul
 your home directory.
 
 > **Not supported: `cargo install` and `cargo binstall`.** Either would place only the
-> `vaultspec` binary, without the updater, the A2A runtime, the release manifest, or the
+> `vaultspec` binary, without the updater, the release manifest, or the
 > verification, update, and removal guarantees that depend on them. `vaultspec-cli` stays
 > off crates.io until a Cargo channel can carry the complete product. Use a channel from
 > the table instead.

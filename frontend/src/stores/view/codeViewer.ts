@@ -116,8 +116,13 @@ export function deriveCodeLineWindowPresentation(
   lineWindow: CodeLineWindow,
 ): CodeLineWindowPresentation {
   return {
+    // The vertical padding is the gap the owner asked for: the first and last
+    // lines used to sit flush against the header and footer rules. It is applied
+    // to the SCROLLER, not the spacer, so the virtualized row geometry inside is
+    // untouched — and it is well under one line height, which the 12-line overscan
+    // absorbs without a blank band at either end of a fast scroll.
     scrollerClassName:
-      "min-h-0 flex-1 overflow-auto bg-paper-sunken font-mono text-body",
+      "min-h-0 flex-1 overflow-auto bg-paper-sunken py-fg-2 font-mono text-body",
     scrollerAriaLabel: "file contents",
     spacerStyle: { height: lineWindow.totalHeight, position: "relative" },
     rowClassName: "flex whitespace-pre",

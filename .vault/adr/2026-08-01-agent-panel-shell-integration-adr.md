@@ -3,8 +3,8 @@ tags:
   - '#adr'
   - '#agent-panel'
 date: '2026-08-01'
-modified: '2026-08-01'
-body_hash: 'sha256:9d2d16e3ffbb456b8f1811cec34eb8682c7c5817025a05dfe32de5412e479f2c'
+modified: '2026-08-02'
+body_hash: 'sha256:92ee486f0beeea1dc6eef03ef94693b8d4f59b3cbe1726760d44ce4be140caee'
 related:
   - '[[2026-07-31-agent-panel-ux-research]]'
   - '[[2026-08-01-a2a-agent-flow-adr]]'
@@ -222,6 +222,102 @@ agentic-authoring-ux ADR already ruled) but the deferral now has a
 number: the compact shell ships a read-only run-status affordance (chip →
 sheet with transcript read and stop) before any compact composer is
 attempted. Tracked in the plan; not part of this record's acceptance.
+
+> **Amendment (2026-08-01, owner review of the merged panel — pixel-grounded
+> redesign):** the owner rejected the shipped panel as drifted from the
+> references and mandated the applications themselves as the binding reference.
+> A first-party re-capture pass (recorded in the grounding research, ZCode
+> desktop added to the set) grounds the following decisions, which supersede
+> the contradicted details of D1–D4 chrome while leaving the shell topology
+> (center slot, begin/continue postures, C-rules) intact.
+>
+> **D7 — The panel's purpose is stated, and the outcome is a first-class
+> object.** The panel is where the user asks an agent or team to produce or
+> revise the workspace's corpus — research, ADRs, plans, document edits, code
+> — and supervises that work; finished work returns as reviewable changes
+> (the authoring changeset/proposal plane), not as chat. All five owner-named
+> intents (new feature with documents, co-author, research document, edit,
+> summarize) are prompts through the one composer; summarize alone yields a
+> reply with no changeset. The outcome is PROMISED at the composer (the
+> lane's `authoring_capability` + the standing feature chip), PROGRESSES in
+> the docked run header, and is DELIVERED as the C4 stat card — which adopts
+> the captured Codex grammar: bold "Edited N files", colored aggregate
+> `+X −Y`, per-file rows with muted directory / emphasized filename, and a
+> `Review changes` terminal action. ZCode's task vocabulary is the register:
+> a conversation exists to complete a task, and the begin state's intent
+> cards say what each lane produces.
+>
+> **D8 — Selectors are value-labeled from the served truth, or absent.** The
+> reference label ("Gemini 3.6 Flash (High)") is provider-family model name
+> plus effort in ONE value. What the wire serves today: per-role
+> `provider_id`/`model_name` inside `TeamProfile.assignments`, profile
+> `display_name`, `eligible`, `unavailable_reasons`. The model pill therefore
+> labels by profile display name with the single provider·model where the
+> profile is uniform, expands per-role for mixed profiles, and NEVER renders
+> the invented words "Default" or "Model"; with no served profiles the pill
+> does not render. EFFORT IS NOT SERVED anywhere on `presets-list` — filed
+> as a cross-repo ask toward a2a (an effort/reasoning-tier field on
+> `ProfileSummary`); until served, labels omit effort rather than invent it.
+> The agent/team selector likewise labels by the preset's display name.
+>
+> **D9 — One view; the switcher dies.** The Conversation|Pending-changes
+> segmented switch and the `panelView` store are DELETED (owner: "not an
+> applicable concept"). Proposals render inline in the conversation as C4
+> stat cards; cross-run pending changes surface through the one
+> `PendingChangesBridge` signpost, which expands an in-flow bounded
+> "changes awaiting review" region above the composer — a disclosure inside
+> the conversation, never a second view; the composer never unmounts. The
+> footer pending chip opens the panel with that region expanded.
+>
+> **D10 — Agents STOP; sessions ARCHIVE.** "End conversation"/"Start
+> session" vocabulary is deleted. The run slot at composer right renders
+> nothing at idle (Enter sends — no send button exists in any captured
+> composer, and the owner named the ArrowUp as pure drift; the textarea
+> carries an accessible Enter-sends instruction), a square Stop while ANY
+> run streams (single-agent and team — one verb, one slot, C6), and the
+> existing dismiss on team-terminal. Session removal is ARCHIVE, offered on
+> the conversation title's own menu (the captured title-with-menu idiom:
+> conversation-scoped verbs behind the title, navigation never) and on
+> history rows; it rides the shipped session-cancel verb. The header
+> becomes: conversation title (+ its actions menu) · New · History (recents
+> popover, one-line titles) · Close.
+>
+> **D11 — The composer is ONE card.** A single bordered rounded container:
+> row 1 the borderless auto-grow input; row 2 left `+` attach (opening a
+> LABELED menu — the captured `+` is an attach affordance, not a mystery),
+> the standing scope chip (the captured `Select Project` pill — G5 made
+> visible), the feature chip for authoring lanes, and the autonomy pill;
+> row 2 right the preset selector, the D8 model pill, and the D10 run slot.
+> The oversized "Start team" primary button retires with the send arrow —
+> Enter starts whichever lane is armed.
+
+> **Amendment (2026-08-02, density tier — the owner's "does not look like
+> the references" verdict):** the panel steps UP one type tier and one
+> spacing tier from the surrounding dashboard chrome. Every captured
+> application renders conversation content at body size with generous row
+> spacing; the panel had been rendering at the rail's meta/label density,
+> which is why it read as a status panel rather than an application. The
+> tier choice, expressed only through the token scale: conversation text
+> (prompts, replies, the header title) at the body tier; conversation
+> gaps at the `fg-4` (1rem) spacing tier; region paddings at `fg-3`;
+> status metadata stays at the meta tier — the references render
+> metadata smaller than content too. No ad-hoc values.
+
+> **Correction (2026-08-02, C6 vs C7):** the D10-amendment reasoning for
+> deleting the composer's permission pill was WRONG. C6 attests an
+> approval/autonomy pill beside the model+effort selector in both
+> reference apps; C7's elevated-autonomy banner is a SEPARATE object that
+> coexists with it, not a replacement. What was rightly removed is only
+> the SHAPE we had (a standalone prefix-labelled pill); the capability
+> belongs in the composer. The permanent home is the consolidated
+> control the captures show in Claude desktop — ONE trigger with a model
+> section and a permission-mode section — to be built from a hand
+> capture of that trigger (`.tmp/ui-captures/`, pending), restoring what
+> C6 attests and filling the composer's control row. No interim
+> standalone pill ships in the meantime (a third shape would just be
+> removed later); the review queue's mode control is the acknowledged
+> interim home and retires when the consolidated control lands. C7's
+> banner is unchanged throughout.
 
 ## Rationale
 

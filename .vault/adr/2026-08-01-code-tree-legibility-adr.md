@@ -5,6 +5,7 @@ tags:
 date: '2026-08-01'
 modified: '2026-08-01'
 body_schema: 'body-v1'
+body_hash: 'sha256:021481d7bf558b187cae72f5b92a99b501ee03dfaaec9cc0ecda968cb17345c7'
 related:
   - "[[2026-08-01-code-tree-legibility-research]]"
 ---

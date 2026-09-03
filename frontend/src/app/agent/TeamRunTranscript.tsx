@@ -17,17 +17,20 @@ import { useMemo, useState } from "react";
 import { Wrench } from "lucide-react";
 
 import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
+import { createCountMessageDescriptor } from "../../platform/localization/message";
 import { authoredDisplayText } from "../../platform/localization/displayText";
 import { useAgentTeamRunId, useAgentTeamRunPrompt } from "../../stores/view/agentPanel";
 import { FoldSection, SectionLabel, Spinner } from "../kit";
 import {
   assembleTeamRun,
-  type TeamMessageEntry,
+  groupTeamEntries,
   type TeamRunView,
   type TeamThinkingEntry,
   type TeamToolEntry,
+  type TeamWorkStretchGroup,
 } from "./teamRun";
 import { useTeamRunProgress } from "./TeamRunProgressContext";
+import { AgentMessageBlock, AgentTag, UserTurnBubble } from "./transcriptKit";
 import { ClarificationCard, ClarificationRecap } from "./ClarificationCard";
 import { normalizePendingClarification } from "./clarification";
 import { useRunClarificationRecaps } from "../../stores/view/clarificationRecaps";
@@ -41,6 +44,8 @@ const MSG = {
   result: "common:agent.transcript.team.result",
   degraded: "common:agent.transcript.team.degraded",
   error: "common:agent.transcript.team.error",
+  usedTools: "common:agent.transcript.usedTools",
+  timeline: "common:agent.transcript.timeline",
 } as const;
 
 /** Terminal a2a tool statuses → the `status/*` dot tone (bound tokens, no raw hex).
@@ -50,19 +55,10 @@ const TOOL_DOT: Readonly<Record<string, string>> = {
   failed: "bg-state-broken",
 };
 
-/** A small agent-attribution eyebrow (`mock-planner` → "Mock Planner"). Renders
- *  nothing for a team-scoped frame that carries no agent id. */
-function AgentTag({ agentId }: { agentId: string }) {
-  if (agentId.length === 0) return null;
-  return (
-    <span className="shrink-0 text-caption tracking-[0.025rem] text-ink-faint">
-      {authoredDisplayText(agentId)}
-    </span>
-  );
-}
-
-/** The collapsed-by-default reasoning section. Its header pulses while the stream
- *  is live (motion-safe), the streamed reasoning revealed on expand. */
+/** The reasoning row inside a work stretch (C3 — no lane of its own): a
+ *  collapsed row whose label pulses while the stream is live, expanding to the
+ *  streamed narration. Muted below the body tier — narration is process, not
+ *  answer. */
 function TeamThinkingSection({ entry }: { entry: TeamThinkingEntry }) {
   const resolveMessage = useLocalizedMessageResolver();
   const [open, setOpen] = useState(false);
@@ -110,7 +106,7 @@ function TeamToolSection({ entry }: { entry: TeamToolEntry }) {
       leading={<Wrench size={12} aria-hidden className="shrink-0 text-ink-faint" />}
       label={
         <span
-          className={`truncate text-label text-ink ${
+          className={`truncate text-body text-ink ${
             entry.live ? "motion-safe:animate-pulse-live" : ""
           }`}
         >
@@ -133,14 +129,14 @@ function TeamToolSection({ entry }: { entry: TeamToolEntry }) {
       bodyClassName="flex flex-col gap-fg-1 px-fg-3 py-fg-1"
     >
       {entry.args !== null && (
-        <pre className="overflow-x-auto rounded-fg-sm bg-paper-sunken p-fg-2 text-caption text-ink-muted">
+        <pre className="overflow-x-auto rounded-fg-sm bg-paper-sunken p-fg-2 text-meta text-ink-muted">
           {entry.args}
         </pre>
       )}
       {entry.result !== null && (
         <div>
           <SectionLabel>{resolveMessage({ key: MSG.result }).message}</SectionLabel>
-          <pre className="overflow-x-auto rounded-fg-sm bg-paper-sunken p-fg-2 text-caption text-ink-muted">
+          <pre className="overflow-x-auto rounded-fg-sm bg-paper-sunken p-fg-2 text-meta text-ink-muted">
             {entry.result}
           </pre>
         </div>
@@ -149,18 +145,53 @@ function TeamToolSection({ entry }: { entry: TeamToolEntry }) {
   );
 }
 
-/** One agent's final answer text, rendered inline (not collapsed — it is the
- *  visible result), with its agent eyebrow. */
-function TeamMessageBlock({ entry }: { entry: TeamMessageEntry }) {
-  if (entry.text.length === 0) return null;
+/** ONE disclosure per work stretch (C2/C3): the collapsed row names the grouped
+ *  work ("Used N tools", or the thinking label for a reasoning-only stretch) and
+ *  pulses while live; expanding reveals the flat timeline of reasoning and tool
+ *  rows in recorded order — one level deep, with only each tool row's own
+ *  args/result expansion beneath it. */
+function TeamWorkStretchSection({ group }: { group: TeamWorkStretchGroup }) {
+  const resolveMessage = useLocalizedMessageResolver();
+  const [open, setOpen] = useState(false);
+  const countDescriptor = createCountMessageDescriptor(MSG.usedTools, group.toolCount);
+  const label = group.live
+    ? resolveMessage({ key: MSG.working }).message
+    : group.toolCount > 0 && countDescriptor !== null
+      ? resolveMessage(countDescriptor).message
+      : resolveMessage({ key: MSG.thinking }).message;
+  const timelineLabel = resolveMessage({ key: MSG.timeline });
   return (
-    <div
-      className="flex flex-col gap-fg-1"
-      data-team-message={entry.agentId || undefined}
+    <FoldSection
+      open={open}
+      onToggle={() => setOpen((v) => !v)}
+      leading={<Wrench size={12} aria-hidden className="shrink-0 text-ink-faint" />}
+      label={
+        <span
+          className={`truncate text-meta text-ink-faint ${
+            group.live ? "motion-safe:animate-pulse-live" : ""
+          }`}
+        >
+          {label}
+        </span>
+      }
+      data-team-stretch={group.key}
+      data-live={group.live ? "" : undefined}
+      bodyClassName="px-fg-1 py-fg-1"
     >
-      <AgentTag agentId={entry.agentId} />
-      <p className="whitespace-pre-wrap text-body text-ink">{entry.text}</p>
-    </div>
+      <div
+        className="flex flex-col gap-fg-1"
+        aria-label={timelineLabel.usedFallback ? undefined : timelineLabel.message}
+        data-team-stretch-timeline
+      >
+        {group.entries.map((entry) =>
+          entry.kind === "thinking" ? (
+            <TeamThinkingSection key={entry.key} entry={entry} />
+          ) : (
+            <TeamToolSection key={entry.key} entry={entry} />
+          ),
+        )}
+      </div>
+    </FoldSection>
   );
 }
 
@@ -214,26 +245,35 @@ export function TeamRunTranscript() {
     () => assembleTeamRun(frames, progress.terminal),
     [frames, progress.terminal],
   );
+  // C2/C3: consecutive thinking/tool activity folds into ONE disclosure per work
+  // stretch; each agent answer stands alone between stretches.
+  const blocks = useMemo(() => groupTeamEntries(view.entries), [view.entries]);
 
   if (runId === null) return null;
 
   return (
-    <section className="flex flex-col gap-fg-2" data-team-run={runId}>
+    <section className="flex flex-col gap-fg-3" data-team-run={runId}>
+      {/* C1 via the ONE kit: the user turn is the same right-aligned accent
+          bubble the single-agent transcript renders — one speaker cue. */}
       {prompt !== null && prompt.length > 0 && (
         <div data-team-prompt>
-          <p className="rounded-fg-md bg-paper-sunken px-fg-2 py-fg-1-5 text-body text-ink">
-            {prompt}
-          </p>
+          <UserTurnBubble text={prompt} />
         </div>
       )}
       <div className="flex flex-col gap-fg-2" data-team-entries>
-        {view.entries.map((entry) =>
-          entry.kind === "thinking" ? (
-            <TeamThinkingSection key={entry.key} entry={entry} />
-          ) : entry.kind === "tool" ? (
-            <TeamToolSection key={entry.key} entry={entry} />
+        {blocks.map((block) =>
+          block.kind === "stretch" ? (
+            <TeamWorkStretchSection key={block.key} group={block} />
           ) : (
-            <TeamMessageBlock key={entry.key} entry={entry} />
+            <AgentMessageBlock
+              key={block.key}
+              {...(block.agentId.length === 0 ? {} : { agentId: block.agentId })}
+              text={block.text}
+              data={{
+                attribute: "data-team-message",
+                ...(block.agentId.length === 0 ? {} : { value: block.agentId }),
+              }}
+            />
           ),
         )}
       </div>

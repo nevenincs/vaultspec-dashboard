@@ -8,7 +8,7 @@
 # so release-please treats it as noise.
 #
 # Recovery note: if a post-release PR merge clobbers the bump commit (a
-# long-lived branch whose bucket/vaultspec.json predates the bump is merged
+# long-lived branch whose manifest commit predates the bump is merged
 # without rebasing), the bucket silently regresses. Recover by triggering this
 # workflow via workflow_dispatch with the plan JSON from the release run's
 # "plan" artifact (copy the `manifest` output field).
@@ -50,10 +50,19 @@ jobs:
     needs: gate
     runs-on: [self-hosted, Linux, X64]
     steps:
+      # The channel root is an ORGANISATION resource, not a per-repo one. A
+      # package manager resolves ONE bucket for all of nevenincs, so a manifest
+      # committed to this repository's own `bucket/` is published nowhere a
+      # user's Scoop can see. Check out the org distribution repo and commit
+      # there. The deploy key authenticates that push; the checkout below is
+      # the only writable handle this job has on the channel root.
       - uses: actions/checkout@v6
         with:
+          repository: nevenincs/homebrew-tap
           ref: main
-      - name: Bump bucket/vaultspec.json to the released version
+          path: channels
+          ssh-key: ${{ secrets.CHANNEL_ROOT_DEPLOY_KEY }}
+      - name: Bump the org bucket manifest to the released version
         shell: bash
         env:
           PLAN: ${{ inputs.plan }}
@@ -64,9 +73,22 @@ jobs:
           # Bump to the COMPLETE product archive (the whole offline
           # tree), never the binary-only vaultspec-cli archive.
           ASSET="vaultspec-${VERSION}-x86_64-pc-windows-msvc.zip"
+          # The manifest is generated from scratch below, so its prose lives
+          # here rather than surviving in a committed file nobody re-reads.
+          DESCRIPTION="The complete vaultspec dashboard product: the dashboard, the copied external updater, and the signed release manifest, licenses, and SBOM - installed as one offline-complete tree. Only the vaultspec dashboard command is shimmed onto PATH; the companion files stay in the install directory."
           URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${ASSET}"
           HASH=$(curl --proto '=https' --tlsv1.2 -sSfL "${URL}.sha256" | cut -d' ' -f1)
-          test -n "$VERSION" && test -n "$HASH"
+          # One check per line, deliberately. Written as
+          # `test -n "$A" && test -n "$B"`, this guard does NOT trip `set -e`:
+          # bash exempts every command in an && list except the one following
+          # the final &&, so a failure in any earlier position is ignored.
+          # That exact shape let vaultspec-core-v0.1.60 publish a Scoop
+          # manifest with empty hashes out of a green run. The digest
+          # comparison below would also catch an empty HASH here, but a guard
+          # that does not guard is worth removing rather than leaning on the
+          # backstop that happens to sit behind it.
+          : "${VERSION:?refusing to bump: no version parsed from the tag}"
+          : "${HASH:?refusing to bump: no digest fetched from the sidecar}"
           # Verify the published digest: download the archive and confirm its own
           # SHA-256 matches the sibling .sha256, so a corrupt or mismatched asset
           # never lands in the manifest.
@@ -83,24 +105,126 @@ jobs:
           # Guard: refuse to bump the manifest to a version older than what is
           # already committed. This catches the case where a stale branch merge
           # clobbered a prior bump and this job is re-run for an older release.
-          CURRENT_VERSION=$(jq -r '.version' bucket/vaultspec.json)
-          if [ "$(printf '%s\n' "$CURRENT_VERSION" "$VERSION" | sort -V | tail -1)" = "$CURRENT_VERSION" ] && \
-             [ "$CURRENT_VERSION" != "$VERSION" ]; then
-            echo "bucket is at ${CURRENT_VERSION}, refusing to bump backward to ${VERSION}"
+          # No manifest is committed until this job first succeeds (see
+          # bucket/README.md), so an absent file is a first publication rather
+          # than a regression and must not be read as version "null".
+          if [ -f channels/bucket/vaultspec.json ]; then
+            CURRENT_VERSION=$(jq -r '.version' channels/bucket/vaultspec.json)
+            if [ "$(printf '%s\n' "$CURRENT_VERSION" "$VERSION" | sort -V | tail -1)" = "$CURRENT_VERSION" ] && \
+               [ "$CURRENT_VERSION" != "$VERSION" ]; then
+              echo "bucket is at ${CURRENT_VERSION}, refusing to bump backward to ${VERSION}"
+              exit 1
+            fi
+          fi
+          # Generated whole with `jq -n`, not rewritten in place. An in-place
+          # edit needs a committed file to read, which no longer exists before
+          # the first publication, and it is how a stale field survives a bump
+          # unnoticed - the failure mode this repository shipped for four
+          # releases.
+          # The channel root may carry no bucket/ yet; a first publication must
+          # be able to create the directory it publishes into.
+          mkdir -p channels/bucket
+          # ---------------------------------------------------------------
+          # THE arm64 STRING IS LOAD-BEARING BY ITS ABSENCE. DO NOT ADD IT.
+          #
+          # Scoop's Get-SupportedArchitecture gates the arm64 -> 64bit
+          # emulation fallback on a REGEX OVER THE WHOLE SERIALISED MANIFEST
+          # for the literal string `arm64`. A 64bit-only manifest in which that
+          # string never appears lets ARM64 Windows install the x64 build under
+          # emulation, and it works. The moment the manifest mentions `arm64`
+          # ANYWHERE - an `autoupdate.architecture.arm64` block added ahead of a
+          # real `architecture.arm64.url`, a checkver note, a word in the
+          # description - Scoop stops treating the package as emulation-eligible
+          # and every ARM64 user gets a hard failure instead of a working
+          # install.
+          #
+          # There is no Windows arm64 build (product-release.yml composes
+          # x86_64-pc-windows-msvc only), so the correct manifest is one that
+          # never says `arm64`. A half-block is strictly worse than no block.
+          # The assertion after the jq call enforces this on the generated
+          # bytes; do not weaken it.
+          #
+          # NO extract_dir. The composed archive is FLAT at its root - bin/,
+          # licenses/, release.json and sbom.cdx.json all sit directly inside it
+          # (product-release.yml archives the generation root's `.`).
+          # `"extract_dir": "bin"` would make 7-Zip extract ONLY bin/ and
+          # silently drop licenses/, release.json and sbom.cdx.json while
+          # `scoop install` still reported success - a partial tree that then
+          # fails `vaultspec verify-release` for a reason nothing in the install
+          # output points at.
+          #
+          # `bin` uses the NESTED-array form: one element, itself a
+          # [path, alias] pair. That is exactly one shim, named `vaultspec`.
+          # The single-level form ["bin\\vaultspec.exe", "vaultspec"] is a trap:
+          # Scoop reads it as TWO entries and creates two shims - one working
+          # `vaultspec`, and one pointing at a file literally named `vaultspec`
+          # that does not exist in the archive. vaultspec-updater.exe is
+          # deliberately absent; the dashboard invokes it, the user never does,
+          # and listing it would put a second command on PATH.
+          #
+          # `checkver` is the single-property object form. One property named
+          # `github` sets useGithubAPI, and its built-in tag regex
+          # (?:v|V)?([\d.]+) already strips the leading `v` from `v0.1.10`.
+          # Adding ANY second key to this object turns the GitHub API path off
+          # and drops checkver back to scraping the releases page.
+          #
+          # `autoupdate.hash` is declared ONCE, globally, not per-architecture:
+          # Scoop resolves autoupdate.architecture.<arch>.hash first and falls
+          # back to autoupdate.hash, so a single declaration covers 64bit and
+          # anything added later. `{"url": "$url.sha256"}` and nothing more is
+          # right for our bare-digest sidecar - the default `mode: extract` with
+          # the default regex ^\s*([a-fA-F0-9]+)\s*$ spans a one-line
+          # digest-only file exactly. Do NOT set `mode: download`: that makes
+          # every excavator run re-download the whole ~14 MB zip only to
+          # recompute a digest the sidecar already publishes.
+          # ---------------------------------------------------------------
+          jq -n --arg v "$VERSION" --arg u "$URL" --arg h "$HASH" \
+            --arg home "https://github.com/${GITHUB_REPOSITORY}" \
+            --arg desc "$DESCRIPTION" \
+            '{
+              version: $v,
+              description: $desc,
+              homepage: $home,
+              license: "MIT",
+              architecture: {
+                "64bit": {
+                  url: $u,
+                  hash: $h
+                }
+              },
+              bin: [["bin\\vaultspec.exe", "vaultspec"]],
+              checkver: { github: $home },
+              autoupdate: {
+                architecture: {
+                  "64bit": {
+                    url: ($home + "/releases/download/v$version/vaultspec-$version-x86_64-pc-windows-msvc.zip")
+                  }
+                },
+                hash: { url: "$url.sha256" }
+              }
+            }' > channels/bucket/vaultspec.json
+          # Enforce the invariant the block above explains, against the bytes
+          # about to be committed rather than against the intent that produced
+          # them. A manifest that has learned the string `arm64` breaks every
+          # ARM64 install, so refuse to publish it.
+          if grep -qi 'arm64' channels/bucket/vaultspec.json; then
+            echo "refusing to publish: generated manifest contains 'arm64', which disables Scoop's arm64->64bit emulation fallback"
             exit 1
           fi
-          jq --arg v "$VERSION" --arg u "$URL" --arg h "$HASH" \
-            '.version = $v | .url = $u | .hash = $h' \
-            bucket/vaultspec.json > bucket/vaultspec.json.tmp
-          mv bucket/vaultspec.json.tmp bucket/vaultspec.json
-          if git diff --quiet -- bucket/vaultspec.json; then
+          cd channels
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Stage FIRST, then ask whether anything changed. `git diff` reports
+          # only TRACKED paths, so before the first publication - when the
+          # manifest does not yet exist in the channel root - it sees no change
+          # and this job exits zero having published nothing. Staging first
+          # makes the first publication visible to the check.
+          git add -- bucket/vaultspec.json
+          if git diff --cached --quiet -- bucket/vaultspec.json; then
             echo "manifest already at ${VERSION}; nothing to bump"
             exit 0
           fi
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add bucket/vaultspec.json
-          git commit -m "chore(scoop): bump manifest to ${TAG}"
+          git commit -m "chore(scoop): bump vaultspec-dashboard manifest to ${TAG}"
           git push origin main
       - name: Reclaim runner disk (always)
         if: always()

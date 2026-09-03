@@ -1,5 +1,5 @@
 //! The `/ops/a2a/{verb}` orchestration control pass-through: the engine forwards
-//! a FIXED seven-verb whitelist to the
+//! a fixed reviewed verb whitelist to the
 //! resident vaultspec-a2a gateway and nothing else, wrapping the sibling's
 //! response VERBATIM inside the shared tiers envelope. It is the rag ops
 //! template retargeted at an HTTP sibling — one namespace, tiers-honest, the
@@ -28,6 +28,7 @@
 //! attach-never-own: the engine reaches whatever a2a service is resident, never
 //! starts or owns one.
 
+use std::collections::BTreeMap;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::PathBuf;
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
@@ -47,17 +48,17 @@ use crate::authoring::model::{ActorId, ActorKind, ActorRef, CommandKind};
 
 use super::ApiResult;
 
-/// The FIXED seven-verb whitelist: orchestration
-/// control, one bounded active-run recovery read, and one typed interrupt-resume
-/// only, with no mutating vault semantics. A verb outside this set is a 403
-/// BEFORE any discovery or round-trip — the whitelist miss never reaches the
-/// sibling.
+/// The fixed reviewed verb whitelist: orchestration control, bounded recovery and
+/// provider-catalog reads, and one typed interrupt-resume only, with no
+/// mutating vault semantics. A verb outside this set is a 403 BEFORE any
+/// discovery or round-trip — the whitelist miss never reaches the sibling.
 const A2A_WHITELIST: &[&str] = &[
     "run-start",
     "run-status",
     "run-cancel",
     "presets-list",
     "active-runs",
+    "provider-catalog",
     "clarification-respond",
 ];
 
@@ -98,22 +99,67 @@ const A2A_READ_BUDGET: Duration = Duration::from_secs(15);
 /// it gets a wider — but still bounded — ceiling. A breach is a 504.
 const A2A_CONTROL_BUDGET: Duration = Duration::from_secs(60);
 
+/// Wall-clock budget for the provider catalog, which is a live DISCOVERY rather
+/// than a listing read and is budgeted as its own kind of operation.
+///
+/// A cold catalog does not read a stored list. The sibling spawns each provider
+/// lane's own tooling and completes a protocol handshake with it, gathering the
+/// lanes concurrently, then caches the result for five minutes. So the verb has
+/// two utterly different costs: a measured 16.3s on a cold workspace, and ~0s
+/// immediately afterwards for the identical response.
+///
+/// That cache is what makes an under-budget here so treacherous, and is why this
+/// is a distinct constant rather than a wider `A2A_READ_BUDGET`. The attempt that
+/// times out still WARMS the cache, so a person who retries sees it work and any
+/// test that calls twice never observes the breach at all. What breaks is the
+/// first provider listing on a cold workspace — precisely when someone is trying
+/// to choose a lane, and a lane must be chosen before a run can start.
+///
+/// Sized from evidence rather than taste: it clears the measured cold cost by
+/// roughly 2.7x, so a slower host or a colder cache does not reintroduce the
+/// breach, and it clears the 30s ceiling the sibling puts on a single catalog
+/// protocol read, so this side does not give up while the other is still inside
+/// one bounded read. It stays under `A2A_CONTROL_BUDGET` because discovery is
+/// still not a dispatch.
+///
+/// What it deliberately does NOT cover: a lane that hangs. The sibling bounds
+/// each protocol READ at 30s and may perform several, and its ACP startup
+/// ceiling is 300s; a browser-facing verb cannot wait on either. Giving up
+/// before a wedged lane is the intended behaviour, and a 504 there is honest.
+const A2A_DISCOVERY_BUDGET: Duration = Duration::from_secs(45);
+
 /// Run-scoped actor-token lifetime (resource-bounds: a credential is bounded at
 /// creation). Clamped by `MAX_ACTOR_TOKEN_LIFETIME_MS` in the issue path
 /// regardless; a generous run window that still expires.
 const A2A_RUN_TOKEN_LIFETIME_MS: i64 = 24 * 3_600 * 1_000;
 
-/// The `run-start` message cap, matching the a2a gateway's own 64 KiB
-/// `RunStartRequest.message` bound so the engine rejects an oversized prompt at
-/// its boundary rather than forwarding a body the sibling will reject.
-const MAX_A2A_MESSAGE_BYTES: usize = 65_536;
+/// The `run-start` message cap matches the A2A gateway's 262,144-byte UTF-8
+/// consumer budget. Its 65,536-character source constraint permits four-byte
+/// Unicode text, so this edge must bound serialized bytes rather than reject
+/// valid non-ASCII prompts before the sibling can apply that character rule.
+const MAX_A2A_MESSAGE_BYTES: usize = 262_144;
 
 const MAX_A2A_PRESET_CHARS: usize = 64;
-const MAX_A2A_PROFILE_CHARS: usize = 64;
 const MAX_A2A_FEATURE_CHARS: usize = 128;
 const MAX_A2A_TITLE_CHARS: usize = 200;
 const MAX_A2A_RUN_ID_CHARS: usize = 128;
 const MAX_A2A_SCOPE_CHARS: usize = 4096;
+
+/// A provider-issued identifier is opaque to Dashboard and the engine. It may
+/// not be used as a URL path, shell argument, or provider/model enum, so the
+/// edge preserves its exact printable value while bounding its resource cost.
+const MAX_A2A_CATALOG_REFERENCE_CHARS: usize = 512;
+const MAX_A2A_CONTROL_ID_CHARS: usize = 128;
+const MAX_A2A_CONTROL_VALUE_CHARS: usize = 512;
+const MAX_A2A_CONTROLS_PER_SELECTION: usize = 32;
+const MAX_A2A_ROLE_OVERRIDES: usize = MAX_A2A_REQUIRED_ROLES;
+const MAX_A2A_ROLE_ID_CHARS: usize = 128;
+const MAX_A2A_FALLBACKS: usize = 8;
+
+/// The current A2A gateway route for the account- and execution-lane-specific
+/// catalog. The response is forwarded verbatim: catalog entries and health are
+/// A2A-owned facts, never reclassified or reconstructed at the Rust boundary.
+const A2A_PROVIDER_CATALOG_PATH: &str = "/v1/provider-catalog";
 
 /// The `clarification-respond` boundary: the D5 caps, the sibling route, and the
 /// answer validation, held apart from the control verbs because it is the one
@@ -128,6 +174,9 @@ mod clarification;
 /// pass-through, the run-stream relay, and the agent tier.
 #[path = "a2a/discovery.rs"]
 mod discovery;
+#[path = "a2a/validate.rs"]
+mod validate;
+use validate::*;
 
 // Re-exported at the a2a boundary so both external callers keep the paths they
 // already use: `ops::resident_sibling_is_attachable` (the agent tier, via
@@ -135,8 +184,6 @@ mod discovery;
 pub(crate) use discovery::{a2a_endpoint, resident_sibling_is_attachable};
 use discovery::{a2a_endpoint_dual, a2a_service_json_candidates};
 // Reached only by the test module's `use super::*`.
-#[cfg(test)]
-use discovery::{A2aDiscovery, a2a_endpoint_from, discover_a2a_at};
 
 /// Fixed-size serialization stripes for brokered run starts. A stable `run_id`
 /// always maps to one stripe, so concurrent retries cannot both pass the status
@@ -155,11 +202,36 @@ fn lock_run_start(run_id: &str) -> MutexGuard<'static, ()> {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
+/// A bounded opaque reference into one A2A-served provider catalog revision.
+#[derive(serde::Deserialize, serde::Serialize, Clone, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct CatalogSelectionReference {
+    /// The exact A2A-issued selection-reference schema. No serde default: a
+    /// browser must send the version it received, and the edge rejects future
+    /// versions before they can reach a different producer contract.
+    pub schema_version: u8,
+    /// Opaque A2A-served provider identity. It is deliberately not an enum: a
+    /// provider can appear only after its active lane advertises it.
+    pub provider_id: String,
+    /// Opaque execution lane identity. A model listed for one lane cannot be
+    /// selected through another lane with the same provider label.
+    pub execution_mode: String,
+    /// The served catalog revision that A2A revalidates before freezing a run.
+    pub catalog_revision: String,
+    /// Opaque provider-issued entry identity, not a repository model name.
+    pub entry_id: String,
+    /// Provider-native option ids and values, such as an ACP thought-level or
+    /// a Codex reasoning effort. Their vocabulary remains provider-owned.
+    #[serde(default)]
+    pub controls: BTreeMap<String, String>,
+}
+
 /// The typed request body for `POST /ops/a2a/{verb}`. Every field is optional at
 /// the type level and validated/bounded per verb before anything reaches the
 /// sibling; `actor_tokens` is deliberately ABSENT — the engine mints and injects
 /// them, a client can never supply an identity.
 #[derive(serde::Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct A2aVerbBody {
     /// Client-observed active scope used only as a generation fence for
     /// run-start and active-runs. The engine compares it with the SAME ScopeCell
@@ -181,9 +253,20 @@ pub struct A2aVerbBody {
     /// run-start: the target feature tag for a document-authoring run.
     #[serde(default)]
     pub feature_tag: Option<String>,
-    /// run-start: the selected model profile id.
+    /// run-start: the required whole-team selection A2A served from the active
+    /// provider catalog. The engine bounds its shape; A2A validates current
+    /// membership and freezes the exact provider-issued values.
     #[serde(default)]
-    pub profile_id: Option<String>,
+    pub selection: Option<CatalogSelectionReference>,
+    /// run-start: expert, per-role replacements for the whole-team selection.
+    /// Role keys are only bounded here; A2A verifies that each belongs to the
+    /// selected preset before accepting it.
+    #[serde(default)]
+    pub overrides: Option<BTreeMap<String, CatalogSelectionReference>>,
+    /// run-start: explicit served fallback choices. The edge keeps fallback
+    /// order; A2A validates each current catalog reference and freezes it.
+    #[serde(default)]
+    pub fallbacks: Option<Vec<CatalogSelectionReference>>,
     /// run-start: an optional human title.
     #[serde(default)]
     pub title: Option<String>,
@@ -201,123 +284,21 @@ pub struct A2aVerbBody {
     /// every required question was answered, and whether an option id exists.
     #[serde(default)]
     pub answers: Option<serde_json::Map<String, Value>>,
-}
-
-/// Validate a bounded, path-safe id: non-empty, not flag-shaped, restricted to
-/// `[A-Za-z0-9_-]` so it can never carry a path separator, `..`, or shell
-/// metacharacter into the URL it is interpolated into.
-fn validate_path_safe_id(
-    state: &AppState,
-    field: &str,
-    value: &str,
-    max: usize,
-) -> Result<String, (StatusCode, Json<Value>)> {
-    let ok = !value.is_empty()
-        && value.len() <= max
-        && !value.starts_with('-')
-        && value
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_');
-    if !ok {
-        return Err(super::super::api_error(
-            state,
-            StatusCode::BAD_REQUEST,
-            format!(
-                "`{field}` `{value}` must be a non-empty path-safe token \
-                 (letters, digits, `-`, `_`; no leading `-`; <= {max} chars)"
-            ),
-        ));
-    }
-    Ok(value.to_string())
-}
-
-/// [`validate_path_safe_id`] for the run id that forms `/v1/runs/{run_id}`,
-/// length-bounded to the a2a contract's 128-char ceiling.
-fn validate_run_id(state: &AppState, run_id: &str) -> Result<String, (StatusCode, Json<Value>)> {
-    validate_path_safe_id(state, "run_id", run_id, MAX_A2A_RUN_ID_CHARS)
-}
-
-/// Validate a bounded free-text field (`title`) capped at `max` chars, rejecting
-/// control characters. Optional-value helper: `None` passes through.
-fn validate_bounded_text(
-    state: &AppState,
-    field: &str,
-    value: &str,
-    max: usize,
-) -> Result<String, (StatusCode, Json<Value>)> {
-    if value.chars().count() > max || value.chars().any(|c| c.is_control()) {
-        return Err(super::super::api_error(
-            state,
-            StatusCode::BAD_REQUEST,
-            format!("`{field}` must be <= {max} chars with no control characters"),
-        ));
-    }
-    Ok(value.to_string())
-}
-
-/// Validate a bounded token field (`team_preset`, `profile_id`, `feature_tag`):
-/// non-empty, capped, restricted to the kebab/word/dot/colon grammar the sibling
-/// accepts, with no leading `-` (the flag-injection guard).
-fn validate_bounded_token(
-    state: &AppState,
-    field: &str,
-    value: &str,
-    max: usize,
-) -> Result<String, (StatusCode, Json<Value>)> {
-    let ok = bounded_token_is_valid(value, max);
-    if !ok {
-        return Err(super::super::api_error(
-            state,
-            StatusCode::BAD_REQUEST,
-            format!(
-                "`{field}` `{value}` must be a non-empty token \
-                 (letters, digits, `_`, `-`, `.`, `:`; no leading `-`; <= {max} chars)"
-            ),
-        ));
-    }
-    Ok(value.to_string())
-}
-
-fn bounded_token_is_valid(value: &str, max: usize) -> bool {
-    !value.is_empty()
-        && value.chars().count() <= max
-        && !value.starts_with('-')
-        && value
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.' | b':'))
-}
-
-/// Fence a scope-sensitive operation against a concurrent workspace switch.
-/// The browser may echo the served scope, but it can never choose the forwarded
-/// root: equality is checked against the selected cell and only `cell.root` is
-/// injected downstream.
-fn validate_expected_scope(
-    state: &AppState,
-    cell: &ScopeCell,
-    body: &A2aVerbBody,
-    verb: &str,
-) -> Result<(), (StatusCode, Json<Value>)> {
-    let expected = body.expected_scope.as_deref().ok_or_else(|| {
-        super::super::api_error(
-            state,
-            StatusCode::BAD_REQUEST,
-            format!("{verb} requires an `expected_scope` generation fence"),
-        )
-    })?;
-    let expected = validate_bounded_text(state, "expected_scope", expected, MAX_A2A_SCOPE_CHARS)?;
-    // The browser receives the route token, not the filesystem's raw spelling.
-    // On Windows a cold cell may retain a `\\?\` prefix while `scope_token`
-    // deliberately serves the canonical drive-path spelling. Compare like with
-    // like; the downstream workspace_root remains the engine-owned real root.
-    let actual = crate::routes::scope_token(&cell.root);
-    if expected != actual {
-        return Err(super::super::api_error(
-            state,
-            StatusCode::CONFLICT,
-            format!("active scope changed before {verb}; retry against the served scope"),
-        ));
-    }
-    Ok(())
+    /// clarification-respond: the CONTINUATION alternative — a new prompt that
+    /// resumes the parked run instead of answering its questions. The sibling's
+    /// respond route accepts exactly one of `answers`, `prompt`, or `decline`;
+    /// the engine forwards whichever the client sent and refuses anything other
+    /// than exactly one, so the exactly-one-of rule is enforced before any
+    /// round-trip rather than being discovered as a sibling refusal.
+    #[serde(default)]
+    pub prompt: Option<String>,
+    /// clarification-respond: the DECLINE alternative — a payload-free refusal
+    /// that resumes the parked run with no answer given, distinct from a cancel
+    /// (the run continues on its own judgement). Only the literal `true` is
+    /// admitted, mirroring the sibling schema: `decline: false` is a client
+    /// saying "not declining" while supplying no other outcome.
+    #[serde(default)]
+    pub decline: Option<bool>,
 }
 
 /// The forwarded HTTP call an engine verb resolves to: the method, the sibling
@@ -376,6 +357,28 @@ fn build_forwarded_call(
                 budget: A2A_READ_BUDGET,
             })
         }
+        "provider-catalog" => {
+            // Catalog enumeration can depend on the active workspace (for ACP
+            // project setup). The browser first echoes its served scope as a
+            // generation fence, then the engine derives the root itself; a
+            // catalog response can never be relayed from a switched cell. A2A
+            // owns the returned provider records, health evidence, freshness,
+            // and opaque entry/control values; the edge forwards that response
+            // verbatim.
+            validate_expected_scope(state, cell, body, "provider-catalog")?;
+            let root = crate::routes::scope_token(&cell.root);
+            Ok(ForwardedCall {
+                method: Method::Get,
+                path: format!(
+                    "{A2A_PROVIDER_CATALOG_PATH}?workspace_root={}",
+                    percent_encode(&root)
+                ),
+                body: None,
+                // Not a listing read: a cold catalog spawns provider tooling per
+                // lane before it can answer. See `A2A_DISCOVERY_BUDGET`.
+                budget: A2A_DISCOVERY_BUDGET,
+            })
+        }
         "active-runs" => {
             // Reload-recovery of the live team-run binding: which
             // runs are still non-terminal for THIS workspace, so a reloaded panel
@@ -412,6 +415,20 @@ fn build_forwarded_call(
             })
         }
         "run-status" => {
+            // The response is the authoritative recovery snapshot, forwarded
+            // verbatim like every other sibling answer — including the failure
+            // classification a failed run carries, which is why a reloaded panel
+            // recovers it with no live stream to read.
+            //
+            // That classification is deliberately NOT checked against the
+            // vocabulary the dashboard's own run store enforces, and the
+            // asymmetry is intentional. The sibling owns the value and may add a
+            // member; refusing an unrecognised one HERE would blank a run's whole
+            // status the moment it did, and the client would lose the run rather
+            // than one field of it. Membership is enforced where the dashboard
+            // WRITES its own records, because there an unmodeled value means the
+            // caller is wrong, and a wrong record outlives the request that made
+            // it.
             let run_id = body.run_id.as_deref().ok_or_else(|| {
                 super::super::api_error(
                     state,
@@ -475,6 +492,8 @@ fn build_forwarded_call(
                 ));
             }
 
+            validate_run_catalog_selection(state, body)?;
+
             let mut forwarded = json!({
                 "team_preset": team_preset,
                 "message": message,
@@ -497,16 +516,14 @@ fn build_forwarded_call(
                     )?),
                 );
             }
-            if let Some(profile_id) = body.profile_id.as_deref() {
-                obj.insert(
-                    "profile_id".to_string(),
-                    json!(validate_bounded_token(
-                        state,
-                        "profile_id",
-                        profile_id,
-                        MAX_A2A_PROFILE_CHARS
-                    )?),
-                );
+            if let Some(selection) = body.selection.as_ref() {
+                obj.insert("selection".to_string(), json!(selection));
+            }
+            if let Some(overrides) = body.overrides.as_ref() {
+                obj.insert("overrides".to_string(), json!(overrides));
+            }
+            if let Some(fallbacks) = body.fallbacks.as_ref() {
+                obj.insert("fallbacks".to_string(), json!(fallbacks));
             }
             if let Some(title) = body.title.as_deref() {
                 obj.insert(
@@ -1202,7 +1219,7 @@ fn map_transport_error(
 }
 
 /// `POST /ops/a2a/{verb}` — the whitelisted a2a orchestration control pass-through.
-/// A verb outside the seven-verb whitelist is a 403 before any
+/// A verb outside the reviewed whitelist is a 403 before any
 /// discovery. A known-down sibling degrades the `agent` tier at 200; a genuine
 /// proxy crash/timeout is 502/504; a sibling answer (2xx or a business refusal)
 /// forwards VERBATIM under `data.envelope`. run-start provisions per-role actor
@@ -1213,6 +1230,25 @@ pub async fn ops_a2a(
     Path(verb): Path<String>,
     body: Option<Json<A2aVerbBody>>,
 ) -> ApiResult {
+    ops_a2a_with_candidates(
+        state,
+        verb,
+        body.map(|Json(body)| body).unwrap_or_default(),
+        a2a_service_json_candidates(),
+    )
+    .await
+}
+
+/// Execute the public handler with an explicit discovery list. Production passes
+/// the machine-global candidates; direct loopback tests supply a private
+/// discovery record so they exercise the full handler without mutating process
+/// environment variables shared by parallel tests.
+async fn ops_a2a_with_candidates(
+    state: Arc<AppState>,
+    verb: String,
+    body: A2aVerbBody,
+    candidates: Vec<PathBuf>,
+) -> ApiResult {
     // Whitelist miss: 403 with the tiers block BEFORE any discovery or round-trip.
     if !A2A_WHITELIST.contains(&verb.as_str()) {
         return Err(super::super::api_error(
@@ -1222,7 +1258,6 @@ pub async fn ops_a2a(
         ));
     }
     let cell = state.active_cell();
-    let body = body.map(|Json(b)| b).unwrap_or_default();
 
     // Validate + build the forwarded call at the engine boundary (a bad arg is a
     // tiers-carrying 400 that never reaches the sibling).
@@ -1239,7 +1274,6 @@ pub async fn ops_a2a(
     // value it needs; the body is never logged or formatted outside the socket
     // call because run-start may carry raw actor tokens after provisioning.
     let execution_state = Arc::clone(&state);
-    let candidates = a2a_service_json_candidates();
     let outcome = super::rag_offload(&state, move || {
         execute_broker_call(&execution_state, call, run_start_id.as_deref(), &candidates)
     })
@@ -1285,5 +1319,5 @@ pub async fn ops_a2a(
 }
 
 #[cfg(test)]
-#[path = "a2a_tests.rs"]
+#[path = "a2a_tests/mod.rs"]
 mod tests;

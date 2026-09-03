@@ -1,22 +1,27 @@
-// The index console (advanced-service-console ADR D4) — the ONE canonical face of
-// the tool the semantic index rides on, living in Settings ▸ Advanced. It
-// replaces the modal "Search" dashboard the owner rejected on two counts: it is
-// named for the TOOL (the served name from the component handshake) rather than
-// for one of its features, and its controls are normal weighted actions on the
-// identity line instead of a row of large buttons.
+// The search-service console (advanced-service-console ADR D4, renamed by the
+// owner's directive recorded on that ADR) — the ONE canonical face of the
+// service the semantic index rides on, living in Settings ▸ Advanced. Elements
+// are named what they are: the SERVICE gets lifecycle verbs (start, stop,
+// pause, resume — icon controls, compact by design), and the INDEX gets its own
+// domain verb (rebuild), which lives with the index monitor rather than in the
+// service lifecycle cluster.
 //
-// What it states, in order: WHO the tool is (served name, the installed and
-// required versions, its store's address / process / version / location, what it
-// holds), WHAT it is doing right now (lifecycle actions + rebuild progress), the
-// UPDATE monitor with its existing bounded filters, the LOG tail, and the
-// storage/projects rollup that used to hang off the dialog footer. One console;
-// nothing about this tool lives anywhere else.
+// What it states, in order: WHO the service is and HOW it is doing (health word
+// first, then its own port and process — both served verbatim), then the
+// versions and the store facts, then the activity monitor, the log tail, and
+// the storage/projects rollup. One console; nothing about this service lives
+// anywhere else.
 //
 // Layer law: every value is served and interpreted in stores
-// (`useRagServiceIdentity`, `useRagStatus`, `useRagOpsState` via the storage
-// rollup) — this surface derives nothing and never reads raw `tiers`. All reads
-// are the tool's codified Tier-1 contract; no Qdrant-native read and no
-// collection-name recomputation (rag-integration).
+// (`useRagServiceIdentity`, `useRagStatus`, `useRagQuiesce`) — this surface
+// derives nothing and never reads raw `tiers`. All reads are the service's
+// codified Tier-1 contract; no Qdrant-native read and no collection-name
+// recomputation (rag-integration).
+//
+// Pause is rag's QUIESCE HOLD (machine-global, checkpointed, never a stop): the
+// confirmation states the consequence, the health word tracks the hold
+// lifecycle, and a resume refused because another program borrowed the search
+// hardware renders the authored sentence — never the raw envelope.
 //
 // Mount-gating: the console renders only while its Advanced fold is expanded, so
 // its polls (jobs, log tail, ops-state) never run for someone who merely opened
@@ -24,10 +29,20 @@
 
 import { useState } from "react";
 
+import {
+  DatabaseBackup,
+  Pause,
+  Play,
+  RotateCcw,
+  Square,
+  Stethoscope,
+} from "lucide-react";
+
 import { ConfirmDialog } from "../chrome/ConfirmDialog";
 import {
   Button,
   Divider,
+  IconButton,
   ProgressBar,
   PropertyRow,
   Skeleton,
@@ -42,10 +57,14 @@ import { formatNumber } from "../../platform/localization/formatters";
 import { authoredDisplayText } from "../../platform/localization/displayText";
 import { useActiveScope, useRagStatus } from "../../stores/server/queries";
 import {
+  type RagQuiesceWord,
   type RagStartOutcome,
   interpretRagStartEnvelope,
+  useRagQuiesce,
   useRagReindexWithProgress,
   useRagServiceDoctor,
+  useRagServicePause,
+  useRagServiceResume,
   useRagServiceStart,
   useRagServiceStop,
 } from "../../stores/server/ragControl";
@@ -56,27 +75,43 @@ import {
 import { useRagDashboardSelectedJob } from "../../stores/view/ragDashboard";
 import { RagJobsTable } from "./RagJobsTable";
 import { RagDashboardFooter } from "./RagDashboardFooter";
+import { SearchActivityLane } from "./SearchActivityLane";
 import { IndexLogTail } from "./IndexLogTail";
 
 const M = {
   check: { key: "operations:searchMaintenance.actions.checkHealth" },
+  pause: { key: "operations:searchMaintenance.actions.pause" },
   restart: { key: "operations:searchMaintenance.actions.restart" },
+  resume: { key: "operations:searchMaintenance.actions.resume" },
   retrySetup: { key: "operations:searchMaintenance.actions.retrySetup" },
   start: { key: "operations:searchMaintenance.actions.start" },
   stop: { key: "operations:searchMaintenance.actions.stop" },
-  update: { key: "operations:searchMaintenance.actions.update" },
+  rebuild: { key: "operations:searchMaintenance.actions.update" },
   cancel: { key: "common:actions.cancel" },
   shared: { key: "operations:searchMaintenance.service.shared" },
   unavailable: { key: "operations:searchMaintenance.service.unavailable" },
   setupRequired: { key: "operations:searchMaintenance.service.setupRequired" },
   startFailed: { key: "operations:searchMaintenance.service.startFailed" },
-  updateUnavailable: { key: "operations:searchMaintenance.service.updateUnavailable" },
+  rebuildUnavailable: { key: "operations:searchMaintenance.service.updateUnavailable" },
+  pauseUnavailable: { key: "operations:searchMaintenance.service.pauseUnavailable" },
+  resumeHeld: { key: "operations:searchMaintenance.service.resumeHeld" },
+  pauseReverted: { key: "operations:searchMaintenance.service.pauseReverted" },
   progress: { key: "operations:searchMaintenance.accessibility.progress" },
   working: { key: "operations:searchMaintenance.progress.working" },
+  pauseTitle: { key: "operations:searchMaintenance.confirmations.pause.title" },
+  pauseBody: { key: "operations:searchMaintenance.confirmations.pause.body" },
   stopTitle: { key: "operations:searchMaintenance.confirmations.stop.title" },
   stopBody: { key: "operations:searchMaintenance.confirmations.stop.body" },
   stopConfirm: { key: "operations:searchMaintenance.destructiveActions.stop" },
-  fallbackName: { key: "operations:searchMaintenance.identity.title" },
+  statePaused: { key: "operations:searchMaintenance.states.paused" },
+  statePausing: { key: "operations:searchMaintenance.states.pausing" },
+  stateResuming: { key: "operations:searchMaintenance.states.resuming" },
+  // The console names itself from the catalog, never from the served component
+  // handshake: that value is the backend package identifier, which the labels
+  // law keeps off screen no matter which tool is attached.
+  title: { key: "operations:searchMaintenance.identity.title" },
+  port: { key: "operations:searchMaintenance.identity.port" },
+  process: { key: "operations:searchMaintenance.identity.process" },
   version: { key: "operations:searchMaintenance.identity.version" },
   installedVersion: { key: "operations:searchMaintenance.identity.installedVersion" },
   requiredVersion: { key: "operations:searchMaintenance.identity.requiredVersion" },
@@ -103,6 +138,9 @@ const HEALTH_INK: Record<IndexHealthTone, string> = {
   broken: "text-state-broken",
 };
 
+/** The glyph size every lifecycle icon control renders at (1rem at basis). */
+const GLYPH = 16;
+
 export interface IndexConsoleHeaderProps {
   /** The served identity facts; every field renders only when the wire carried it. */
   identity: RagServiceIdentityView;
@@ -117,21 +155,32 @@ export interface IndexConsoleHeaderProps {
   startOutcome?: RagStartOutcome;
   actionsPending: boolean;
   doctorPending: boolean;
-  reindexActive: boolean;
-  reindexFraction?: number;
+  /** The service-hold lifecycle word (`unknown` when the wire reports none). */
+  quiesceWord?: RagQuiesceWord;
+  /** A hold transition or its mutation is in flight — both hold verbs wait. */
+  quiescePending?: boolean;
+  /** The last resume was refused: another program borrowed the search hardware. */
+  resumeHeld?: boolean;
+  /** The last pause could not take the hold (work was in flight; the drain
+   *  timed out) and the service is STILL RUNNING — said out loud, never a
+   *  silent revert. */
+  pauseReverted?: boolean;
   onStart: (autoProvision?: boolean) => void;
   onStop: () => void;
   onRestart: () => void;
   onDoctor: () => void;
-  onReindex: () => void;
+  onPause: () => void;
+  onResume: () => void;
 }
 
 /**
- * The console's identity header: one weighted line (status mark, the SERVED tool
- * name, the status word, and the lifecycle actions) over the served identity
- * properties. The action shape is deliberate — one primary verb for the lifecycle
- * state and quiet text actions beside it, never the four equal filled buttons the
- * previous dashboard stacked in a wrapping row (ADR D4).
+ * The console's identity header: one weighted line (status mark, the catalog
+ * name, the health word, and the lifecycle ICON controls) over the served
+ * identity facts, health first and the service's own port right behind it.
+ * The controls are compact icon buttons — the owner's ruling against the rows
+ * of large default buttons this console twice grew — each named for the
+ * SERVICE verb it performs; the index-domain rebuild verb is deliberately NOT
+ * here (it lives with the index monitor).
  *
  * Wire-free and props-driven, so the desk renders every state without a seed.
  */
@@ -146,29 +195,34 @@ export function IndexConsoleHeader({
   startOutcome,
   actionsPending,
   doctorPending,
-  reindexActive,
-  reindexFraction,
+  quiesceWord = "unknown",
+  quiescePending = false,
+  resumeHeld = false,
+  pauseReverted = false,
   onStart,
   onStop,
   onRestart,
   onDoctor,
-  onReindex,
+  onPause,
+  onResume,
 }: IndexConsoleHeaderProps) {
   const resolve = useLocalizedMessageResolver();
   const locale = useActiveLocale();
   const [confirmStop, setConfirmStop] = useState(false);
+  const [confirmPause, setConfirmPause] = useState(false);
   const needsInstall = startOutcome?.status === "needs_install";
   const startFailed =
     startOutcome !== undefined && !startOutcome.attached && !needsInstall;
   const tone = errored ? "broken" : healthTone;
-  // The tool's own name is SERVED (the component handshake), so it renders as
-  // authored display text rather than a catalog label — the console must name
-  // whatever tool is actually attached, not a name we hard-coded.
-  const servedName =
-    identity.name === null ? null : (authoredDisplayText(identity.name) as string);
+  const held =
+    quiesceWord === "paused" || quiesceWord === "pausing" || quiesceWord === "resuming";
   const number = (value: number | null) =>
     value === null ? null : (formatNumber(locale, value) ?? null);
+  // A port and a process id are identifiers: rendered verbatim, never grouped.
+  const verbatim = (value: number | null) => (value === null ? null : String(value));
   const rows: Array<[string, string | null]> = [
+    [resolve(M.port).message, verbatim(identity.port)],
+    [resolve(M.process).message, verbatim(identity.processId)],
     [resolve(M.version).message, identity.version],
     [resolve(M.installedVersion).message, identity.installedVersion],
     [resolve(M.requiredVersion).message, identity.requiredVersion],
@@ -186,6 +240,12 @@ export function IndexConsoleHeader({
   const shownRows = rows.filter(
     (row): row is [string, string] => row[1] !== null && row[1].length > 0,
   );
+  const startLabel = resolve(M.start).message;
+  const stopLabel = resolve(M.stop).message;
+  const pauseLabel = resolve(M.pause).message;
+  const resumeLabel = resolve(M.resume).message;
+  const restartLabel = resolve(M.restart).message;
+  const checkLabel = resolve(M.check).message;
 
   return (
     <>
@@ -196,7 +256,7 @@ export function IndexConsoleHeader({
             className={`size-fg-2 shrink-0 rounded-full ${HEALTH_DOT[tone]}`}
           />
           <span className="min-w-0 truncate text-body font-medium text-ink">
-            {servedName ?? resolve(M.fallbackName).message}
+            {resolve(M.title).message}
           </span>
           <span
             className={`shrink-0 text-meta ${HEALTH_INK[tone]}`}
@@ -205,61 +265,87 @@ export function IndexConsoleHeader({
             {healthWord}
           </span>
           <span className="flex-1" />
-          {/* One weighted lifecycle verb, then quiet text actions — the redesigned
-              control shape (ADR D4). */}
-          <div className="flex shrink-0 flex-wrap items-center gap-fg-1">
-            {running ? (
-              <Button
-                variant="danger"
-                onClick={() => setConfirmStop(true)}
-                disabled={actionsPending}
-              >
-                {resolve(M.stop).message}
-              </Button>
-            ) : (
-              <Button
-                variant="primary"
+          {/* The lifecycle cluster: compact icon controls, one per SERVICE verb.
+              The verb set follows the state — start when stopped; pause / stop /
+              restart while running; resume / stop while HELD. A held daemon is
+              alive even when the status probe reports requests unavailable
+              (observed live: a quiesced service degrades the status read), so
+              the hold verbs key on the quiesce word, never on `running`. */}
+          <div
+            className="flex shrink-0 items-center gap-fg-1"
+            data-index-lifecycle-controls
+          >
+            {!running && !held && (
+              <IconButton
+                label={startLabel}
+                title={startLabel}
                 onClick={() => onStart()}
                 disabled={actionsPending}
               >
-                {resolve(M.start).message}
-              </Button>
+                <Play size={GLYPH} aria-hidden />
+              </IconButton>
             )}
-            {running && (
-              <Button variant="ghost" onClick={onRestart} disabled={actionsPending}>
-                {resolve(M.restart).message}
-              </Button>
-            )}
-            <Button variant="ghost" onClick={onDoctor} disabled={doctorPending}>
-              {resolve(M.check).message}
-            </Button>
-            <span title={running ? undefined : resolve(M.updateUnavailable).message}>
-              <Button
-                variant="ghost"
-                onClick={onReindex}
-                disabled={reindexActive || !running}
+            {running && !held && (
+              <IconButton
+                label={pauseLabel}
+                title={pauseLabel}
+                onClick={() => setConfirmPause(true)}
+                disabled={actionsPending || quiescePending}
               >
-                {resolve(M.update).message}
-              </Button>
-            </span>
+                <Pause size={GLYPH} aria-hidden />
+              </IconButton>
+            )}
+            {held && (
+              <IconButton
+                label={resumeLabel}
+                title={resumeLabel}
+                onClick={onResume}
+                disabled={actionsPending || quiescePending}
+              >
+                <Play size={GLYPH} aria-hidden />
+              </IconButton>
+            )}
+            {(running || held) && (
+              <IconButton
+                label={stopLabel}
+                title={stopLabel}
+                onClick={() => setConfirmStop(true)}
+                disabled={actionsPending}
+              >
+                <Square size={GLYPH} aria-hidden />
+              </IconButton>
+            )}
+            {running && !held && (
+              <IconButton
+                label={restartLabel}
+                title={restartLabel}
+                onClick={onRestart}
+                disabled={actionsPending}
+              >
+                <RotateCcw size={GLYPH} aria-hidden />
+              </IconButton>
+            )}
+            <IconButton
+              label={checkLabel}
+              title={checkLabel}
+              onClick={onDoctor}
+              disabled={doctorPending}
+            >
+              <Stethoscope size={GLYPH} aria-hidden />
+            </IconButton>
           </div>
         </div>
         <p className="text-caption text-ink-faint">{resolve(M.shared).message}</p>
 
-        {reindexActive && (
-          <div className="flex items-center gap-fg-2" data-index-reindex-progress>
-            <ProgressBar
-              value={
-                reindexFraction === undefined ? 0 : Math.round(reindexFraction * 100)
-              }
-              max={100}
-              label={resolve(M.progress).message}
-              className="flex-1"
-            />
-            <span className="text-meta text-ink-faint">
-              {resolve(M.working).message}
-            </span>
-          </div>
+        {resumeHeld && (
+          <p className="text-caption text-state-stale" data-index-resume-held>
+            {resolve(M.resumeHeld).message}
+          </p>
+        )}
+        {pauseReverted && (
+          <p className="text-caption text-state-stale" data-index-pause-reverted>
+            {resolve(M.pauseReverted).message}
+          </p>
         )}
         {needsInstall && (
           <div className="flex flex-col gap-fg-1">
@@ -321,6 +407,18 @@ export function IndexConsoleHeader({
         </div>
       </div>
       <ConfirmDialog
+        open={confirmPause}
+        title={resolve(M.pauseTitle).message}
+        message={resolve(M.pauseBody).message}
+        confirmLabel={pauseLabel}
+        cancelLabel={resolve(M.cancel).message}
+        onCancel={() => setConfirmPause(false)}
+        onConfirm={() => {
+          setConfirmPause(false);
+          onPause();
+        }}
+      />
+      <ConfirmDialog
         open={confirmStop}
         title={resolve(M.stopTitle).message}
         message={resolve(M.stopBody).message}
@@ -336,9 +434,54 @@ export function IndexConsoleHeader({
   );
 }
 
-/** The wired console: composes the identity/status/lifecycle reads, then the three
- *  monitors (updates, log, storage) that were previously scattered across the
- *  retired dialog body and its footer. */
+/** The index-domain control the service lifecycle cluster deliberately does not
+ *  hold: rebuild acts on the INDEX, so it renders beside the index monitor's
+ *  own heading, with its progress inline. Wire-free (props only). */
+export function IndexRebuildControl({
+  reindexActive,
+  reindexFraction,
+  running,
+  onReindex,
+}: {
+  reindexActive: boolean;
+  reindexFraction?: number;
+  running: boolean;
+  onReindex: () => void;
+}) {
+  const resolve = useLocalizedMessageResolver();
+  const rebuildLabel = resolve(M.rebuild).message;
+  return (
+    <div className="flex items-center gap-fg-2" data-index-rebuild>
+      {reindexActive && (
+        <>
+          <ProgressBar
+            value={
+              reindexFraction === undefined ? 0 : Math.round(reindexFraction * 100)
+            }
+            max={100}
+            label={resolve(M.progress).message}
+            className="w-24"
+          />
+          <span className="text-caption text-ink-faint">
+            {resolve(M.working).message}
+          </span>
+        </>
+      )}
+      <IconButton
+        label={rebuildLabel}
+        title={running ? rebuildLabel : resolve(M.rebuildUnavailable).message}
+        onClick={onReindex}
+        disabled={reindexActive || !running}
+      >
+        <DatabaseBackup size={GLYPH} aria-hidden />
+      </IconButton>
+    </div>
+  );
+}
+
+/** The wired console: composes the identity/status/lifecycle reads, then the
+ *  monitors (updates + rebuild, log, storage). The health word tracks the hold
+ *  lifecycle — a paused service says so before anything else does. */
 export function IndexConsole() {
   const scope = useActiveScope();
   const status = useRagStatus();
@@ -346,20 +489,61 @@ export function IndexConsole() {
   const start = useRagServiceStart(scope);
   const stop = useRagServiceStop(scope);
   const doctor = useRagServiceDoctor(scope);
+  const pause = useRagServicePause(scope);
+  const resume = useRagServiceResume(scope);
+  const quiesce = useRagQuiesce(scope);
   const reindex = useRagReindexWithProgress(scope);
   const resolve = useLocalizedMessageResolver();
   // The updates table owns the selection; the log tail narrows to it, so picking an
   // update in the monitor scopes its log — one selection, two views of it.
   const selectedJobId = useRagDashboardSelectedJob();
   const startOutcome = start.data ? interpretRagStartEnvelope(start.data) : undefined;
-  const healthWord = resolve(status.presentation).message;
-  const tone: IndexHealthTone = status.running
-    ? "active"
-    : status.loading
+  // Health first: the hold lifecycle outranks the status presentation outright —
+  // a held service is not "Running", and it is not "Status unavailable" either
+  // (a quiesced daemon closes admissions, which degrades the status probe; that
+  // degradation is the hold's EXPECTED shape, so the word stays Paused).
+  const quiesceStateMessage =
+    quiesce.word === "paused"
+      ? M.statePaused
+      : quiesce.word === "pausing"
+        ? M.statePausing
+        : quiesce.word === "resuming"
+          ? M.stateResuming
+          : null;
+  const healthWord =
+    quiesceStateMessage !== null
+      ? resolve(quiesceStateMessage).message
+      : resolve(status.presentation).message;
+  const tone: IndexHealthTone =
+    quiesceStateMessage !== null
       ? "stale"
-      : "broken";
+      : status.running
+        ? "active"
+        : status.loading
+          ? "stale"
+          : "broken";
   const restart = () =>
     stop.mutate(undefined, { onSuccess: () => start.mutate(undefined) });
+  const resumeEnvelope =
+    resume.data && typeof resume.data.envelope === "object"
+      ? (resume.data.envelope as Record<string, unknown> | null)
+      : null;
+  const resumeHeld =
+    resumeEnvelope?.status === "borrower_lease_required" &&
+    (quiesce.word === "paused" || quiesce.word === "pausing");
+  const pauseEnvelope =
+    pause.data && typeof pause.data.envelope === "object"
+      ? (pause.data.envelope as Record<string, unknown> | null)
+      : null;
+  // A pause that answered non-achieved while the service is back to running is
+  // a REVERTED hold (rag budgets the drain; in-flight work can outlast it) —
+  // stated in words, never a silent flip back to "Running". A non-achieved
+  // `already_paused` never matches: the quiesce word is `paused` then.
+  const pauseReverted =
+    pauseEnvelope?.achieved === false &&
+    !quiesce.paused &&
+    !quiesce.transitional &&
+    !pause.isPending;
 
   return (
     <div className="flex flex-col gap-fg-3" data-index-console>
@@ -370,21 +554,37 @@ export function IndexConsole() {
         running={status.running}
         healthWord={healthWord}
         healthTone={tone}
-        errored={status.errored}
+        errored={status.errored && quiesceStateMessage === null}
         startOutcome={startOutcome}
         actionsPending={start.isPending || stop.isPending}
         doctorPending={doctor.isPending}
-        reindexActive={!reindex.progress.terminal && reindex.jobId !== null}
-        reindexFraction={reindex.progress.fraction}
+        quiesceWord={quiesce.word}
+        quiescePending={pause.isPending || resume.isPending || quiesce.transitional}
+        resumeHeld={resumeHeld}
+        pauseReverted={pauseReverted}
         onStart={(autoProvision) =>
           start.mutate(autoProvision ? { qdrant_auto_provision: true } : undefined)
         }
         onStop={() => stop.mutate()}
         onRestart={restart}
         onDoctor={() => doctor.mutate()}
-        onReindex={() => reindex.trigger({ type: "vault" })}
+        onPause={() => pause.mutate()}
+        onResume={() => resume.mutate()}
       />
-      <RagJobsTable />
+      <RagJobsTable
+        action={
+          <IndexRebuildControl
+            reindexActive={!reindex.progress.terminal && reindex.jobId !== null}
+            reindexFraction={reindex.progress.fraction}
+            running={status.running}
+            onReindex={() => reindex.trigger({ type: "vault" })}
+          />
+        }
+      />
+      {/* The one activity panel is BOTH halves: the index updates above, the
+          searches the service is serving right here beneath them — mirroring
+          the service's own watch interface. */}
+      <SearchActivityLane />
       <IndexLogTail jobId={selectedJobId} />
       <RagDashboardFooter />
     </div>

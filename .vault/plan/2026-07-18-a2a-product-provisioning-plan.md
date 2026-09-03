@@ -3,8 +3,7 @@ tags:
   - '#plan'
   - '#a2a-product-provisioning'
 date: '2026-07-18'
-modified: '2026-07-31'
-body_hash: 'sha256:9eec1ed93fa2374f3f89b7a8deee123e3dd5f1875a0423a63fdcb84bd0a2beaf'
+modified: '2026-08-02'
 tier: L3
 related:
   - '[[2026-07-18-a2a-product-provisioning-adr]]'
@@ -297,7 +296,7 @@ Dispatch independent vaultspec-code-reviewer passes and a manual architecture-ow
 - [ ] `W06.P14.S140` - Review lifecycle routes and run admission for typed boundaries, atomic single-flight, authenticated ownership, bundle-scoped token revocation, and fixed run verbs; `engine/crates/vaultspec-api`.
 - [ ] `W06.P14.S141` - Review frontend stores and panels for sole wire ownership, backend-served truth, bounded polling, guarded deletion, localization, and action-plane parity; `frontend/src`.
 - [ ] `W06.P14.S142` - Review the source-pin component lock, four-target composition, installer completeness, channel reversibility, Cargo withdrawal, and published artifact inventory; `packaging`.
-- [ ] `W06.P14.S143` - Manually reconcile the dashboard release-set contract and certification evidence against the accepted A2A dashboard-bundled-runtime record and record the shipped cross-repository entrypoint audit; `.vault/audit/2026-07-19-a2a-product-provisioning-audit.md`.
+- [x] `W06.P14.S143` - Manually reconcile the dashboard release-set contract and certification evidence against the accepted A2A dashboard-bundled-runtime record and record the shipped cross-repository entrypoint audit; `.vault/audit/2026-07-19-a2a-product-provisioning-audit.md`.
 - [ ] `W06.P14.S144` - Apply vaultspec-codify only to implementation and review lessons that satisfy the durable-rule criteria after the full cycle; `.codex/rules/architecture-boundaries.md`.
 
 ### Phase `W06.P15` - harden the self-hosted CI to green, bottom-up

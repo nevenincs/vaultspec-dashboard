@@ -1,130 +1,128 @@
-// The composer's MODEL picker (plan S40; agent-panel-shell-integration D3;
-// a2a-agent-flow D3). Row-2 RIGHT — the "how it thinks" side of the law.
-//
-// It renders the profiles the sibling ACTUALLY serves on `presets-list`, and
-// nothing else:
-//   - eligible profiles are selectable; the chosen id rides the existing
-//     `run-start` `profile_id` field, so this adds no wire;
-//   - ineligible profiles stay VISIBLE and disabled, carrying the sibling's own
-//     `unavailable_reasons` verbatim — the truthful set, never a filtered one that
-//     hides why a choice is unavailable;
-//   - a MIXED-provider profile (its roles routed to different providers) is labelled
-//     as mixed and expands to the per-role bindings, because collapsing it to one
-//     provider name would be a label we made up.
-//
-// With no preset selected, or a preset that serves no profiles, there is nothing to
-// choose between: the pill names the preset's `default_profile_id` if it has one and
-// is disabled-with-reason. That is the honest floor, not a fallback mode.
-//
-// Layer ownership: dumb app chrome over `useTeamSelectorState`. No fetch.
+// The composer's provider/model picker consumes only A2A's current provider
+// catalog. It does not own a model list, provider taxonomy, or universal effort
+// level: every row, native control, reason, and opaque selection reference is
+// served by the active execution lane.
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { RefObject } from "react";
 
 import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 import { authoredDisplayText } from "../../platform/localization/displayText";
 import {
-  profileIsMixedProvider,
-  profileProviderIds,
-  type TeamProfile,
+  isCurrentCatalogSelection,
+  isProviderCatalogSelectable,
+  nativeControlsForCatalogEntry,
+  nextProviderCatalogExpiry,
+  selectionFromCatalogEntry,
+  selectionWithCatalogControl,
+  type ProviderCatalogRecord,
+  type ProviderCatalogSelection,
+  type ProviderNativeControl,
 } from "../../stores/server/agent/a2aTeam";
 import { DropdownButton, Popover } from "../kit";
+import { ProviderHealthStatus } from "./ProviderHealthStatus";
 
 const MSG = {
   model: "common:agent.composer.model",
-  modelDefault: "common:agent.composer.modelDefault",
   modelUnavailable: "common:agent.composer.modelUnavailable",
   selectorValue: "common:agent.composer.selectorValue",
   selectorDisabled: "common:agent.composer.selectorDisabled",
   menuAria: "common:agent.composer.modelMenuAria",
-  mixed: "common:agent.runHeader.mixedProvider",
 } as const;
 
-/** A profile's provider line: one provider named plainly, several named as mixed —
- *  never one invented label standing in for several. Pure, so the mixed rule is
- *  driven directly by test. */
-export function profileProviderLabel(
-  profile: TeamProfile,
-  mixedLabel: string,
-): string | null {
-  const providers = profileProviderIds(profile);
-  if (providers.length === 0) return null;
-  if (providers.length === 1) return providers[0]!;
-  return mixedLabel;
+const MAX_TIMEOUT_DELAY_MS = 2_147_483_647;
+
+/** Revalidate the render-time selection gate at the earliest served expiry.
+ * The effect owns no catalog data and does not invent a deadline: it only wakes
+ * the picker to re-read A2A's timestamped freshness evidence. */
+function useCatalogFreshnessNow(providers: readonly ProviderCatalogRecord[]): number {
+  const [, rerenderAtExpiry] = useState(0);
+  const now = Date.now();
+  const expiresAt = nextProviderCatalogExpiry(providers, now);
+  const expiryDelay =
+    expiresAt === null
+      ? null
+      : Math.min(Math.max(0, expiresAt - now), MAX_TIMEOUT_DELAY_MS);
+  useEffect(() => {
+    if (expiryDelay === null) return undefined;
+    const timeoutId = setTimeout(
+      () => rerenderAtExpiry((revision) => revision + 1),
+      expiryDelay,
+    );
+    return () => clearTimeout(timeoutId);
+  }, [expiryDelay]);
+  return now;
 }
 
-/** The display name for a profile, falling back to its served id. */
-export function profileLabel(profile: TeamProfile): string {
-  return profile.display_name && profile.display_name.length > 0
-    ? profile.display_name
-    : profile.id;
+function providerLabel(provider: ProviderCatalogRecord): string {
+  return provider.display_name ?? provider.provider_id;
 }
 
-function ProfileRow({
-  profile,
+function entryLabel(entry: {
+  readonly entry_id: string;
+  readonly display_name?: string;
+}): string {
+  return entry.display_name ?? entry.entry_id;
+}
+
+function controlLabel(control: ProviderNativeControl): string {
+  return control.display_name ?? control.control_id;
+}
+
+function ProviderModelRow({
+  provider,
+  entry,
   selected,
-  mixedLabel,
+  selectable,
   onSelect,
+  buttonRef,
 }: {
-  profile: TeamProfile;
+  provider: ProviderCatalogRecord;
+  entry: {
+    readonly entry_id: string;
+    readonly display_name?: string;
+    readonly description?: string;
+  };
   selected: boolean;
-  mixedLabel: string;
+  selectable: boolean;
   onSelect: () => void;
+  buttonRef?: RefObject<HTMLButtonElement | null>;
 }) {
-  // The sibling's own words for why a profile cannot be used. Joined, never
-  // paraphrased — a reason we rewrite is a reason we might get wrong.
-  const reason = profile.unavailable_reasons.join(" ");
-  const reasonTitle = profile.eligible ? undefined : authoredDisplayText(reason);
-  const provider = profileProviderLabel(profile, mixedLabel);
-  const mixed = profileIsMixedProvider(profile);
+  const reason = provider.health.reasons.join(" ");
   return (
     <li>
       <button
+        ref={buttonRef}
         type="button"
-        role="menuitemradio"
-        aria-checked={selected}
-        disabled={!profile.eligible}
-        title={reasonTitle}
-        data-model-profile={profile.id}
-        data-model-eligible={profile.eligible ? "" : undefined}
-        onClick={profile.eligible ? onSelect : undefined}
-        className="flex w-full flex-col gap-fg-0-5 rounded-fg-sm px-fg-2 py-fg-1 text-left text-label text-ink transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus aria-[checked=true]:bg-paper-sunken disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent"
+        aria-pressed={selected}
+        disabled={!selectable}
+        title={
+          selectable || reason.length === 0
+            ? undefined
+            : authoredDisplayText(provider.health.reasons.join(" "))
+        }
+        data-provider-id={provider.provider_id}
+        data-model-entry-id={entry.entry_id}
+        data-model-selectable={selectable ? "" : undefined}
+        onClick={selectable ? onSelect : undefined}
+        className="flex w-full flex-col gap-fg-0-5 rounded-fg-sm px-fg-2 py-fg-1 text-left text-label text-ink transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus aria-[pressed=true]:bg-paper-sunken disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent"
       >
         <span className="flex min-w-0 items-baseline justify-between gap-fg-2">
           <span className="min-w-0 truncate">
-            {authoredDisplayText(profileLabel(profile))}
+            {authoredDisplayText(entryLabel(entry))}
           </span>
-          {provider !== null && (
-            <span className="shrink-0 text-caption text-ink-faint" data-model-provider>
-              {authoredDisplayText(provider)}
-            </span>
-          )}
+          <span className="shrink-0 text-caption text-ink-faint" data-model-provider>
+            {authoredDisplayText(providerLabel(provider))}
+          </span>
         </span>
-        {/* A mixed profile shows its per-role bindings, so "mixed" is never the end
-            of the story — the reader can see exactly which role goes where. */}
-        {mixed && (
-          <span className="flex flex-col gap-fg-0-5" data-model-assignments>
-            {profile.assignments.map((assignment) => (
-              <span
-                key={assignment.role_id}
-                className="flex min-w-0 items-baseline justify-between gap-fg-2 text-caption text-ink-faint"
-              >
-                <span className="min-w-0 truncate">
-                  {authoredDisplayText(assignment.role_id)}
-                </span>
-                <span className="shrink-0">
-                  {authoredDisplayText(
-                    [assignment.provider_id, assignment.model_name]
-                      .filter((part): part is string => !!part && part.length > 0)
-                      .join(" · "),
-                  )}
-                </span>
-              </span>
-            ))}
+        {entry.description !== undefined && entry.description.length > 0 && (
+          <span className="truncate text-meta text-ink-faint">
+            {authoredDisplayText(entry.description)}
           </span>
         )}
-        {!profile.eligible && reason.length > 0 && (
+        {!selectable && reason.length > 0 && (
           <span className="truncate text-meta text-ink-faint" data-model-reason>
-            {authoredDisplayText(reason)}
+            {authoredDisplayText(provider.health.reasons.join(" "))}
           </span>
         )}
       </button>
@@ -132,42 +130,55 @@ function ProfileRow({
   );
 }
 
+/** The required whole-team chooser. Selecting a row mints a reference only from
+ * the current A2A catalog revision; control values retain their native vocabulary
+ * and no implicit generic "tier" is added by the Dashboard. */
 export function ComposerModelPicker({
-  profiles,
-  selectedProfileId,
-  defaultProfileId,
-  onSelectProfile,
+  providers,
+  selection,
+  onSelectSelection,
   locked,
+  surfaceId,
 }: {
-  /** The SERVED profiles of the selected preset (empty when none are served). */
-  profiles: readonly TeamProfile[];
-  /** The user's explicit choice, or null to follow the preset's default. */
-  selectedProfileId: string | null;
-  /** The preset's served default, named by the pill when nothing is chosen. */
-  defaultProfileId: string | null;
-  onSelectProfile: (profileId: string | null) => void;
+  providers: readonly ProviderCatalogRecord[];
+  selection: ProviderCatalogSelection | null;
+  onSelectSelection: (selection: ProviderCatalogSelection | null) => void;
   locked: boolean;
+  /** The primary picker retains the legacy composer hooks. Expert pickers use a
+   * stable local id so independent disclosures never share a popover trigger. */
+  surfaceId?: string;
 }) {
   const resolveMessage = useLocalizedMessageResolver();
   const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const firstModelRef = useRef<HTMLButtonElement>(null);
+  const now = useCatalogFreshnessNow(providers);
+  const selectedProvider =
+    providers.find((provider) => isCurrentCatalogSelection(provider, selection, now)) ??
+    null;
+  const selectedEntry =
+    selectedProvider === null || selection === null
+      ? null
+      : (selectedProvider.catalog.models.find(
+          (entry) => entry.entry_id === selection.entry_id,
+        ) ?? null);
+
+  if (providers.length === 0) return null;
 
   const modelLabel = resolveMessage({ key: MSG.model }).message;
-  const mixedLabel = resolveMessage({ key: MSG.mixed }).message;
-  const selected =
-    profiles.find((profile) => profile.id === selectedProfileId) ??
-    profiles.find((profile) => profile.id === defaultProfileId) ??
-    profiles.find((profile) => profile.is_default) ??
-    null;
-
   const value =
-    selected !== null
-      ? authoredDisplayText(profileLabel(selected))
-      : defaultProfileId !== null && defaultProfileId.length > 0
-        ? authoredDisplayText(defaultProfileId)
-        : resolveMessage({ key: MSG.modelDefault }).message;
-
-  // Nothing to choose between: no served profiles, or every one of them ineligible.
-  const selectable = profiles.some((profile) => profile.eligible);
+    selectedProvider !== null && selectedEntry !== null
+      ? authoredDisplayText(
+          `${providerLabel(selectedProvider)} · ${entryLabel(selectedEntry)}`,
+        )
+      : modelLabel;
+  const selectable = providers.some(
+    (provider) =>
+      isProviderCatalogSelectable(provider, now) &&
+      provider.catalog.models.some(
+        (entry) => selectionFromCatalogEntry(provider, entry.entry_id, now) !== null,
+      ),
+  );
   const disabled = !selectable || locked;
   const reason = resolveMessage({ key: MSG.modelUnavailable }).message;
   const pill = resolveMessage({
@@ -182,46 +193,167 @@ export function ComposerModelPicker({
     : pill;
   const menuAria = resolveMessage({ key: MSG.menuAria });
   const disabledTitle = disabled ? authoredDisplayText(reason) : undefined;
+  const primarySurface = surfaceId === undefined;
+  const triggerSelector = primarySurface
+    ? "[data-composer-model-trigger]"
+    : `[data-expert-model-trigger="${surfaceId}"]`;
+  const firstSelectable = providers
+    .flatMap((provider) =>
+      provider.catalog.models.map((entry) => ({ provider, entry })),
+    )
+    .find(
+      ({ provider, entry }) =>
+        selectionFromCatalogEntry(provider, entry.entry_id, now) !== null,
+    );
+  const selectedControls =
+    selectedProvider === null || selection === null
+      ? []
+      : nativeControlsForCatalogEntry(selectedProvider, selection.entry_id);
 
   return (
-    <div className="relative" data-composer-model>
+    <div
+      className="relative"
+      {...(primarySurface
+        ? { "data-composer-model": "" }
+        : { "data-expert-model-picker": surfaceId })}
+    >
       <span
         title={disabledTitle}
-        data-composer-model-trigger
-        data-model-profile={selected?.id}
+        {...(primarySurface
+          ? { "data-composer-model-trigger": "" }
+          : { "data-expert-model-trigger": surfaceId })}
+        data-provider-id={selectedProvider?.provider_id}
+        data-model-entry-id={selectedEntry?.entry_id}
       >
         <DropdownButton
-          label={pill}
+          ref={triggerRef}
+          label={value}
           open={open}
           onClick={() => setOpen((current) => !current)}
           disabled={disabled}
           ariaLabel={ariaLabel}
+          ariaHasPopup="dialog"
         />
       </span>
+      <ProviderHealthStatus providers={providers} now={now} />
       {open && !disabled && !menuAria.usedFallback && (
         <Popover
           open
           onDismiss={() => setOpen(false)}
-          ignoreSelector="[data-composer-model-trigger]"
-          role="menu"
+          ignoreSelector={triggerSelector}
+          returnFocusRef={triggerRef}
+          role="dialog"
           aria-label={menuAria.message}
-          data-composer-model-menu
+          initialFocusRef={firstModelRef}
+          {...(primarySurface
+            ? { "data-composer-model-menu": "" }
+            : { "data-expert-model-menu": surfaceId })}
           className="absolute bottom-full right-0 z-40 mb-fg-1 max-h-80 min-w-64 overflow-y-auto rounded-fg-md border border-rule bg-paper-raised p-fg-1 shadow-fg-popover"
         >
           <ul className="flex flex-col gap-fg-0-5">
-            {profiles.map((profile) => (
-              <ProfileRow
-                key={profile.id}
-                profile={profile}
-                selected={selected?.id === profile.id}
-                mixedLabel={mixedLabel}
-                onSelect={() => {
-                  onSelectProfile(profile.id);
-                  setOpen(false);
-                }}
-              />
+            {providers.map((provider) => (
+              <li
+                key={`${provider.provider_id}:${provider.execution_mode}`}
+                data-provider-catalog={provider.provider_id}
+              >
+                <p className="px-fg-2 py-fg-0-5 text-caption font-medium text-ink-muted">
+                  {authoredDisplayText(providerLabel(provider))}
+                </p>
+                <ul
+                  className="flex flex-col gap-fg-0-5"
+                  aria-label={authoredDisplayText(providerLabel(provider))}
+                >
+                  {provider.catalog.models.map((entry) =>
+                    (() => {
+                      const catalogSelection = selectionFromCatalogEntry(
+                        provider,
+                        entry.entry_id,
+                        now,
+                      );
+                      const modelSelectable = catalogSelection !== null;
+                      return (
+                        <ProviderModelRow
+                          key={entry.entry_id}
+                          provider={provider}
+                          entry={entry}
+                          selected={
+                            selectedProvider?.provider_id === provider.provider_id &&
+                            selectedProvider.execution_mode ===
+                              provider.execution_mode &&
+                            selectedEntry?.entry_id === entry.entry_id
+                          }
+                          selectable={modelSelectable}
+                          buttonRef={
+                            firstSelectable?.provider === provider &&
+                            firstSelectable.entry === entry
+                              ? firstModelRef
+                              : undefined
+                          }
+                          onSelect={() => {
+                            const currentSelection = selectionFromCatalogEntry(
+                              provider,
+                              entry.entry_id,
+                              now,
+                            );
+                            if (currentSelection !== null) {
+                              onSelectSelection(currentSelection);
+                              setOpen(false);
+                            }
+                          }}
+                        />
+                      );
+                    })(),
+                  )}
+                </ul>
+              </li>
             ))}
           </ul>
+          {selectedProvider !== null &&
+            selection !== null &&
+            selectedControls.length > 0 && (
+              <div
+                className="mt-fg-1 flex flex-col gap-fg-1 border-t border-rule pt-fg-1"
+                data-provider-native-controls
+              >
+                {selectedControls.map((control) => {
+                  const selectedOption = selection.controls[control.control_id] ?? "";
+                  return (
+                    <label
+                      key={control.control_id}
+                      className="flex min-w-0 flex-col gap-fg-0-5 text-caption text-ink-muted"
+                    >
+                      <span className="truncate">
+                        {authoredDisplayText(controlLabel(control))}
+                      </span>
+                      <select
+                        value={selectedOption}
+                        data-provider-control-id={control.control_id}
+                        onChange={(event) => {
+                          const next = selectionWithCatalogControl(
+                            selectedProvider,
+                            selection,
+                            control.control_id,
+                            event.currentTarget.value,
+                            now,
+                          );
+                          if (next !== null) onSelectSelection(next);
+                        }}
+                        className="min-w-0 rounded-fg-sm border border-rule bg-paper px-fg-1 py-fg-0-5 text-label text-ink"
+                      >
+                        {selectedOption.length === 0 && <option value="" disabled />}
+                        {control.options.map((option) => (
+                          <option key={option.option_id} value={option.option_id}>
+                            {authoredDisplayText(
+                              option.display_name ?? option.option_id,
+                            )}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
         </Popover>
       )}
     </div>

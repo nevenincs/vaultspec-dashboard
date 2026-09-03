@@ -14,13 +14,32 @@ import { Skeleton, SkeletonBar, SkeletonRow, StateBlock } from "../kit";
 
 /** LOADING — UI-only skeleton mimicking the rail's section-eyebrow + folder-row rhythm.
  *  No spinner, no "reading…" copy: the label is screen-reader-only (ADR D2). */
+/** The placeholder rows a loading TREE shows.
+ *
+ *  A tree's skeleton has to read as a tree: flat equal-length bars promise a list
+ *  and then rearrange themselves into an indented hierarchy when the data lands,
+ *  which is exactly the jolt a skeleton exists to prevent. Each row carries the
+ *  depth it will have, indented on the SAME 0.75rem step the real rows use, so the
+ *  placeholder occupies the shape its content will occupy. */
+const RAIL_SKELETON_ROWS: readonly {
+  readonly width: string;
+  readonly depth: number;
+}[] = [
+  { width: "w-[38%]", depth: 0 },
+  { width: "w-[62%]", depth: 1 },
+  { width: "w-[54%]", depth: 1 },
+  { width: "w-[70%]", depth: 2 },
+  { width: "w-[46%]", depth: 0 },
+];
+
 export function RailSkeleton({ label }: { label: string }) {
-  const rows = ["w-[38%]", "w-[62%]", "w-[54%]", "w-[70%]", "w-[46%]"];
   return (
     <Skeleton label={label} className="px-fg-1 py-fg-1">
       <SkeletonBar width="w-1/4" height="h-[0.625rem]" />
-      {rows.map((width, i) => (
-        <SkeletonRow key={i} width={width} />
+      {RAIL_SKELETON_ROWS.map((row, i) => (
+        <div key={i} style={{ paddingLeft: `${row.depth * 0.75}rem` }}>
+          <SkeletonRow width={row.width} />
+        </div>
       ))}
     </Skeleton>
   );

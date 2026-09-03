@@ -113,7 +113,7 @@ pub(super) fn open_existing_directory(path: &Path) -> io::Result<File> {
     options.open(path)
 }
 
-/// Flush-only access for the directory-metadata sync (W01.P01.S177).
+/// Flush-only access for the directory-metadata sync.
 ///
 /// `FlushFileBuffers` requires the handle to carry `FILE_WRITE_DATA` or
 /// `FILE_APPEND_DATA`. On a DIRECTORY, `FILE_ADD_SUBDIRECTORY` IS
@@ -124,7 +124,7 @@ pub(super) fn open_existing_directory(path: &Path) -> io::Result<File> {
 const DIRECTORY_FLUSH_ACCESS: u32 = FILE_ADD_SUBDIRECTORY | FILE_READ_ATTRIBUTES | SYNCHRONIZE;
 
 /// Reopen the SAME directory object through a retained handle and flush its
-/// metadata, then close the reopened handle (W01.P01.S177).
+/// metadata, then close the reopened handle.
 ///
 /// Capability-held directories (`cap-std`) are opened without
 /// `FILE_ADD_SUBDIRECTORY`, so they cannot be flushed through themselves. This

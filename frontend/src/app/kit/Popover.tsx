@@ -33,6 +33,8 @@ export interface PopoverProps extends HTMLAttributes<HTMLDivElement> {
    *  would land on the wrong element (or `<body>`) — DECLARES its invoker here, and
    *  the restore targets it on close/unmount (replacing any manual restore). */
   returnFocusRef?: RefObject<HTMLElement | null>;
+  /** The first interactive element announced when a dialog-like popover opens. */
+  initialFocusRef?: RefObject<HTMLElement | null>;
   children: ReactNode;
 }
 
@@ -42,6 +44,7 @@ export function Popover({
   ignoreSelector,
   escapeTarget,
   returnFocusRef,
+  initialFocusRef,
   children,
   ...rest
 }: PopoverProps) {
@@ -54,7 +57,10 @@ export function Popover({
   // re-wiring it. By default it restores the open-time element (the trigger); a
   // surface whose opener is not that element DECLARES its invoker via
   // `returnFocusRef` and drops any manual restore (no race).
-  useFocusRestore(open, { returnFocusRef });
+  useFocusRestore(open, {
+    returnFocusRef,
+    onOpen: () => initialFocusRef?.current?.focus(),
+  });
   return (
     <div ref={rootRef} {...rest}>
       {children}

@@ -1,5 +1,7 @@
 //! Validation, id derivation, and record<->column mapping helpers for authoring sessions.
 
+use vaultspec_product::a2a_contract::A2A_PROVIDER_CONDITIONS;
+
 use super::*;
 
 pub(super) fn session_scope(
@@ -273,4 +275,31 @@ pub(super) fn validate_failure_reason(reason: Option<&str>) -> StoreResult<()> {
         ));
     }
     Ok(())
+}
+
+/// A `Failed` run's optional provider condition, checked for membership in the
+/// closed vocabulary the two products share.
+///
+/// An unrecognised value is REFUSED here, loudly, naming both the offending
+/// value and the accepted set. Storing it as it arrived would be the cheaper
+/// choice and the wrong one: this field exists because a failure classification
+/// was once discarded in transit, and quietly recording an unmodeled value
+/// recreates that loss one layer up — every reader downstream then sees a
+/// classification it cannot act on, with nothing to say where it came from. A
+/// refusal at one named boundary is diagnosable; a corrupted record is not.
+///
+/// The check reads the shared vocabulary rather than a local copy. That coupling
+/// is the point: when the producing side adds a member, this refusal is what
+/// says so, instead of the value spreading unrecognised.
+pub(super) fn validate_provider_condition(condition: Option<&str>) -> StoreResult<()> {
+    let Some(condition) = condition else {
+        return Ok(());
+    };
+    if A2A_PROVIDER_CONDITIONS.contains(&condition) {
+        return Ok(());
+    }
+    Err(StoreError::Session(format!(
+        "provider condition `{condition}` is not a member of the closed vocabulary ({})",
+        A2A_PROVIDER_CONDITIONS.join(", ")
+    )))
 }

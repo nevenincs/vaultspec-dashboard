@@ -23,7 +23,7 @@ import {
   useCodeViewerScrollTop,
 } from "../../stores/view/codeViewer";
 import { useElementHeight } from "../chrome/useElementWidth";
-import { Badge, IconButton, Popover, Skeleton, SkeletonBar, StateBlock } from "../kit";
+import { IconButton, Popover, Skeleton, SkeletonBar, StateBlock } from "../kit";
 import type { LineChange, LineMarker } from "../authoring/editorChanges";
 import { lineMarkers } from "../authoring/editorChanges";
 import { HighlightedLineContent, MARKER_TONE } from "./HighlightedCode";
@@ -287,13 +287,16 @@ export function CodeViewer({
       {/* Two-line identity (owner review): the file NAME leads, the repo-relative
           path sits under it in the small caption role. One glance answers both
           "which file" and "where" without the name competing for width. */}
-      <header className="flex items-start justify-between gap-fg-2 border-b border-rule bg-paper px-fg-4 py-fg-2">
+      <header className="flex items-start justify-between gap-fg-2 border-b border-rule bg-paper px-fg-4 py-fg-3">
         <div className="flex min-w-0 flex-col gap-fg-0-5">
           <span className="flex min-w-0 items-center gap-[0.625rem]">
+            {/* No type pill here: the footer already states the language, and the
+                header repeating it spent the widest line in the component on a fact
+                already on screen. `language` still resolves — it is the footer's
+                interpolation and this line's fallback when a file has no name. */}
             <span className="min-w-0 truncate font-mono text-label text-ink">
               {fileName ?? language.message}
             </span>
-            {view.languageHint && <Badge>{language.message}</Badge>}
           </span>
           {/* The path is its own accessible name — it is visible text, so it carries
               no `aria-label` (one on a role-less span REPLACES the path for a screen
@@ -331,7 +334,7 @@ export function CodeViewer({
         tokenLines={tokenLines}
         markersByLine={markersByLine}
       />
-      <footer className="flex shrink-0 items-center gap-fg-1-5 border-t border-rule bg-paper px-fg-4 py-fg-1-5 text-caption text-ink-muted">
+      <footer className="flex shrink-0 items-center gap-fg-1-5 border-t border-rule bg-paper px-fg-4 py-fg-2 text-caption text-ink-muted">
         {footer.message}
       </footer>
     </div>

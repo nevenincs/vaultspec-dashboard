@@ -19,6 +19,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { I18nextProvider } from "react-i18next";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { en } from "../../locales/en";
 import { createTestLocalizationRuntime } from "../../localization/testing";
 import { liveScope, liveTransport } from "../../testing/liveClient";
 import { AuthoringClient, ensureActorToken } from "../../stores/server/authoring";
@@ -101,14 +102,17 @@ describe("Composer keyboard contract", () => {
     expect(useAgentPanel.getState().currentSessionId).toBeNull();
     expect(input().value).toBe("hello there");
 
-    // Wait for the live scope to resolve (the bootstrap needs it), then Enter.
+    // No send affordance exists at idle (D11 — every captured composer sends on
+    // Enter), and the input NAMES the verb for assistive tech.
+    expect(document.querySelector("[data-composer-send]")).toBeNull();
+    expect(document.querySelector("[data-composer-enter-hint]")).not.toBeNull();
+    expect(input().getAttribute("aria-describedby")).toBe(
+      document.querySelector("[data-composer-enter-hint]")!.id,
+    );
+    // Wait for the live scope to resolve (the bootstrap needs it; the workspace
+    // chip renders exactly when the scope truth is known — G5), then Enter.
     await waitFor(
-      () => {
-        expect(
-          (document.querySelector("[data-composer-send]") as HTMLButtonElement)
-            .disabled,
-        ).toBe(false);
-      },
+      () => expect(document.querySelector("[data-composer-scope-chip]")).not.toBeNull(),
       { timeout: 10_000 },
     );
     const enterPrevented = !fireEvent.keyDown(input(), { key: "Enter" });
@@ -127,13 +131,13 @@ describe("Composer keyboard contract", () => {
     await waitFor(() => expect(input().value).toBe(""));
   });
 
-  it("stages a comment as the shared chip and enables a comments-only submit", async () => {
-    // The comment→agent bridge: a staged comment renders
-    // as the shared "N comments" chip, and — structured continuation — a
-    // comments-only submit is valid because the batch rides the turn as a
-    // feedback_batch_id, not the prompt text. The submit→create-batch→turn
-    // round-trip is a live-wire proof against the edge engine (merge-gate parked),
-    // since the feedback-batches route lands with the a2a edge.
+  it("stages a comment as the shared chip and delivers it WITH the typed message", async () => {
+    // The comment→agent bridge: a staged comment renders as the shared
+    // "N comments" chip and ATTACHES to the next typed message — the engine
+    // refuses an empty prompt turn (validate_prompt), so the batch rides a
+    // message rather than standing in for one. Proven live: the
+    // submit→create-batch→turn round-trip runs against the real engine, the
+    // bootstrap creates a real session, and the chip clears on delivery.
     stageAgentComment(
       {
         commentId: `comment-${run}`,
@@ -150,17 +154,29 @@ describe("Composer keyboard contract", () => {
     expect(chip).not.toBeNull();
     expect(chip!.textContent).toContain("1 comment");
 
-    // No typed text: a comments-only submit still enables send (the batch is the
-    // payload, no longer serialized into the prompt string).
     await waitFor(
-      () =>
-        expect(
-          (document.querySelector("[data-composer-send]") as HTMLButtonElement)
-            .disabled,
-        ).toBe(false),
+      () => expect(document.querySelector("[data-composer-scope-chip]")).not.toBeNull(),
       { timeout: 10_000 },
     );
-  });
+    // A comments-only Enter is a NO-OP (no prompt text): nothing submits and
+    // the staged chip stays visible.
+    fireEvent.keyDown(input(), { key: "Enter" });
+    expect(useAgentPanel.getState().currentSessionId).toBeNull();
+    expect(document.querySelector('[data-composer-chip="comments"]')).not.toBeNull();
+
+    // Typing a message and sending delivers batch + turn together.
+    fireEvent.change(input(), {
+      target: { value: "Address the attached comment." },
+    });
+    fireEvent.keyDown(input(), { key: "Enter" });
+    await waitFor(
+      () => expect(useAgentPanel.getState().currentSessionId).not.toBeNull(),
+      { timeout: 15_000 },
+    );
+    await waitFor(() =>
+      expect(document.querySelector('[data-composer-chip="comments"]')).toBeNull(),
+    );
+  }, 45_000);
 
   it("starts the next turn in the existing current session", async () => {
     const sessionId = await createLiveSession(`Composer existing ${run}`);
@@ -266,7 +282,13 @@ describe("Composer mention chips", () => {
       key: "Escape",
     });
 
+    // The `+` opens a LABELED attach menu (D11 — never a mystery icon); the
+    // corpus picker is its first entry.
     fireEvent.click(document.querySelector("[data-composer-attach]")!);
+    await waitFor(() =>
+      expect(document.querySelector("[data-composer-attach-menu]")).not.toBeNull(),
+    );
+    fireEvent.click(document.querySelector("[data-composer-attach-corpus]")!);
     await waitFor(() =>
       expect(document.querySelector("[data-composer-mention]")).not.toBeNull(),
     );
@@ -297,12 +319,13 @@ describe("Composer mention chips", () => {
 });
 
 describe("Composer mid-run behavior (D4/S39)", () => {
-  it("replaces Send with Stop while a real run streams, and a mid-run submit ENQUEUES server-side", async () => {
+  it("shows the square Stop in the run slot while a real run streams, and a mid-run submit ENQUEUES server-side", async () => {
     const sessionId = await createLiveSession(`Composer mid-run ${run}`);
     useAgentPanel.setState({ currentSessionId: sessionId });
     renderComposer();
 
-    // First submit starts a REAL run; the Send slot becomes Stop.
+    // First submit starts a REAL run; the empty run slot becomes the square Stop
+    // (C6 — the captured send→stop swap, with no send button to swap from).
     fireEvent.change(input(), { target: { value: "first" } });
     fireEvent.keyDown(input(), { key: "Enter" });
     await waitFor(
@@ -390,7 +413,7 @@ describe("Composer mid-run behavior (D4/S39)", () => {
     // The SAME input flips to the steer placeholder once the served pending-interrupt
     // list lands — no client staging, no new chrome.
     await waitFor(
-      () => expect(input().placeholder).toBe("Reply to guide the running agent"),
+      () => expect(input().placeholder).toBe(en.common.agent.composer.steerPlaceholder),
       { timeout: 15_000 },
     );
 
@@ -403,9 +426,10 @@ describe("Composer mid-run behavior (D4/S39)", () => {
     await waitFor(() => expect(input().value).toBe(""), { timeout: 15_000 });
     const resolved = await liveAgent.listRunInterrupts(runId!);
     expect(resolved.items.every((i) => i.resume_state === "resolved")).toBe(true);
-    await waitFor(() => expect(input().placeholder).toBe("Message the agent"), {
-      timeout: 15_000,
-    });
+    await waitFor(
+      () => expect(input().placeholder).toBe(en.common.agent.composer.placeholder),
+      { timeout: 15_000 },
+    );
   }, 45_000);
 });
 
@@ -420,13 +444,10 @@ describe("Composer team selector (live a2a tier)", () => {
     // one).
     renderComposer();
 
-    // The control mounts immediately (the Team pill is always rendered).
-    await waitFor(() =>
-      expect(document.querySelector("[data-composer-team]")).not.toBeNull(),
-    );
-
-    // Let the presets read settle so we branch on the real tier, not the transient
-    // loading (empty-presets) state. The module query cache is the settle signal.
+    // Let the presets read settle FIRST: the pill renders only when there is
+    // something true to show (served presets, or a disabled plane with its
+    // reason) — an empty healthy plane renders NO pill rather than a placeholder
+    // word (D8). The module query cache is the settle signal.
     await waitFor(
       () =>
         expect(queryClient.getQueryState(["a2a", "presets"])?.status).not.toBe(
@@ -437,8 +458,17 @@ describe("Composer team selector (live a2a tier)", () => {
 
     const trigger = document.querySelector(
       "[data-composer-team] button",
-    ) as HTMLButtonElement;
-    expect(trigger).not.toBeNull();
+    ) as HTMLButtonElement | null;
+    if (trigger === null) {
+      // Honest absence: nothing served and the plane not degraded — assert the
+      // served list really is empty rather than accepting a silent miss.
+      const served = queryClient.getQueryData<{ presets?: unknown[] }>([
+        "a2a",
+        "presets",
+      ]);
+      expect(served?.presets ?? []).toHaveLength(0);
+      return;
+    }
 
     if (trigger.disabled) {
       // Disabled tier: the honest reason rides the wrapping title or the aria-label

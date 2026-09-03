@@ -167,6 +167,16 @@ pub fn storage_survey(transport: &impl RagTransport, limit: Option<u32>) -> Resu
     parse(transport.get(&format!("/storage/survey{qs}"))?)
 }
 
+/// `GET /search-activity[?limit=]` — rag's bounded served-search ledger:
+/// `{active, recent, counts, returned}` with per-search state/type/root/query/
+/// outcome/timings. The QUERY half of the one activity surface (the index half
+/// is [`jobs`]); rag bounds the ledger itself and clamps `limit` server-side,
+/// the broker bounds the request besides.
+pub fn search_activity(transport: &impl RagTransport, limit: Option<u32>) -> Result<Value> {
+    let qs = limit.map(|n| format!("?limit={n}")).unwrap_or_default();
+    parse(transport.get(&format!("/search-activity{qs}"))?)
+}
+
 // --- POST controls (rag's envelope forwarded verbatim) -----------------------
 
 /// Validated arguments for a reindex trigger. The BROKER builds this after
@@ -237,6 +247,21 @@ pub fn projects_evict(transport: &impl RagTransport, root: &str) -> Result<Value
 /// than a snapshot read (see [`QUALITY_BUDGET`]).
 pub fn quality(transport: &impl RagTransport) -> Result<Value> {
     parse(transport.post_json("/quality", "{}")?)
+}
+
+/// `POST /pause` — hold the RUNNING service at safe checkpoints (rag's quiesce):
+/// admissions close and in-flight work drains to a checkpoint, but the daemon
+/// stays alive — a hold, never a stop. Idempotent on rag's side (an already-
+/// paused service answers `already_paused`, HTTP 200). The pause STATE is read
+/// from the `quiesce` block the [`jobs`] snapshot carries; this verb only
+/// requests the transition.
+pub fn pause(transport: &impl RagTransport) -> Result<Value> {
+    parse(transport.post_json("/pause", "{}")?)
+}
+
+/// `POST /resume` — release a held (paused) service. Idempotent like [`pause`].
+pub fn resume(transport: &impl RagTransport) -> Result<Value> {
+    parse(transport.post_json("/resume", "{}")?)
 }
 
 // --- rag-ops aggregation (the size/state surface computed in Rust) -----------
@@ -510,6 +535,20 @@ mod tests {
         let t = FakeTransport::returning(vec![r#"{"lines":[],"total":0}"#]);
         logs(&t, Some(50), Some("job-x")).unwrap();
         assert_eq!(t.calls.borrow()[0].0, "/logs/json?lines=50&job_id=job-x");
+
+        // search-activity with and without the bounded limit.
+        let t = FakeTransport::returning(vec![
+            r#"{"active":[],"recent":[{"request_id":"r-1","state":"terminal"}],"counts":{"active":0,"recent":1,"total":1},"returned":1}"#,
+        ]);
+        let out = search_activity(&t, Some(25)).unwrap();
+        assert_eq!(t.calls.borrow()[0].0, "/search-activity?limit=25");
+        assert_eq!(
+            out["recent"][0]["request_id"], "r-1",
+            "the served-search ledger passes verbatim"
+        );
+        let t = FakeTransport::returning(vec![r#"{"active":[],"recent":[]}"#]);
+        search_activity(&t, None).unwrap();
+        assert_eq!(t.calls.borrow()[0].0, "/search-activity");
     }
 
     #[test]
@@ -548,6 +587,20 @@ mod tests {
         let out = projects_evict(&t, "/r").unwrap();
         assert_eq!(out["evicted"], true);
         assert_eq!(t.calls.borrow()[0].0, "/projects/evict");
+
+        // pause / resume are body-less quiesce POSTs; rag's idempotent answer
+        // (already_paused on a held service) passes verbatim.
+        let t = FakeTransport::returning(vec![r#"{"ok":true,"state":"already_paused"}"#]);
+        let out = pause(&t).unwrap();
+        assert_eq!(out["state"], "already_paused");
+        let (path, body) = t.calls.borrow()[0].clone();
+        assert_eq!(path, "/pause");
+        assert_eq!(body, "{}", "quiesce carries an empty JSON body");
+
+        let t = FakeTransport::returning(vec![r#"{"ok":true,"state":"running"}"#]);
+        let out = resume(&t).unwrap();
+        assert_eq!(out["state"], "running");
+        assert_eq!(t.calls.borrow()[0].0, "/resume");
     }
 
     #[test]

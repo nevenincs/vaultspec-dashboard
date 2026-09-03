@@ -11,6 +11,21 @@ use std::path::Path;
 
 use super::GenerationError;
 
+/// The permission bits of a raw `mode_t`, widened to one width.
+///
+/// `mode_t` is `u16` on Darwin and `u32` on Linux, so masking it straight into a
+/// `u32` field compiles on one and not the other — both macOS release legs failed
+/// to build on exactly that. The conversion is a widening on Darwin and the
+/// identity on Linux, which is why the lint is allowed HERE and nowhere else:
+/// this function exists to hold that platform divergence in one named place
+/// rather than scatter casts. `from` rather than `as` on purpose — a cast would
+/// keep compiling and silently truncate if a target's width ever changed.
+#[cfg(unix)]
+#[allow(clippy::useless_conversion)]
+fn permission_bits(mode: rustix::fs::RawMode) -> u32 {
+    u32::from(mode) & 0o777
+}
+
 #[cfg(unix)]
 pub(super) fn creation_stage(
     stage: &'static str,
@@ -152,7 +167,7 @@ impl DirectoryAuthority {
             is_directory: rustix::fs::FileType::from_raw_mode(stat.st_mode)
                 == rustix::fs::FileType::Directory,
             owner: stat.st_uid,
-            mode: stat.st_mode & 0o777,
+            mode: permission_bits(stat.st_mode),
         })
     }
 
@@ -182,7 +197,7 @@ impl DirectoryAuthority {
             is_directory: rustix::fs::FileType::from_raw_mode(stat.st_mode)
                 == rustix::fs::FileType::Directory,
             owner: stat.st_uid,
-            mode: stat.st_mode & 0o777,
+            mode: permission_bits(stat.st_mode),
         })
     }
 

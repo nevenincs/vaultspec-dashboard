@@ -1,4 +1,5 @@
 use super::*;
+use ingest_struct::metadata::parse_document_metadata;
 
 fn scope() -> ScopeRef {
     ScopeRef::Ref {
@@ -77,7 +78,7 @@ fn frontmatter_stamped_reads_the_modified_key_distinct_from_date() {
 }
 
 #[test]
-fn adr_status_parser_extracts_each_status_and_none_when_absent() {
+fn canonical_adr_status_facet_projects_only_template_metadata() {
     // The H1 status marker the ADR template emits carries one
     // of the four enum values; the parser reads each, and a status-less
     // document (or an out-of-enum value) is truthful absence, not a guess.
@@ -86,7 +87,7 @@ fn adr_status_parser_extracts_each_status_and_none_when_absent() {
             "---\ntags:\n  - '#adr'\n---\n\n# `x` adr: `topic` | (**status:** `{status}`)\n\nbody\n"
         );
         assert_eq!(
-            frontmatter_adr_status(&h1).as_deref(),
+            canonical_adr_status(parse_document_metadata(&h1)).as_deref(),
             Some(status),
             "extracts the `{status}` H1 status"
         );
@@ -94,13 +95,19 @@ fn adr_status_parser_extracts_each_status_and_none_when_absent() {
     // Case-insensitive on the enum token (templates are lowercase but a
     // hand-authored `Accepted` must still resolve to the canonical token).
     let mixed = "# `x` adr: `t` | (**status:** `Accepted`)\n";
-    assert_eq!(frontmatter_adr_status(mixed).as_deref(), Some("accepted"));
+    assert_eq!(
+        canonical_adr_status(parse_document_metadata(mixed)).as_deref(),
+        Some("accepted")
+    );
     // No status marker at all → None.
     let no_status = "---\ntags:\n  - '#adr'\n---\n\n# `x` adr: `topic`\n\nbody\n";
-    assert_eq!(frontmatter_adr_status(no_status), None);
+    assert_eq!(
+        canonical_adr_status(parse_document_metadata(no_status)),
+        None
+    );
     // An out-of-enum status token → None (rejected, never carried).
     let bad = "# `x` adr: `t` | (**status:** `superseded`)\n";
-    assert_eq!(frontmatter_adr_status(bad), None);
+    assert_eq!(canonical_adr_status(parse_document_metadata(bad)), None);
 }
 
 #[test]
@@ -197,29 +204,32 @@ fn feature_tag_parser_accepts_single_double_and_bare_quote_styles() {
 }
 
 #[test]
-fn plan_tier_parser_extracts_each_tier_and_none_when_missing_or_invalid() {
+fn canonical_plan_tier_facet_projects_typed_metadata() {
     // The plan `tier:` frontmatter key carries one of L1-L4;
     // the parser reads each, and a missing or out-of-enum tier is None.
     for tier in ["L1", "L2", "L3", "L4"] {
         let plan = format!("---\ntags:\n  - '#plan'\n  - '#x'\ntier: {tier}\n---\n\nbody\n");
         assert_eq!(
-            frontmatter_plan_tier(&plan).as_deref(),
+            canonical_plan_tier(parse_document_metadata(&plan)).as_deref(),
             Some(tier),
             "extracts the {tier} tier"
         );
     }
     // Quoted value still resolves.
     let quoted = "---\ntags:\n  - '#plan'\ntier: 'L3'\n---\n\nbody\n";
-    assert_eq!(frontmatter_plan_tier(quoted).as_deref(), Some("L3"));
+    assert_eq!(
+        canonical_plan_tier(parse_document_metadata(quoted)).as_deref(),
+        Some("L3")
+    );
     // No tier key → None.
     let no_tier = "---\ntags:\n  - '#plan'\n  - '#x'\n---\n\nbody\n";
-    assert_eq!(frontmatter_plan_tier(no_tier), None);
+    assert_eq!(canonical_plan_tier(parse_document_metadata(no_tier)), None);
     // Out-of-enum tier → None (rejected).
     let bad = "---\ntags:\n  - '#plan'\ntier: L9\n---\n\nbody\n";
-    assert_eq!(frontmatter_plan_tier(bad), None);
+    assert_eq!(canonical_plan_tier(parse_document_metadata(bad)), None);
     // A tier marker outside the frontmatter fence is ignored.
     let outside = "---\ntags:\n  - '#plan'\n---\n\ntier: L2 mentioned in prose\n";
-    assert_eq!(frontmatter_plan_tier(outside), None);
+    assert_eq!(canonical_plan_tier(parse_document_metadata(outside)), None);
 }
 
 #[test]
@@ -269,19 +279,37 @@ fn type_specific_lifecycle_parses_per_species_with_honest_degradation() {
     // ADR status from the H1 status line.
     let adr = "---\ntags: ['#adr']\n---\n\n# `x` adr: `y` | (**status:** `accepted`)\n";
     assert_eq!(
-        doc_lifecycle(Some("adr"), adr).unwrap().state,
+        doc_lifecycle(Some("adr"), adr, parse_document_metadata(adr))
+            .unwrap()
+            .state,
         "accepted",
         "ADR status drives the lifecycle"
     );
     let deprecated = "# `x` adr (**status:** `deprecated`)\n";
     assert_eq!(
-        doc_lifecycle(Some("adr"), deprecated).unwrap().state,
+        doc_lifecycle(Some("adr"), deprecated, parse_document_metadata(deprecated))
+            .unwrap()
+            .state,
         "deprecated"
+    );
+    let legacy_adr = "# Historical decision — status accepted\n";
+    let legacy_metadata = parse_document_metadata(legacy_adr);
+    assert_eq!(
+        canonical_adr_status(legacy_metadata),
+        None,
+        "legacy tolerance does not widen the canonical status facet"
+    );
+    assert_eq!(
+        doc_lifecycle(Some("adr"), legacy_adr, legacy_metadata)
+            .unwrap()
+            .state,
+        "accepted",
+        "legacy ADR status remains available to lifecycle"
     );
 
     // Plan tier rides as the state; checkbox progress stays on progress.
     let plan = "---\ntier: L2\n---\n\n- [x] done\n- [ ] todo\n";
-    let plan_lc = doc_lifecycle(Some("plan"), plan).unwrap();
+    let plan_lc = doc_lifecycle(Some("plan"), plan, parse_document_metadata(plan)).unwrap();
     assert_eq!(plan_lc.state, "L2", "plan tier is the lifecycle state");
     assert_eq!(plan_lc.progress.unwrap().done, 1);
     assert_eq!(plan_lc.progress.unwrap().total, 2);
@@ -289,7 +317,9 @@ fn type_specific_lifecycle_parses_per_species_with_honest_degradation() {
     // Audit worst-finding severity.
     let audit = "# audit\n\n### Finding A (high)\n### Finding B (low)\n";
     assert_eq!(
-        doc_lifecycle(Some("audit"), audit).unwrap().state,
+        doc_lifecycle(Some("audit"), audit, parse_document_metadata(audit))
+            .unwrap()
+            .state,
         "high",
         "the worst severity present wins"
     );
@@ -297,12 +327,24 @@ fn type_specific_lifecycle_parses_per_species_with_honest_degradation() {
     // Rule active vs superseded.
     let active_rule = "# rule\n\n## Status\n\nActive.\n";
     assert_eq!(
-        doc_lifecycle(Some("rule"), active_rule).unwrap().state,
+        doc_lifecycle(
+            Some("rule"),
+            active_rule,
+            parse_document_metadata(active_rule),
+        )
+        .unwrap()
+        .state,
         "active"
     );
     let superseded = "# rule\n\n## Status\n\nSuperseded by `new-rule`.\n";
     assert_eq!(
-        doc_lifecycle(Some("rule"), superseded).unwrap().state,
+        doc_lifecycle(
+            Some("rule"),
+            superseded,
+            parse_document_metadata(superseded)
+        )
+        .unwrap()
+        .state,
         "superseded"
     );
 
@@ -310,13 +352,15 @@ fn type_specific_lifecycle_parses_per_species_with_honest_degradation() {
     // to the generic checkbox lifecycle (or None), never a fabricated state.
     let old_adr = "# an adr with no status line\n\n- [ ] a box\n";
     assert_eq!(
-        doc_lifecycle(Some("adr"), old_adr).unwrap().state,
+        doc_lifecycle(Some("adr"), old_adr, parse_document_metadata(old_adr))
+            .unwrap()
+            .state,
         "active",
         "no status line degrades to the checkbox lifecycle, not a lie"
     );
     let bare_adr = "# an adr with neither status nor checkboxes\n";
     assert!(
-        doc_lifecycle(Some("adr"), bare_adr).is_none(),
+        doc_lifecycle(Some("adr"), bare_adr, parse_document_metadata(bare_adr)).is_none(),
         "no signal at all is honest absence"
     );
 }

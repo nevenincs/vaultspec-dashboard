@@ -18,9 +18,10 @@
 // HONEST GAPS, rendered as gaps rather than invented: the handshake reports the
 // running `version` as `null` today (the discovery record is not a served
 // route), so the header states the INSTALLED version instead and says nothing
-// about a running one. The tool's own listening port and pid are likewise not on
-// the wire; what IS served is its STORE's address, process, and version, so
-// those are what the header names.
+// about a running one. The service's OWN listening port and pid ARE served —
+// verbatim under `/status` `backends.rag` (the same source the system-status
+// console reads) — and lead the facts list right after the health word; the
+// STORE's address, process, and version remain stated as the store's own.
 
 import { useMemo } from "react";
 
@@ -46,8 +47,11 @@ export const RAG_IDENTITY_TEXT_MAX_CHARS = 512;
  *  `null` when the wire did not carry it; the view never substitutes one fact for
  *  another. */
 export interface RagServiceIdentityView {
-  /** The tool's own served name (the component handshake). */
-  name: string | null;
+  /** The service's OWN listening port, served verbatim on the status envelope
+   *  (`backends.rag.port`) — the fact the header states right after health. */
+  port: number | null;
+  /** The service's own process id (`backends.rag.pid`), served verbatim. */
+  processId: number | null;
   /** The running version the handshake reports, or `null` when it reports none. */
   version: string | null;
   /** The installed version the provisioning projection reports. */
@@ -84,6 +88,20 @@ function identityNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+/** A bare dotted version somewhere in a served version string. */
+const VERSION_TOKEN = /\d+(?:\.\d+){1,3}(?:[-+.][0-9A-Za-z.-]+)?/u;
+
+/** Reduce a served VERSION string to its version token. Provisioning serves the
+ *  installed version as "<package> v<semver>" — a literal that would put the
+ *  internal package identifier on screen (the labels law keeps it in source
+ *  only), so a version fact renders the VERSION and nothing else. A string with
+ *  no recognizable version token yields no fact rather than a leaked literal. */
+function identityVersion(value: unknown): string | null {
+  const text = identityText(value);
+  if (text === null) return null;
+  return VERSION_TOKEN.exec(text)?.[0] ?? null;
+}
+
 function block(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null
     ? (value as Record<string, unknown>)
@@ -100,25 +118,28 @@ export function deriveRagServiceIdentity(
   component: TierComponent | undefined,
   envelope: RagOpsStateEnvelope | null | undefined,
   installedVersion?: unknown,
+  ragBackend?: { port?: number; pid?: number },
 ): RagServiceIdentityView {
   const index = block(envelope?.index);
   const qdrant = block(envelope?.qdrant);
   const view: RagServiceIdentityView = {
-    name: identityText(component?.name),
-    version: identityText(component?.version),
-    installedVersion: identityText(installedVersion),
-    requiredVersion: identityText(component?.floor),
+    port: identityNumber(ragBackend?.port),
+    processId: identityNumber(ragBackend?.pid),
+    version: identityVersion(component?.version),
+    installedVersion: identityVersion(installedVersion),
+    requiredVersion: identityVersion(component?.floor),
     storageMode: identityText(qdrant?.mode),
     storageEndpoint: identityText(qdrant?.url),
     storageProcessId: identityNumber(qdrant?.pid),
-    storageVersion: identityText(qdrant?.version),
+    storageVersion: identityVersion(qdrant?.version),
     storagePath: identityText(index?.storage_path),
     documents: identityNumber(index?.vault_count),
     code: identityNumber(index?.code_count),
     empty: false,
   };
   const carried =
-    view.name !== null ||
+    view.port !== null ||
+    view.processId !== null ||
     view.version !== null ||
     view.installedVersion !== null ||
     view.requiredVersion !== null ||
@@ -157,10 +178,11 @@ export function useRagServiceIdentity(scope: unknown): RagServiceIdentityHookVie
     .components?.[SERVICE_TIER];
   const envelope = opsState.data?.envelope;
   const installedVersion = provision.data?.rag.tool_version ?? null;
+  const ragBackend = status.data?.rag;
 
   const identity = useMemo(
-    () => deriveRagServiceIdentity(component, envelope, installedVersion),
-    [component, envelope, installedVersion],
+    () => deriveRagServiceIdentity(component, envelope, installedVersion, ragBackend),
+    [component, envelope, installedVersion, ragBackend],
   );
   return {
     identity,

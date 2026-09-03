@@ -6,7 +6,7 @@ tags:
 date: '2026-08-01'
 modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:d0392189fea5f3952dcf7ed4f5283f6e4d7ef6e60cb090eda63e40919fd505f6'
+body_hash: 'sha256:73bdeddc049651ff3f481d0cc5950214e0be6f2ec97786a3d82bc9c9b0b000ca'
 related:
   - '[[2026-08-01-approval-shape-reconciliation-W01-P01-S01]]'
   - '[[2026-08-01-approval-shape-reconciliation-W01-P01-S02]]'
@@ -30,6 +30,10 @@ related:
   - '[[2026-08-01-approval-shape-reconciliation-W02-P04-S19]]'
   - '[[2026-08-01-approval-shape-reconciliation-W02-P04-S20]]'
   - '[[2026-08-01-approval-shape-reconciliation-W02-P04-S21]]'
+  - '[[2026-08-01-approval-shape-reconciliation-W02-P05-S22]]'
+  - '[[2026-08-01-approval-shape-reconciliation-W02-P05-S23]]'
+  - '[[2026-08-01-approval-shape-reconciliation-W02-P05-S24]]'
+  - '[[2026-08-01-approval-shape-reconciliation-W02-P05-S25]]'
   - '[[2026-08-01-approval-shape-reconciliation-W03-P06-S26]]'
   - '[[2026-08-01-approval-shape-reconciliation-W03-P06-S27]]'
   - '[[2026-08-01-approval-shape-reconciliation-W03-P07-S28]]'
@@ -46,6 +50,7 @@ related:
   - '[[2026-08-01-approval-shape-reconciliation-adr]]'
   - '[[2026-08-01-approval-shape-reconciliation-cross-repo-inventory-reference]]'
   - '[[2026-08-01-approval-shape-reconciliation-plan]]'
+  - '[[2026-08-01-approval-shape-reconciliation-rag-step-grounding-reference]]'
 ---
 
 # `approval-shape-reconciliation` feature index
@@ -82,6 +87,10 @@ Auto-generated index of all documents tagged with `#approval-shape-reconciliatio
 - `2026-08-01-approval-shape-reconciliation-W02-P04-S19` - Add reviewer approval descriptor entries to POLICY_DESCRIPTORS for all three modes and repoint the manual human approval entry at the destructive floor wording
 - `2026-08-01-approval-shape-reconciliation-W02-P04-S20` - Add the three reviewer approval policy copy strings and reword the manual human approval string off its former reviewer approval phrasing
 - `2026-08-01-approval-shape-reconciliation-W02-P04-S21` - Extend the exhaustive ApprovalRequirement coverage test to include the new reviewer approval required token
+- `2026-08-01-approval-shape-reconciliation-W02-P05-S22` - Remove the session_override and session_override_ignored fields from the PolicyDecisionProjection wire type
+- `2026-08-01-approval-shape-reconciliation-W02-P05-S23` - Remove the session_override and session_override_ignored mapping lines from the policy decision adapter
+- `2026-08-01-approval-shape-reconciliation-W02-P05-S24` - Remove the session_override and session_override_ignored fixture lines from the authoring store test
+- `2026-08-01-approval-shape-reconciliation-W02-P05-S25` - Remove the session_override_ignored fixture line from the review station render test
 - `2026-08-01-approval-shape-reconciliation-W03-P06-S26` - Add a LOCALLY_RESPONDABLE_PAUSE_CAUSES set that excludes document_approval_request and correct the misleading comment on PLAN_APPROVAL_PAUSE_CAUSES to describe it as a projection and FSM classification rather than an answerability set
 - `2026-08-01-approval-shape-reconciliation-W03-P06-S27` - Re export LOCALLY_RESPONDABLE_PAUSE_CAUSES alongside the existing pause cause export
 - `2026-08-01-approval-shape-reconciliation-W03-P07-S28` - Refuse a respond call against a document approval pause with a typed error naming the engine review surface, before the idempotency and transition logic runs, and narrow the local branching in the transition and approval status blocks to the locally respondable set
@@ -103,3 +112,4 @@ Auto-generated index of all documents tagged with `#approval-shape-reconciliatio
 ### reference
 
 - `2026-08-01-approval-shape-reconciliation-cross-repo-inventory-reference` - `approval-shape-reconciliation` reference: `cross-repo approval shape inventory`
+- `2026-08-01-approval-shape-reconciliation-rag-step-grounding-reference` - `approval-shape-reconciliation` reference: `per-step rag grounding record`

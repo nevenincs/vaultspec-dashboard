@@ -5,13 +5,24 @@
 
 .DESCRIPTION
     Installs the COMPLETE offline product tree - the dashboard binary, the copied
-    external updater, the bundled A2A runtime (a frozen onedir built and shipped
-    by this product, not fetched at install time), the release manifest, the
-    component lock, licenses, and the SBOM - never a bare binary. The composed
-    tree is offline-complete: nothing here resolves a runtime dependency over the
-    network, and the only network touch is the optional release-archive download.
+    external updater, the release manifest, licenses, and the SBOM - never a bare
+    binary. The composed tree is offline-complete: nothing here resolves a runtime
+    dependency over the network, and the only network touch is the optional
+    release-archive download.
 
-    Exactly one operation runs per invocation:
+    That list is the WHOLE tree: no agent-to-agent runtime is bundled, and the
+    absence is deliberate rather than an oversight. The dashboard resolves that
+    runtime from the machine app home (`~/.vaultspec/a2a/generations/`), never
+    from its own install directory, and no shipped operation populates that
+    location yet - adoption is declared but not implemented. Bundling one would
+    add several hundred megabytes this product never reads. It returns to the
+    tree when adoption is implemented; the receipt-state and removal verbs below
+    read the app home either way, so they are unaffected by its absence.
+
+    At most one operation runs per invocation. Selecting NONE installs the newest
+    published release, which is the only shape a piped invocation can take:
+    `irm <release-url>/install.ps1 | iex` carries no parameters, so a script that
+    demanded one could never be served from its own release page.
       -Source <path>  Install from an ALREADY-COMPOSED local product tree (the
                       generation directory the product builder emits). Fully
                       offline.
@@ -40,7 +51,8 @@
     A local composed product-tree (generation) directory to install from.
 
 .PARAMETER Version
-    A release version to fetch and install.
+    A release version to fetch and install. Omitted, the newest published release
+    is resolved from the GitHub release API.
 
 .PARAMETER InstallDir
     Where to place the product tree. Defaults to the per-user Programs location.
@@ -53,6 +65,7 @@
     outside the install directory).
 
 .EXAMPLE
+    ./install.ps1
     ./install.ps1 -Source C:\path\to\generations\0001 -InstallDir C:\vaultspec
     ./install.ps1 -Update -InstallDir C:\vaultspec
     ./install.ps1 -Uninstall -InstallDir C:\vaultspec
@@ -89,8 +102,32 @@ function Note($message) {
 
 $selected = @($Source, $Version | Where-Object { $_ }).Count +
             @($Update.IsPresent, $Uninstall.IsPresent | Where-Object { $_ }).Count
-if ($selected -ne 1) {
-    Fail 'choose exactly one of -Source <path>, -Version <ver>, -Update, -Uninstall'
+# The operations remain mutually exclusive, so two or more is still a refusal.
+# Zero is not: it is the piped-installer shape, and it resolves the newest
+# published release below rather than exiting on the release page's own URL.
+if ($selected -gt 1) {
+    Fail 'choose at most one of -Source <path>, -Version <ver>, -Update, -Uninstall'
+}
+
+# Resolve the newest published release from the GitHub API, reading nothing from
+# it but `tag_name`. That tag is remote input, not a trusted path segment, so it
+# is matched against a version shape BEFORE it is pasted into a download URL; an
+# unparseable or missing tag is a loud stop, never a guessed version.
+function Resolve-LatestVersion {
+    $unresolved = "could not resolve the latest release of $Repo"
+    $fallback = 'pass -Version <ver> to install a specific one'
+    try {
+        $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" `
+            -UseBasicParsing -TimeoutSec $FetchTimeoutSec
+    } catch {
+        [Console]::Error.WriteLine($_.Exception.Message)
+        Fail "$($unresolved): the GitHub release API was unreachable, rate-limited, or has no published release; $fallback"
+    }
+    $tag = "$($release.tag_name)" -replace '^v', ''
+    if ($tag -notmatch '^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$') {
+        Fail "$($unresolved): the GitHub release API returned no usable tag_name (got '$tag'); $fallback"
+    }
+    $tag
 }
 
 # The dashboard binary inside a product tree - the shipped authority every
@@ -235,6 +272,10 @@ try {
     } else {
         if ($env:PROCESSOR_ARCHITECTURE -ne 'AMD64' -and $env:PROCESSOR_ARCHITEW6432 -ne 'AMD64') {
             Fail "unsupported Windows architecture: $env:PROCESSOR_ARCHITECTURE (the supported target is $Target)"
+        }
+        if (-not $Version) {
+            $Version = Resolve-LatestVersion
+            Note "latest published release is $Version"
         }
         $base = "https://github.com/$Repo/releases/download/v$Version"
         $archive = "vaultspec-$Version-$Target.zip"

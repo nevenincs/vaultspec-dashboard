@@ -347,3 +347,16 @@ export function relayToolContentText(frame: RelayTranscriptFrame): string {
 export function relayErrorMessage(frame: RelayTranscriptFrame): string {
   return asStr(frame.payload.message);
 }
+
+/** An `error` frame's refusal CODE (a2a `ErrorOccurred.code`) — the closed-list
+ *  classification the failure was refused under, carried verbatim like every other
+ *  field here. It is the machine-readable half of the pair the frame carries; the
+ *  message beside it is prose that has been observed describing something other
+ *  than the refusal, so a consumer branches on THIS and renders that.
+ *
+ *  Non-authoritative, like the whole relay: the durable classification is served on
+ *  `run-status`, and this only fills the gap for a run whose authoritative snapshot
+ *  carries none. `""` when the frame is not an error or carries no code. */
+export function relayErrorCode(frame: RelayTranscriptFrame): string {
+  return frame.kind === "error" ? asStr(frame.payload.code) : "";
+}

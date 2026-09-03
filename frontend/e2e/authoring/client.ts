@@ -6,7 +6,7 @@
 // (`engine/crates/vaultspec-api/tests/authoring_p42a_acceptance.rs`), so this
 // suite proves the SAME wire from the browser-facing side of the contract.
 
-const ACTOR_TOKEN_HEADER = "x-authoring-actor-token";
+import { AUTHORING_ACTOR_TOKEN_HEADER } from "../../src/stores/server/httpTransport";
 
 export interface Envelope {
   readonly status: number;
@@ -57,7 +57,7 @@ export class AuthoringClient {
     const headers: Record<string, string> = {
       authorization: `Bearer ${this.serviceToken}`,
     };
-    if (opts.actorToken) headers[ACTOR_TOKEN_HEADER] = opts.actorToken;
+    if (opts.actorToken) headers[AUTHORING_ACTOR_TOKEN_HEADER] = opts.actorToken;
     if (opts.body !== undefined) headers["content-type"] = "application/json";
     const res = await fetch(`${this.baseUrl}${path}`, {
       method,

@@ -123,10 +123,10 @@ describe("ClarificationCard", () => {
     expect(
       screen.getByRole("radio", { name: "The vault" }).getAttribute("aria-checked"),
     ).toBe("true");
-    expect(
-      document.querySelector<HTMLButtonElement>("[data-clarification-submit]")
-        ?.disabled,
-    ).toBe(false);
+    // A lone choice question answers on CLICK — picking the option IS the reply,
+    // the way a suggested-reply chip works in every reference surface — so this
+    // card deliberately renders no separate submit control.
+    expect(document.querySelector("[data-clarification-submit]")).toBeNull();
   });
 
   it("is non-modal: it is a section in flow, with no dialog role anywhere", () => {

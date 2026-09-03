@@ -24,7 +24,14 @@ const SOURCES = import.meta.glob<string>(
   },
 );
 
-/** Markers that make a component data-bearing, and therefore condition-bearing. */
+/** Markers that make a component data-bearing, and therefore condition-bearing.
+ *
+ *  The list is a proxy for the rule stated above — composes the state primitives OR
+ *  reads the stores — so a store read that goes through a slice-specific hook needs
+ *  its hook named here. The agent panel's own surfaces (composer, transcript, team
+ *  run, chip, pending-changes bridge) read the session and team-run slices and
+ *  compose no `StateBlock`/`Skeleton` of their own, so without these two entries the
+ *  entire docked panel was invisible to the desk except its outermost frame. */
 const DATA_BEARING = [
   "StateBlock",
   "Skeleton",
@@ -33,6 +40,21 @@ const DATA_BEARING = [
   "useDashboard",
   "useVaultTree",
   "tiers",
+  "useSession",
+  "useAgentTeamRunId",
+  // The two health consoles Settings ▸ Advanced hosts (advanced-service-console ADR
+  // D6) state their whole condition as a served tone word, so they compose neither
+  // state primitive and were invisible to the desk — the one pair of relocated
+  // surfaces with no reviewable cell. They read the status rollup and the project
+  // status through these slice-specific hooks.
+  "useStatusRollup",
+  "useCoreStatus",
+  // Settings ▸ the dialog and its Advanced section. The dialog is schema-driven —
+  // its whole body is a served registry read with pending and empty states — and
+  // Advanced hosts the operational consoles. Neither composes a state primitive of
+  // its own, so without these the entire SETTINGS area was invisible to the desk.
+  "useSettingsDialogView",
+  "useExpandedAdvancedConsole",
 ];
 
 /** Areas that are never principal surfaces regardless of markers. */

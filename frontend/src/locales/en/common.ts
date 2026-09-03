@@ -1,16 +1,64 @@
 export const common = {
   systemStatus: {
+    description:
+      "What each program reports about itself. Anything a program does not report is named as unreported rather than filled in.",
+    sections: {
+      programs: "Programs",
+      data: "Available data",
+    },
     labels: {
-      application: "Application",
+      application: "Vaultspec",
       documents: "Documents",
       history: "History",
       links: "Links",
-      projectTools: "Project tools",
+      projectTools: "Vaultspec tools",
       search: "Search",
+    },
+    programs: {
+      app: {
+        name: "Vaultspec",
+        summary:
+          "Reads your project and answers everything this window shows. Runs on your machine.",
+      },
+      projectTools: {
+        name: "Vaultspec tools",
+        summary:
+          "Run whenever the app needs to read or write the documents in your project.",
+      },
+      index: {
+        name: "Search service",
+        summary:
+          "Keeps the search index up to date and answers lookups by meaning. Runs on its own.",
+      },
+      agents: {
+        name: "A2A",
+        summary: "Runs the writing agents. Installed and updated separately.",
+      },
+    },
+    facts: {
+      address: "Address",
+      managedBy: "Managed by",
+      port: "Port",
+      process: "Process",
+      requires: "Requires",
+      responseTime: "Response time (ms)",
+      version: "Version",
+    },
+    ownership: {
+      elsewhere: "Another app",
+      thisApp: "This app",
+    },
+    gaps: {
+      app: "Reports no version, no address, and no running time.",
+      projectTools:
+        "Started only when needed, so it reports no address and no running time.",
+      index: "Reports no running time.",
+      agents: "Reports no running time.",
     },
     states: {
       available: "Available",
       checking: "Checking…",
+      notInstalled: "Not installed",
       reachable: "Available",
       statusUnavailable: "Status unavailable",
       unavailable: "Unavailable",
@@ -250,15 +298,12 @@ export const common = {
     title: "Advanced",
     description:
       "Status and controls for the tools this app runs on. Everything here is for troubleshooting.",
-  },
-  controlPanels: {
     labels: {
       projectHealth: "Project health",
-      systemStatus: "System status",
-      agentService: "Agents",
+      systemStatus: "Services",
     },
     accessibility: {
-      group: "Project status",
+      group: "Pending work",
       panelStatus: "{{panel}}: {{status}}",
     },
     tones: {
@@ -268,78 +313,10 @@ export const common = {
       checking: "Checking",
     },
   },
-  agentService: {
-    description:
-      "Install, run, and maintain the local agents that power multi-agent authoring.",
-    statusLabel: "Agent status",
-    sections: {
-      status: "Status",
-      orchestration: "Orchestration",
-      actions: "Actions",
-      diagnostics: "Diagnostics",
-    },
-    installState: {
-      absent: "Not installed",
-      settled: "Installed",
-      recoveryRequired: "Recovery required",
-      busy: "Busy",
-      unverifiable: "Unverifiable",
-      unknown: "Checking",
-    },
-    readiness: {
-      uninstalled: "Not installed",
-      stopped: "Stopped",
-      running: "Running",
-      workerIdle: "Running, idle",
-    },
-    ownership: {
-      owned: "Managed by this app",
-      unowned: "Managed elsewhere",
-    },
-    orchestration: {
-      available: "Agent orchestration is available.",
-      unavailable: "Agent orchestration is unavailable.",
-    },
-    ops: {
-      install: "Install",
-      ensure: "Ensure running",
-      start: "Start",
-      stop: "Stop",
-      restart: "Restart",
-      repair: "Repair",
-      update: "Update",
-      rollback: "Revert",
-      remove: "Remove",
-      doctor: "Run diagnostics",
-    },
-    activeGeneration: "Active version {{generation}}",
-    progress: "Working…",
-    statusUnavailable: "Agent status is unavailable. Reload the page and try again.",
-    runFailed: "The last action could not be started. Try again.",
-    dataPreserved: "Your documents and data are preserved.",
-    outcome: {
-      succeeded: "Action completed.",
-      failed: "The action failed. Try again.",
-    },
-    confirm: {
-      remove: {
-        title: "Remove the agents?",
-        body: "This uninstalls the local agents. Your documents and data are preserved.",
-        confirmLabel: "Remove",
-        cancelLabel: "Cancel",
-      },
-      rollback: {
-        title: "Revert to the previous version?",
-        body: "This restores the previously installed agents. Your documents and data are preserved.",
-        confirmLabel: "Revert",
-        cancelLabel: "Cancel",
-      },
-    },
-  },
   agent: {
     sendComment: "Send to agent",
     autonomy: {
-      label: "Autonomy",
+      label: "Approvals",
       reviewEach: "Review each change",
       applyAutomatically: "Apply automatically",
       menuAria: "Select how changes are applied",
@@ -352,7 +329,7 @@ export const common = {
       newSession: "Start new agent session",
     },
     autonomyBanner: {
-      dismiss: "Hide the autonomy warning",
+      dismiss: "Hide the approvals warning",
       warning: "Apply automatically is on. Changes land without your review.",
     },
     begin: {
@@ -369,43 +346,86 @@ export const common = {
         explore: "Explore",
         review: "Review",
       },
+      descriptions: {
+        build: "Draft or revise documents as changes you review.",
+        explore: "Research the project and report what it finds.",
+        review: "Check recent work and list what needs attention.",
+      },
       startersLabel: "Ways to start",
     },
     clarification: {
       answerPlaceholder: "Type your answer",
       failed: "The answer couldn’t be sent. Try again.",
+      optionOrdinal: "{{ordinal, number}}.",
       recapTitle: "ANSWERED",
       region: "Question from the run",
       required: "Required",
       submit: "Send answer",
       title: "The run needs a decision",
     },
+    runFailure: {
+      budgetExhausted:
+        "The run stopped at the spending limit you set. Change the limit, then try again.",
+      creditsExhausted:
+        "This account has run out of credit. Update your billing to add more credit.",
+      detail: "Reported: {{detail}}",
+      invalidRequest:
+        "The model refused the request as invalid. Change the message or the chosen model, then try again.",
+      networkUnreachable:
+        "The model could not be reached. Check your network connection, then try again.",
+      providerOverloaded:
+        "The model is over capacity right now. Wait a moment, then try again.",
+      throttled:
+        "The model is limiting how fast requests are sent. Wait a moment, then try again.",
+      unauthenticated:
+        "The model refused this account’s credential. Update the credential, or choose another account.",
+      unknown:
+        "The run failed and reported no cause. Check the run’s status, then try again.",
+      usageExhausted:
+        "This account has used its allowance for the current period. Wait for the next period, or change your plan.",
+    },
     runHeader: {
+      catalogRevision: "Catalog revision",
+      controlValue:
+        "{{control}} ({{controlId}}) = {{value}} · {{option}} ({{optionId}})",
+      digest: "Selection digest",
       elapsed: "Elapsed {{elapsed}}",
+      entryId: "Catalog entry",
+      executionMode: "Execution mode",
+      fallbackPlan: "FALLBACK PLAN",
+      frozenAssignment: "FROZEN ASSIGNMENT",
+      frozenAssignmentInvalid:
+        "Frozen assignment evidence is incomplete and cannot be shown.",
+      labeledValue: "{{label}}: {{value}}",
+      model: "Model",
+      modelValue: "Model value",
       mixedProvider: "Mixed providers",
+      nativeControls: "Native controls",
       phase: "Phase: {{phase}}",
+      provider: "Model source",
+      providerIdentity: "Model source identity",
       region: "Run status",
+      role: "Role",
+      roleOverride: "Role override",
       roster: "AGENTS",
+      schemaVersion: "Selection format",
+      selectionSource: "Selection source",
+      teamSelection: "Team selection",
     },
     pending: {
-      hide: "Hide pending changes",
       label: "Pending changes",
       show: "Show pending changes",
       unavailable: "Pending changes unavailable",
     },
     panel: {
       region: "Agent",
-      sessionsMenu: "Sessions",
+      conversationMenu: "Conversation options",
       newSession: "New session",
-      endConversation: "End conversation",
+      archiveSession: "Archive conversation",
+      history: "History",
       recentSessions: "Recent sessions",
       untitledSession: "Untitled session",
       close: "Close agent panel",
-      view: {
-        switcher: "Agent panel view",
-        transcript: "Conversation",
-        pending: "Pending changes",
-      },
     },
     transcript: {
       loading: "Loading the conversation…",
@@ -413,7 +433,7 @@ export const common = {
       error:
         "This conversation couldn’t be loaded. It may have expired. Open a new session.",
       unavailable:
-        "Agent data is unavailable right now. Reload the page and try again.",
+        "Could not connect to the agent service. Reload the page and try again.",
       showingRecent: "Showing the most recent messages.",
       timeline: "Work timeline",
       usedTools_one: "Used {{count, number}} tool",
@@ -453,11 +473,13 @@ export const common = {
       },
     },
     composer: {
-      placeholder: "Message the agent",
+      placeholder: "Ask anything, @ to mention, / for commands",
       clarificationParked: "Answer the question above to continue the run",
       steerPlaceholder: "Reply to guide the running agent",
-      send: "Send",
+      enterHint: "Press enter to send. Press shift and enter for a new line.",
       sendFailed: "The message couldn’t be sent. Try again.",
+      attach: "Attach",
+      workspace: "Workspace",
       attachContext: "Add a feature or document",
       attachedContext: "Attached context",
       evidenceAria: "Attach a file as evidence",
@@ -477,11 +499,43 @@ export const common = {
       selectorValue: "{{selector}}: {{value}}",
       selectorDisabled: "{{selector}}: {{value}}. {{reason}}",
       model: "Model",
-      modelDefault: "Default",
-      modelUnavailable: "Using the default model.",
+      modelUnavailable: "No current model can be selected.",
+      providerHealth: "Model source health",
+      providerHealthConfigured: "Configured",
+      providerHealthTransport: "Transport",
+      providerHealthAuthentication: "Authentication",
+      providerHealthCatalog: "Catalog",
+      providerHealthCatalogFreshness: "Catalog freshness",
+      providerHealthAdmission: "Admission",
+      providerHealthSelectable: "Selectable",
+      providerHealthNotSelectable: "Not selectable",
+      providerHealthHealthCheckedAt: "Health checked {{time}}",
+      providerHealthCheckedAt: "Catalog checked {{time}}",
+      providerHealthExpiresAt: "Expires {{time}}",
+      providerHealthReasons: "Reasons",
+      providerHealthStateAvailable: "Available",
+      providerHealthStateUnavailable: "Unavailable",
+      providerHealthStateUnknown: "Unknown",
+      providerHealthStateAuthenticated: "Authenticated",
+      providerHealthStateUnauthenticated: "Unauthenticated",
+      providerHealthStateNotApplicable: "Not applicable",
+      providerHealthStateStale: "Stale",
+      providerHealthStateAdmitted: "Admitted",
+      providerHealthStateNotAdmitted: "Not admitted",
+      advancedSelection: "Advanced team model selection",
+      advancedSelectionDescription:
+        "Set optional per-role overrides and ordered fallbacks from this team’s current model catalog.",
+      roleOverrides: "Role overrides",
+      roleOverride: "Override for {{role}}",
+      noRoleOverrides: "This team has no served roles to override.",
+      roleOrdinal: "Agent {{index, number}}",
+      fallbacks: "Fallbacks",
+      addFallback: "Add fallback",
+      removeFallback: "Remove fallback {{index, number}}",
+      fallbackOrdinal: "Fallback {{index, number}}",
       team: "Team",
       teamDefault: "Single agent",
-      teamUnavailable: "Using one agent.",
+      teamUnset: "Select team",
       feature: "Feature",
       featureUnset: "Not set",
       featureUnbound: "Choose a feature before starting this run.",
@@ -489,10 +543,9 @@ export const common = {
       featurePlaceholder: "Search features",
       featureEmpty: "No matching features.",
       featureMenuAria: "Select the feature this run works on",
-      modelMenuAria: "Select a model profile",
+      modelMenuAria: "Select a model and its controls",
       teamMenuAria: "Select an agent team",
       teamPresetUnavailable: "This team can’t be loaded.",
-      startTeamRun: "Start team",
       cancelTeamRun: "Stop team run",
       teamRunPhase: "Team run: {{phase}}",
       teamRunRefused:
@@ -543,7 +596,7 @@ export const common = {
     onboarding: {
       action: "Add project",
       body: "No project is connected yet. Add a project folder to get started. The path is registered read-only, so nothing on disk is created or modified.",
-      title: "Welcome to vaultspec",
+      title: "Welcome to Vaultspec",
     },
     planStates: {
       finished: "Finished",

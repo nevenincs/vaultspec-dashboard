@@ -49,6 +49,19 @@ import {
 import { StreamLostError } from "../../../platform/policy/failurePolicy";
 import { sseChunks } from "../queries/streams";
 import { asBool, asStr, asTiers, isRec, type Rec } from "../authoring";
+import {
+  adaptProviderCatalog,
+  nextProviderCatalogExpiry,
+  strArr,
+  type PassThrough,
+  type ProviderCatalogResult,
+  type ProviderCatalogSelection,
+} from "./a2aProviderCatalog";
+import { adaptProviderCondition, type ProviderCondition } from "./providerCondition";
+
+// The provider-catalog half lives in its own module (module-size gate); the ONE
+// import path stays here — every catalog name re-exports unchanged.
+export * from "./a2aProviderCatalog";
 
 // Dev proxies `/api` → engine; production shares the engine origin.
 const A2A_BASE = import.meta.env.DEV ? "/api" : "";
@@ -78,42 +91,75 @@ export interface TeamPreset {
   readonly topology?: string;
   readonly worker_count?: number;
   readonly required_roles: string[];
+  /** Optional A2A-authored display text for required role ids. */
+  readonly required_role_labels?: Readonly<Record<string, string>>;
   readonly authoring_capability?: string;
   readonly is_mock: boolean;
   readonly origin?: string;
-  readonly default_profile_id?: string;
-  /** The SERVED selectable model profiles for this preset. The sibling populates
-   *  this on `presets-list`; an older/sparse body simply yields an empty list, and
-   *  the picker falls back to naming `default_profile_id` alone. */
-  readonly profiles: TeamProfile[];
 }
 
-/** One role's provider binding inside a profile or a run. A profile may route
- *  DIFFERENT roles to different providers, which is why this is a list and not one
- *  label. Field names mirror the SERVED ones exactly (`role_id`, `agent_id`,
- *  `provider_id`, `model_name`) — an earlier revision invented `role`/`model` and
- *  silently dropped every assignment against the real wire. */
-export interface TeamRoleAssignment {
+/** The only display-safe provenance A2A may attach to a frozen role. It records
+ * which bounded request layer won at admission; nothing from provider discovery,
+ * credentials, or the raw wire object crosses this boundary. */
+export interface FrozenTeamRoleProvenance {
+  readonly selection_source: "team_selection" | "role_override";
+}
+
+/** One frozen provider-native control. The selection ids remain visible for
+ * replay identity, while `provider_value` and optional served labels preserve
+ * what the provider actually received without consulting a later catalog. */
+export interface FrozenTeamNativeControl {
+  readonly control_id: string;
+  readonly option_id: string;
+  readonly provider_value: string;
+  readonly display_name?: string;
+  readonly option_display_name?: string;
+}
+
+/** A complete, historical provider execution snapshot. It intentionally differs
+ * from the outbound `ProviderCatalogSelection`: A2A resolves entry/control ids
+ * to the provider values it froze before the durable run exists. */
+export interface FrozenTeamExecutionSnapshot {
+  readonly provider_id: string;
+  readonly provider_display_name?: string;
+  readonly execution_mode: string;
+  readonly catalog_revision: string;
+  readonly entry_id: string;
+  readonly model_name: string;
+  readonly model_display_name?: string;
+  readonly controls: readonly FrozenTeamNativeControl[];
+}
+
+/** A frozen per-role assignment. These historical values are evidence of what
+ * actually ran, not editable new-run policy or a lookup against the current
+ * provider catalog. */
+export interface FrozenTeamRoleAssignment extends FrozenTeamExecutionSnapshot {
+  readonly role_id: string;
+  readonly agent_id?: string;
+  readonly fallbacks: readonly FrozenTeamExecutionSnapshot[];
+  readonly provenance: FrozenTeamRoleProvenance;
+}
+
+/** The read-only projection of a legacy profile-backed assignment. It exists only
+ * to preserve existing run/restart inspection while new-run policy has no profile
+ * or free model path. */
+export interface LegacyTeamRoleAssignment {
   readonly role_id: string;
   readonly agent_id?: string;
   readonly provider_id?: string;
   readonly model_name?: string;
-  /** The sibling's per-role readiness verdict — what actually explains an
-   *  ineligible profile, role by role. */
-  readonly provider_ready?: boolean;
 }
 
-/** One selectable model profile (the a2a `ProfileSummary`). `eligible` is the
- *  sibling's own verdict; `unavailable_reasons` are its words for why not — both
- *  render verbatim, never re-derived here. */
-export interface TeamProfile {
-  readonly id: string;
-  readonly display_name?: string;
-  readonly description?: string;
-  readonly is_default: boolean;
-  readonly eligible: boolean;
-  readonly unavailable_reasons: string[];
-  readonly assignments: TeamRoleAssignment[];
+/** Any assignment an existing run may truthfully disclose. New catalog-backed
+ * assignments are complete; legacy rows are deliberately non-selectable. */
+export type TeamRoleAssignment = FrozenTeamRoleAssignment | LegacyTeamRoleAssignment;
+
+export interface FrozenTeamAssignment {
+  readonly schema_version: number;
+  /** A bounded SHA-256 digest of the complete frozen selection. It is public
+   * historical evidence, never a credential or arbitrary provider payload. */
+  readonly digest: string;
+  readonly assignments: FrozenTeamRoleAssignment[];
 }
 
 /** The a2a run-start acknowledgement (the `RunStartResponse`), or a business
@@ -123,8 +169,10 @@ export interface TeamRunStartResult {
   readonly run_id?: string;
   readonly status?: string;
   readonly nickname?: string;
-  readonly eligible?: boolean;
-  readonly profile_id?: string;
+  readonly frozen_assignment?: FrozenTeamAssignment;
+  /** A catalog-shaped frozen field was served but failed the browser's complete
+   * historical-evidence contract. Its raw contents are deliberately discarded. */
+  readonly frozen_assignment_invalid?: boolean;
   /** The sibling HTTP status when it refused (>=400), else undefined. */
   readonly sibling_status?: number;
   /** The refusal detail the sibling served (its `detail` field). */
@@ -147,10 +195,16 @@ export interface TeamRunStatus {
    *  a run started before the field existed simply serves none, and the run header
    *  falls back to the roster the relay's status frames disclose. */
   readonly roles: TeamRoleState[];
-  /** The profile FROZEN at run start — what the run is actually using, not what is
-   *  selected in the composer now. */
-  readonly profile_id?: string;
-  /** Per-role provider/model for the frozen profile (a2a `RoleAssignmentSummary`). */
+  /** The complete served and FROZEN assignment. It is authoritative for run
+   * inspection and restart, never a reflection of the current composer choice. */
+  readonly frozen_assignment?: FrozenTeamAssignment;
+  /** True only when A2A served a modern `frozen_assignment` field that was not
+   * complete/safe enough to disclose. This suppresses legacy rows: mixed modern
+   * and legacy evidence would misrepresent one historical run. */
+  readonly frozen_assignment_invalid?: boolean;
+  /** Read-only roster projection. This uses the current frozen assignment when
+   * present, otherwise the legacy persisted assignment of an already-created run;
+   * it can never be reused as new-run selection input. */
   readonly assignments: TeamRoleAssignment[];
   /** Epoch milliseconds the run started, IF a future run-status ever serves one.
    *  It does not today — `RunStatusResponse` carries no start time (the history
@@ -164,6 +218,11 @@ export interface TeamRunStatus {
    *  `clarification-pending` relay frame is a re-read nudge and carries none, which
    *  is what lets a reloaded panel recover the questions from status alone. */
   readonly pending_clarification?: unknown;
+  /** How the run was REFUSED, on the closed shared vocabulary, and the opaque
+   *  human account served beside it. Only the classification may be branched on;
+   *  the prose decides nothing. Both are absent unless the run failed. */
+  readonly provider_condition?: ProviderCondition;
+  readonly failure_reason?: string;
   readonly tiers?: TiersBlock;
 }
 
@@ -180,22 +239,32 @@ export interface TeamRoleState {
 /** The engine pass-through envelope, unwrapped: the sibling body under `envelope`,
  *  the optional `sibling_status` (present on a business refusal), and the tiers.
  *  Exported so the pure adapters below are unit-testable without a wire double. */
-export interface PassThrough {
-  readonly envelope: unknown;
-  readonly siblingStatus?: number;
-  readonly tiers?: TiersBlock;
-}
-
 export interface TeamRunStartPayload {
   run_id: string;
   team_preset: string;
   message: string;
   expected_scope: string;
+  selection: ProviderCatalogSelection;
+  overrides?: Readonly<Record<string, ProviderCatalogSelection>>;
+  fallbacks?: readonly ProviderCatalogSelection[];
   feature_tag?: string;
-  profile_id?: string;
   title?: string;
   autonomous?: boolean;
 }
+
+/** Exactly one resolution for a parked clarification: the questionnaire's
+ * answers, a new prompt that continues the same run, or a payload-free decline
+ * (refusal — the run proceeds with no answer given, distinct from a cancel).
+ * Mirrors the brokered verb's exactly-one-of body; the union makes an ambiguous
+ * two-outcome submission unrepresentable at the seam. */
+export type ClarificationResolutionPayload = {
+  readonly runId: string;
+  readonly requestId: string;
+} & (
+  | { readonly answers: Readonly<Record<string, string>> }
+  | { readonly prompt: string }
+  | { readonly decline: true }
+);
 
 /** Create the path-safe idempotency identity for one deliberate run-start
  * submission. The exact payload object (and therefore this id) is retained by
@@ -230,12 +299,220 @@ export function scopedTeamRunStatus(
 
 // --- tolerant adapters ----------------------------------------------------------
 
-const strArr = (v: unknown): string[] =>
-  Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+/** Admit only the two factual provenance origins frozen at selection time. The
+ * Rust broker deliberately forwards the sibling body verbatim, so retaining a
+ * raw provenance object here could disclose provider wire secrets through a
+ * future UI change. Extra keys are dropped; an absent or unknown source rejects
+ * the whole catalog-shaped role rather than fabricating historical evidence. */
+function adaptFrozenProvenance(raw: unknown): FrozenTeamRoleProvenance | null {
+  if (!isRec(raw)) return null;
+  const selectionSource = raw.selection_source;
+  if (selectionSource !== "team_selection" && selectionSource !== "role_override") {
+    return null;
+  }
+  return { selection_source: selectionSource };
+}
 
-/** Adapt one role assignment. Tolerant: an entry without a role name is dropped
- *  rather than rendered as an anonymous binding. */
-function adaptRoleAssignment(raw: unknown): TeamRoleAssignment | null {
+const FROZEN_ASSIGNMENT_SCHEMA_VERSION = 1;
+const FROZEN_ASSIGNMENT_MAX = 64;
+const FROZEN_FALLBACK_MAX = 8;
+const FROZEN_CONTROL_MAX = 32;
+const FROZEN_IDENTIFIER_MAX = 1024;
+const FROZEN_DISPLAY_NAME_MAX = 256;
+const FROZEN_DIGEST = /^(?:sha256:)?[a-f0-9]{64}$/;
+
+function boundedFrozenText(raw: unknown, max: number): string | undefined {
+  return typeof raw === "string" &&
+    raw.length > 0 &&
+    raw.length <= max &&
+    raw.trim() === raw
+    ? raw
+    : undefined;
+}
+
+function requiredFrozenText(raw: unknown, max: number): string | null {
+  return boundedFrozenText(raw, max) ?? null;
+}
+
+/** An omitted display label is honest absence. A present malformed label makes
+ * the otherwise exact frozen snapshot untrustworthy, so it fails closed. */
+function optionalFrozenText(raw: unknown, max: number): string | undefined | null {
+  if (raw === undefined || raw === null) return undefined;
+  return boundedFrozenText(raw, max) ?? null;
+}
+
+function adaptFrozenNativeControl(raw: unknown): FrozenTeamNativeControl | null {
+  if (!isRec(raw)) return null;
+  const controlId = requiredFrozenText(raw.control_id, FROZEN_IDENTIFIER_MAX);
+  const optionId = requiredFrozenText(raw.option_id, FROZEN_IDENTIFIER_MAX);
+  const providerValue = requiredFrozenText(raw.provider_value, FROZEN_IDENTIFIER_MAX);
+  if (!controlId || !optionId || !providerValue) return null;
+  const displayName = optionalFrozenText(raw.display_name, FROZEN_DISPLAY_NAME_MAX);
+  const optionDisplayName = optionalFrozenText(
+    raw.option_display_name,
+    FROZEN_DISPLAY_NAME_MAX,
+  );
+  if (displayName === null || optionDisplayName === null) return null;
+  return {
+    control_id: controlId,
+    option_id: optionId,
+    provider_value: providerValue,
+    ...(displayName === undefined ? {} : { display_name: displayName }),
+    ...(optionDisplayName === undefined
+      ? {}
+      : { option_display_name: optionDisplayName }),
+  };
+}
+
+/** Map a frozen selection to the execution evidence A2A resolved at admission.
+ * It is intentionally independent from `adaptSelection`: a selection's opaque
+ * control option id is not enough to say which native provider value ran. */
+function adaptFrozenExecutionSnapshot(
+  raw: unknown,
+): FrozenTeamExecutionSnapshot | null {
+  if (
+    !isRec(raw) ||
+    !Array.isArray(raw.controls) ||
+    raw.controls.length > FROZEN_CONTROL_MAX
+  ) {
+    return null;
+  }
+  const providerId = requiredFrozenText(raw.provider_id, FROZEN_IDENTIFIER_MAX);
+  const executionMode = requiredFrozenText(raw.execution_mode, FROZEN_IDENTIFIER_MAX);
+  const catalogRevision = requiredFrozenText(
+    raw.catalog_revision,
+    FROZEN_IDENTIFIER_MAX,
+  );
+  const entryId = requiredFrozenText(raw.entry_id, FROZEN_IDENTIFIER_MAX);
+  const modelName = requiredFrozenText(raw.model_name, FROZEN_IDENTIFIER_MAX);
+  if (!providerId || !executionMode || !catalogRevision || !entryId || !modelName)
+    return null;
+  const controls: FrozenTeamNativeControl[] = [];
+  const controlIds = new Set<string>();
+  for (const rawControl of raw.controls) {
+    const control = adaptFrozenNativeControl(rawControl);
+    if (control === null || controlIds.has(control.control_id)) return null;
+    controlIds.add(control.control_id);
+    controls.push(control);
+  }
+  const providerDisplayName = optionalFrozenText(
+    raw.provider_display_name,
+    FROZEN_DISPLAY_NAME_MAX,
+  );
+  const modelDisplayName = optionalFrozenText(
+    raw.model_display_name,
+    FROZEN_DISPLAY_NAME_MAX,
+  );
+  if (providerDisplayName === null || modelDisplayName === null) return null;
+  return {
+    provider_id: providerId,
+    ...(providerDisplayName === undefined
+      ? {}
+      : { provider_display_name: providerDisplayName }),
+    execution_mode: executionMode,
+    catalog_revision: catalogRevision,
+    entry_id: entryId,
+    model_name: modelName,
+    ...(modelDisplayName === undefined ? {} : { model_display_name: modelDisplayName }),
+    controls,
+  };
+}
+
+/** Identity excludes display labels: two snapshots that would execute the same
+ * provider values are duplicate fallbacks even if a catalog later renames them. */
+function frozenExecutionIdentity(snapshot: FrozenTeamExecutionSnapshot): string {
+  return JSON.stringify([
+    snapshot.provider_id,
+    snapshot.execution_mode,
+    snapshot.catalog_revision,
+    snapshot.entry_id,
+    snapshot.model_name,
+    snapshot.controls.map((control) => [
+      control.control_id,
+      control.option_id,
+      control.provider_value,
+    ]),
+  ]);
+}
+
+/** Adapt a frozen role only when it contains a complete, A2A-issued selection.
+ * A legacy/incomplete row stays absent rather than being dressed up as a new-run
+ * choice. */
+function adaptRoleAssignment(raw: unknown): FrozenTeamRoleAssignment | null {
+  if (!isRec(raw)) return null;
+  const roleId = requiredFrozenText(raw.role_id, FROZEN_IDENTIFIER_MAX);
+  const execution = adaptFrozenExecutionSnapshot(raw);
+  if (!roleId || execution === null || !Array.isArray(raw.fallbacks)) return null;
+  if (raw.fallbacks.length > FROZEN_FALLBACK_MAX) return null;
+  const fallbacks: FrozenTeamExecutionSnapshot[] = [];
+  const executionIdentities = new Set([frozenExecutionIdentity(execution)]);
+  for (const rawFallback of raw.fallbacks) {
+    const fallback = adaptFrozenExecutionSnapshot(rawFallback);
+    if (fallback === null) return null;
+    const fallbackIdentity = frozenExecutionIdentity(fallback);
+    if (executionIdentities.has(fallbackIdentity)) return null;
+    executionIdentities.add(fallbackIdentity);
+    fallbacks.push(fallback);
+  }
+  const provenance = adaptFrozenProvenance(raw.provenance);
+  if (provenance === null) return null;
+  const agentId = optionalFrozenText(raw.agent_id, FROZEN_IDENTIFIER_MAX);
+  if (agentId === null) return null;
+  return {
+    role_id: roleId,
+    ...(agentId === undefined ? {} : { agent_id: agentId }),
+    ...execution,
+    fallbacks,
+    provenance,
+  };
+}
+
+type FrozenAssignmentAdaptation =
+  | { readonly state: "absent" }
+  | { readonly state: "invalid" }
+  | { readonly state: "valid"; readonly assignment: FrozenTeamAssignment };
+
+/** Keep a present malformed modern snapshot distinct from a pre-catalog legacy
+ * run. Only the latter can lawfully use `assignments` as its historical read. */
+function adaptFrozenAssignment(
+  raw: unknown,
+  present: boolean,
+): FrozenAssignmentAdaptation {
+  if (!present) return { state: "absent" };
+  if (
+    !isRec(raw) ||
+    !Array.isArray(raw.assignments) ||
+    raw.assignments.length === 0 ||
+    raw.assignments.length > FROZEN_ASSIGNMENT_MAX
+  ) {
+    return { state: "invalid" };
+  }
+  const schemaVersion = raw.schema_version;
+  const digest = requiredFrozenText(raw.digest, "sha256:".length + 64);
+  if (
+    schemaVersion !== FROZEN_ASSIGNMENT_SCHEMA_VERSION ||
+    !digest ||
+    !FROZEN_DIGEST.test(digest)
+  ) {
+    return { state: "invalid" };
+  }
+  const assignments: FrozenTeamRoleAssignment[] = [];
+  const roleIds = new Set<string>();
+  for (const rawAssignment of raw.assignments) {
+    const assignment = adaptRoleAssignment(rawAssignment);
+    if (assignment === null || roleIds.has(assignment.role_id)) {
+      return { state: "invalid" };
+    }
+    roleIds.add(assignment.role_id);
+    assignments.push(assignment);
+  }
+  return {
+    state: "valid",
+    assignment: { schema_version: schemaVersion, digest, assignments },
+  };
+}
+
+function adaptLegacyRoleAssignment(raw: unknown): LegacyTeamRoleAssignment | null {
   if (!isRec(raw)) return null;
   const roleId = asStr(raw.role_id);
   if (!roleId) return null;
@@ -244,58 +521,34 @@ function adaptRoleAssignment(raw: unknown): TeamRoleAssignment | null {
     agent_id: asStr(raw.agent_id),
     provider_id: asStr(raw.provider_id),
     model_name: asStr(raw.model_name),
-    provider_ready:
-      raw.provider_ready === undefined ? undefined : asBool(raw.provider_ready),
   };
 }
 
-function adaptRoleAssignments(raw: unknown): TeamRoleAssignment[] {
+function adaptLegacyRoleAssignments(raw: unknown): LegacyTeamRoleAssignment[] {
   return Array.isArray(raw)
     ? raw
-        .map(adaptRoleAssignment)
-        .filter((entry): entry is TeamRoleAssignment => entry !== null)
+        .map(adaptLegacyRoleAssignment)
+        .filter(
+          (assignment): assignment is LegacyTeamRoleAssignment => assignment !== null,
+        )
     : [];
-}
-
-/** Adapt one served profile. `eligible` defaults TRUE when the sibling omits it:
- *  the absence of a verdict is not a refusal, and disabling a profile the sibling
- *  never objected to would hide a working choice. */
-function adaptProfile(raw: unknown): TeamProfile | null {
-  if (!isRec(raw)) return null;
-  const id = asStr(raw.id);
-  if (!id) return null;
-  return {
-    id,
-    display_name: asStr(raw.display_name),
-    description: asStr(raw.description),
-    is_default: asBool(raw.is_default),
-    eligible: raw.eligible === undefined ? true : asBool(raw.eligible),
-    unavailable_reasons: strArr(raw.unavailable_reasons),
-    assignments: adaptRoleAssignments(raw.assignments),
-  };
-}
-
-/** The DISTINCT provider ids a profile routes its roles to, in first-seen order.
- *  More than one means the profile is MIXED — the picker must say so per role
- *  rather than collapse it to a single invented provider label. */
-export function profileProviderIds(profile: TeamProfile): string[] {
-  const seen: string[] = [];
-  for (const assignment of profile.assignments) {
-    const provider = assignment.provider_id;
-    if (provider && !seen.includes(provider)) seen.push(provider);
-  }
-  return seen;
-}
-
-/** Whether a profile routes its roles across more than one provider. */
-export function profileIsMixedProvider(profile: TeamProfile): boolean {
-  return profileProviderIds(profile).length > 1;
 }
 
 function adaptPreset(raw: unknown): TeamPreset | null {
   if (!isRec(raw)) return null;
   const id = asStr(raw.id);
   if (!id) return null;
+  let requiredRoleLabels: Record<string, string> | undefined;
+  if (isRec(raw.required_role_labels)) {
+    // Role ids are opaque A2A values; a null prototype preserves values such as
+    // `constructor` and `__proto__` without inheriting vocabulary from the browser.
+    requiredRoleLabels = Object.create(null) as Record<string, string>;
+    for (const [roleId, label] of Object.entries(raw.required_role_labels)) {
+      if (roleId.length > 0 && typeof label === "string" && label.length > 0) {
+        requiredRoleLabels[roleId] = label;
+      }
+    }
+  }
   return {
     id,
     loadable: asBool(raw.loadable),
@@ -305,13 +558,12 @@ function adaptPreset(raw: unknown): TeamPreset | null {
     topology: asStr(raw.topology),
     worker_count: typeof raw.worker_count === "number" ? raw.worker_count : undefined,
     required_roles: strArr(raw.required_roles),
+    ...(requiredRoleLabels === undefined
+      ? {}
+      : { required_role_labels: requiredRoleLabels }),
     authoring_capability: asStr(raw.authoring_capability),
     is_mock: asBool(raw.is_mock),
     origin: asStr(raw.origin),
-    default_profile_id: asStr(raw.default_profile_id),
-    profiles: Array.isArray(raw.profiles)
-      ? raw.profiles.map(adaptProfile).filter((p): p is TeamProfile => p !== null)
-      : [],
   };
 }
 
@@ -339,13 +591,17 @@ export function adaptRunStart(pass: PassThrough): TeamRunStartResult {
       tiers: pass.tiers,
     };
   }
+  const frozen = adaptFrozenAssignment(
+    env.frozen_assignment,
+    Object.prototype.hasOwnProperty.call(env, "frozen_assignment"),
+  );
   return {
     ok: true,
     run_id: asStr(env.run_id),
     status: asStr(env.status),
     nickname: asStr(env.nickname),
-    eligible: env.eligible === undefined ? undefined : asBool(env.eligible),
-    profile_id: asStr(env.profile_id),
+    ...(frozen.state === "valid" ? { frozen_assignment: frozen.assignment } : {}),
+    ...(frozen.state === "invalid" ? { frozen_assignment_invalid: true } : {}),
     tiers: pass.tiers,
   };
 }
@@ -390,6 +646,10 @@ export function startedAtMs(env: Rec): number | undefined {
 
 export function adaptRunStatus(pass: PassThrough): TeamRunStatus {
   const env: Rec = isRec(pass.envelope) ? pass.envelope : {};
+  const frozen = adaptFrozenAssignment(
+    env.frozen_assignment,
+    Object.prototype.hasOwnProperty.call(env, "frozen_assignment"),
+  );
   return {
     run_id: asStr(env.run_id) ?? "",
     status: asStr(env.status) ?? "unknown",
@@ -401,10 +661,18 @@ export function adaptRunStatus(pass: PassThrough): TeamRunStatus {
     last_sequence:
       typeof env.last_sequence === "number" ? env.last_sequence : undefined,
     roles: adaptRoleStates(env.roles),
-    profile_id: asStr(env.profile_id),
-    assignments: adaptRoleAssignments(env.assignments),
+    ...(frozen.state === "valid" ? { frozen_assignment: frozen.assignment } : {}),
+    ...(frozen.state === "invalid" ? { frozen_assignment_invalid: true } : {}),
+    assignments:
+      frozen.state === "valid"
+        ? frozen.assignment.assignments
+        : frozen.state === "invalid"
+          ? []
+          : adaptLegacyRoleAssignments(env.assignments),
     started_at_ms: startedAtMs(env),
     pending_clarification: env.pending_clarification,
+    provider_condition: adaptProviderCondition(env.provider_condition),
+    failure_reason: asStr(env.failure_reason),
     tiers: pass.tiers,
   };
 }
@@ -615,6 +883,19 @@ export class A2aTeamClient {
     return adaptPresetsList(await this.passThrough("presets-list", {}, signal));
   }
 
+  /** Read one served-workspace provider catalog through the bounded Rust edge.
+   * The scope is a generation fence only: Rust validates it against its active
+   * cell, then derives the A2A workspace root itself. Provider health, entry
+   * ids, and control values remain entirely A2A-issued. */
+  async listProviderCatalog(
+    scope: string,
+    signal?: AbortSignal,
+  ): Promise<ProviderCatalogResult> {
+    return adaptProviderCatalog(
+      await this.passThrough("provider-catalog", { expected_scope: scope }, signal),
+    );
+  }
+
   async startRun(payload: TeamRunStartPayload): Promise<TeamRunStartResult> {
     // `run-start` is idempotent by its caller-supplied run_id. Retry one transport
     // failure with the EXACT same payload object; never retry an engine response
@@ -656,19 +937,26 @@ export class A2aTeamClient {
     );
   }
 
-  /** Answer a parked clarification (agent-flow D5(c)). The engine bounds both ids
-   *  and every answer before forwarding; a refusal comes back as the same
+  /** Resolve a parked clarification (agent-flow D5(c)) with exactly ONE outcome:
+   *  the questionnaire's answers, a new prompt continuing the run, or a
+   *  payload-free decline (refusal — the run proceeds with no answer given,
+   *  distinct from a cancel). The engine bounds every argument and enforces the
+   *  exactly-one-of rule before forwarding; a refusal comes back as the same
    *  ok/refusal shape every other verb uses, so the card surfaces it identically. */
-  async respondToClarification(payload: {
-    runId: string;
-    requestId: string;
-    answers: Record<string, string>;
-  }): Promise<TeamRunStartResult> {
+  async respondToClarification(
+    payload: ClarificationResolutionPayload,
+  ): Promise<TeamRunStartResult> {
+    const outcome =
+      "answers" in payload
+        ? { answers: payload.answers }
+        : "prompt" in payload
+          ? { prompt: payload.prompt }
+          : { decline: true };
     return adaptRunStart(
       await this.passThrough("clarification-respond", {
         run_id: payload.runId,
         request_id: payload.requestId,
-        answers: payload.answers,
+        ...outcome,
       }),
     );
   }
@@ -703,6 +991,8 @@ export const a2aTeamClient = new A2aTeamClient();
 export const a2aKeys = {
   all: ["a2a"] as const,
   presets: () => [...a2aKeys.all, "presets"] as const,
+  providerCatalog: (scope: string) =>
+    [...a2aKeys.all, "provider-catalog", scope] as const,
   runStatus: (runId: string) => [...a2aKeys.all, "run-status", runId] as const,
   runRelay: (runId: string) => [...a2aKeys.all, "run-relay", runId] as const,
   activeRuns: (scope: string, featureTag?: string) =>
@@ -712,6 +1002,56 @@ export const a2aKeys = {
 /** Bounded run-status poll cadence for the degraded fallback: when the relay
  *  gaps or degrades, run-status is the authoritative recovery read. */
 export const RUN_STATUS_POLL_MS = 5_000;
+
+/** Provider catalogs are current-selection authority. A scope change must show
+ * no catalog until that scope's own query answers; reusing another scope's
+ * placeholder would let the browser submit a selection A2A never served there. */
+export const PROVIDER_CATALOG_STALE_REFETCH_BASE_MS = 5_000;
+export const PROVIDER_CATALOG_STALE_REFETCH_MAX_MS = 60_000;
+const PROVIDER_CATALOG_MAX_FRESH_WAIT_MS = 60 * 60_000;
+
+type ProviderCatalogQueryState = {
+  readonly state: {
+    readonly data?: ProviderCatalogResult;
+    readonly dataUpdateCount: number;
+  };
+};
+
+/** Wake at the earliest still-selectable catalog expiry. A served stale,
+ * unavailable, or malformed catalog stays visible but retries with bounded
+ * exponential backoff so a normal provider-catalog GET can refresh it without
+ * turning one unavailable lane into a tight browser poll. */
+export function providerCatalogRefetchInterval(
+  query: ProviderCatalogQueryState,
+  now: number = Date.now(),
+): number {
+  const expiry = nextProviderCatalogExpiry(query.state.data?.providers ?? [], now);
+  if (expiry !== null) {
+    return Math.max(1, Math.min(expiry - now, PROVIDER_CATALOG_MAX_FRESH_WAIT_MS));
+  }
+  return Math.min(
+    PROVIDER_CATALOG_STALE_REFETCH_BASE_MS *
+      2 ** Math.min(query.state.dataUpdateCount, 4),
+    PROVIDER_CATALOG_STALE_REFETCH_MAX_MS,
+  );
+}
+
+/** Keep the catalog query configuration inspectable: unlike cursor-paginated
+ * lists, its key changes an authority scope, so it deliberately carries no
+ * cross-key placeholder data. */
+export function providerCatalogQueryOptions(scope: string, enabled: boolean) {
+  return {
+    queryKey: a2aKeys.providerCatalog(scope),
+    queryFn: ({ signal }: { signal: AbortSignal }) =>
+      a2aTeamClient.listProviderCatalog(scope, signal),
+    enabled,
+    staleTime: 10_000,
+    gcTime: 60_000,
+    refetchInterval: providerCatalogRefetchInterval,
+    refetchIntervalInBackground: false,
+    retry: false,
+  };
+}
 
 // --- reads + the Team selector state -------------------------------------------
 
@@ -730,6 +1070,20 @@ export function useTeamPresets(): UseQueryResult<
     // errors; a genuine engine fault degrades through the tiers reader below.
     retry: false,
   });
+}
+
+/** The active workspace's provider-issued choices. The scope participates in the
+ * cache key and is also a Rust-validated generation fence for the brokered read. */
+export function useProviderCatalog(
+  scope: string | null,
+  options: { enabled?: boolean } = {},
+): UseQueryResult<ProviderCatalogResult, Error> {
+  return useQuery(
+    providerCatalogQueryOptions(
+      scope ?? "",
+      scope !== null && (options.enabled ?? true),
+    ),
+  );
 }
 
 /** The interpreted Team selector state a consumer renders directly (deriving
@@ -822,17 +1176,16 @@ export function useStartTeamRun() {
   });
 }
 
-/** Answer a parked clarification. On success the run resumes, so the AUTHORITATIVE
- *  status is invalidated — the card's collapse into its recap follows the re-read,
- *  never an optimistic local guess about whether the graph accepted the answers. */
+/** Resolve a parked clarification with exactly one outcome — answers, a new
+ *  prompt, or a decline. On success the run resumes, so the AUTHORITATIVE
+ *  status is invalidated — the card's collapse into its recap follows the
+ *  re-read, never an optimistic local guess about whether the graph accepted
+ *  the resolution. */
 export function useRespondToClarification() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: {
-      runId: string;
-      requestId: string;
-      answers: Record<string, string>;
-    }) => a2aTeamClient.respondToClarification(payload),
+    mutationFn: (payload: ClarificationResolutionPayload) =>
+      a2aTeamClient.respondToClarification(payload),
     onSuccess: (_result, payload) => {
       void queryClient.invalidateQueries({
         queryKey: a2aKeys.runStatus(payload.runId),

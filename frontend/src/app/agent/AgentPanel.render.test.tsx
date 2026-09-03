@@ -24,6 +24,7 @@ import { I18nextProvider } from "react-i18next";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createTestLocalizationRuntime } from "../../localization/testing";
+import { common } from "../../locales/en";
 import { createLiveClient, liveScope, liveTransport } from "../../testing/liveClient";
 import {
   AuthoringClient,
@@ -31,9 +32,14 @@ import {
   resetAuthoringStreamCursor,
 } from "../../stores/server/authoring";
 import { AgentClient } from "../../stores/server/agent";
-import { a2aKeys, type ActiveRunsResult } from "../../stores/server/agent/a2aTeam";
 import {
-  setAgentPanelView,
+  a2aKeys,
+  adaptRunStatus,
+  type ActiveRunsResult,
+} from "../../stores/server/agent/a2aTeam";
+import { PROVIDER_CONDITIONS } from "../../stores/server/agent/providerCondition";
+import {
+  setAgentPendingChangesOpen,
   setAgentTeamRun,
   useAgentPanel,
 } from "../../stores/view/agentPanel";
@@ -50,7 +56,7 @@ const canonicalTiers = {
 function resetStore(): void {
   useAgentPanel.setState({
     currentSessionId: null,
-    panelView: "transcript",
+    pendingChangesOpen: false,
     teamRunId: null,
     teamRunPrompt: null,
     teamRunScope: null,
@@ -220,15 +226,15 @@ describe("AgentPanel transcript states", () => {
     );
 
     // Deactivate and reactivate recovery. The panel no longer carries an open flag
-    // to flip — leaving the center slot unmounts the whole body, which this test
-    // cannot drive because it renders the panel directly rather than through the
-    // dock. The pending/transcript transition is the OTHER path the recovery host
-    // is documented to unmount across, and it exercises the same remount.
-    act(() => setAgentPanelView("pending"));
+    // (or a view) to flip — leaving the center slot unmounts the whole body, which
+    // this test cannot drive because it renders the panel directly rather than
+    // through the dock. Binding a team run is the OTHER path that unmounts the
+    // recovery host, and clearing it exercises the same remount.
+    act(() => setAgentTeamRun({ runId: "run-pause", prompt: null, scope }));
     await waitFor(() =>
-      expect(document.querySelector("[data-agent-transcript]")).toBeNull(),
+      expect(document.querySelector("[data-team-run]")).not.toBeNull(),
     );
-    act(() => setAgentPanelView("transcript"));
+    act(() => setAgentTeamRun(null));
     await waitFor(
       () => {
         const state = queryClient.getQueryState(key);
@@ -296,38 +302,156 @@ describe("AgentPanel transcript states", () => {
   });
 });
 
-describe("AgentPanel view switcher", () => {
-  it("defaults to the conversation view: composer present, no pending inbox", () => {
-    useAgentPanel.setState({ currentSessionId: null });
-    renderPanel();
-    expect(document.querySelector("[data-agent-view-switcher]")).not.toBeNull();
-    expect(document.querySelector("[data-agent-composer-slot]")).not.toBeNull();
-    expect(document.querySelector("[data-agent-pending-changes]")).toBeNull();
-    // The switcher shows the conversation segment selected.
-    expect(
-      screen.getByRole("radio", { name: "Conversation" }).getAttribute("aria-checked"),
-    ).toBe("true");
+/** Every member of the closed refusal vocabulary, paired with the copy it must
+ *  render and with a served sentence that CONTRADICTS it — each reason names some
+ *  other member's remedy, and one is the real sentence a live refusal for a spent
+ *  balance carried (it named a retry step, not the refusal).
+ *
+ *  The pairing of member to catalog entry is written out here rather than derived,
+ *  so it is an independent statement of the contract: a panel that mapped a member
+ *  to a neighbouring member's copy would still resolve a real message and would
+ *  still be caught. The contradicting reasons are what make a substring check on
+ *  the served prose fail this suite instead of passing it. */
+const REFUSALS = [
+  ["network_unreachable", common.agent.runFailure.networkUnreachable, "no credit left"],
+  ["provider_overloaded", common.agent.runFailure.providerOverloaded, "not signed in"],
+  ["unauthenticated", common.agent.runFailure.unauthenticated, "rate limit exceeded"],
+  ["throttled", common.agent.runFailure.throttled, "spending limit reached"],
+  ["usage_exhausted", common.agent.runFailure.usageExhausted, "could not be reached"],
+  ["credits_exhausted", common.agent.runFailure.creditsExhausted, "Reconnecting… 1/5"],
+  ["budget_exhausted", common.agent.runFailure.budgetExhausted, "out of credit"],
+  ["invalid_request", common.agent.runFailure.invalidRequest, "over capacity"],
+  ["unknown", common.agent.runFailure.unknown, "the request was invalid"],
+] as const;
+
+/** Bind a refused run and render the panel around it. The snapshot goes through
+ *  the production run-status adapter and into the real cache the panel reads, so
+ *  the served value is admitted exactly as a wire response would be. */
+async function renderRefusedRun(condition: string, reason: string): Promise<void> {
+  const scope = await liveScope();
+  const runId = `run-refused-${condition}`;
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  queryClient.setQueryData(
+    a2aKeys.runStatus(runId),
+    adaptRunStatus({
+      envelope: {
+        run_id: runId,
+        status: "failed",
+        provider_condition: condition,
+        failure_reason: reason,
+      },
+    }),
+  );
+  useAgentPanel.setState({
+    currentSessionId: null,
+    teamRunId: runId,
+    teamRunPrompt: null,
+    teamRunScope: scope,
+  });
+  renderPanel(queryClient);
+}
+
+describe("AgentPanel refused-run remediation", () => {
+  it("covers the whole closed vocabulary, with no two members sharing a remedy", () => {
+    // A member that ships unrendered is exactly what a representative sample
+    // misses, so the table below is checked against the vocabulary itself.
+    expect(REFUSALS.map(([condition]) => condition)).toEqual([...PROVIDER_CONDITIONS]);
+    const remedies = REFUSALS.map(([, remedy]) => remedy);
+    expect(new Set(remedies).size).toBe(remedies.length);
   });
 
-  it("switches to the pending-changes inbox: queue body shown, composer hidden", () => {
-    useAgentPanel.setState({ currentSessionId: null });
-    renderPanel();
-    fireEvent.click(screen.getByRole("radio", { name: "Pending changes" }));
-    expect(document.querySelector("[data-agent-pending-changes]")).not.toBeNull();
-    // The inbox carries no composer of its own.
-    expect(document.querySelector("[data-agent-composer-slot]")).toBeNull();
-    // And no transcript container in the pending view.
-    expect(document.querySelector("[data-agent-transcript]")).toBeNull();
+  it.each(REFUSALS)(
+    "renders the %s remedy and ignores a reason that contradicts it",
+    async (condition, remedy, reason) => {
+      await renderRefusedRun(condition, reason);
+      const slot = await waitFor(
+        () => {
+          const el = document.querySelector<HTMLElement>(
+            `[data-agent-run-failure="${condition}"]`,
+          );
+          expect(el).not.toBeNull();
+          return el!;
+        },
+        { timeout: 10_000 },
+      );
+      expect(slot.textContent).toContain(remedy);
+      // The served sentence is shown as detail, and every remedy it points at
+      // stays absent: nothing here reads it to decide what to offer.
+      expect(slot.textContent).toContain(reason);
+      for (const [other, otherRemedy] of REFUSALS) {
+        if (other !== condition) expect(screen.queryByText(otherRemedy)).toBeNull();
+      }
+    },
+  );
+
+  it("presents a value outside the closed list as the floor member", async () => {
+    // The list is validated upstream, but this parses a network response: an
+    // unrecognised value must not reach a reader raw or vanish silently.
+    await renderRefusedRun("quota_reset_pending", "a condition nothing here knows");
+    await waitFor(
+      () =>
+        expect(
+          document.querySelector('[data-agent-run-failure="unknown"]'),
+        ).not.toBeNull(),
+      { timeout: 10_000 },
+    );
+    expect(screen.getByText(common.agent.runFailure.unknown)).toBeTruthy();
   });
 
-  it("opens directly in the pending view when the store targets it", () => {
+  it("stays silent for a run that did not fail", async () => {
+    const scope = await liveScope();
+    const runId = "run-still-running";
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    queryClient.setQueryData(
+      a2aKeys.runStatus(runId),
+      adaptRunStatus({ envelope: { run_id: runId, status: "running" } }),
+    );
     useAgentPanel.setState({
       currentSessionId: null,
-      panelView: "pending",
+      teamRunId: runId,
+      teamRunPrompt: null,
+      teamRunScope: scope,
     });
+    renderPanel(queryClient);
+    await waitFor(() =>
+      expect(document.querySelector("[data-team-run]")).not.toBeNull(),
+    );
+    expect(document.querySelector("[data-agent-run-failure]")).toBeNull();
+  });
+});
+
+describe("AgentPanel pending-changes disclosure (D9 — no view switch)", () => {
+  it("renders ONE view: no switcher exists, and the composer is always present", () => {
+    useAgentPanel.setState({ currentSessionId: null });
+    renderPanel();
+    // The Conversation|Pending-changes switch is DELETED, not restyled.
+    expect(document.querySelector("[data-agent-view-switcher]")).toBeNull();
+    expect(document.querySelector("[data-agent-composer-slot]")).not.toBeNull();
+    // The pending region is closed by default — no standing chrome.
+    expect(document.querySelector("[data-agent-pending-changes]")).toBeNull();
+  });
+
+  it("expands the in-flow region WITHOUT unmounting the composer", () => {
+    useAgentPanel.setState({ currentSessionId: null, pendingChangesOpen: true });
+    renderPanel();
+    // The region renders inside the one conversation view…
+    expect(document.querySelector("[data-agent-pending-changes]")).not.toBeNull();
+    // …and the composer stays mounted around it — the disclosure is a region,
+    // never a second view.
+    expect(document.querySelector("[data-agent-composer-slot]")).not.toBeNull();
+  });
+
+  it("collapses the region from the store seam", () => {
+    useAgentPanel.setState({ currentSessionId: null, pendingChangesOpen: true });
     renderPanel();
     expect(document.querySelector("[data-agent-pending-changes]")).not.toBeNull();
-    expect(document.querySelector("[data-agent-composer-slot]")).toBeNull();
+    act(() => setAgentPendingChangesOpen(false));
+    expect(document.querySelector("[data-agent-pending-changes]")).toBeNull();
+    expect(document.querySelector("[data-agent-composer-slot]")).not.toBeNull();
   });
 });
 
@@ -398,61 +522,34 @@ async function seedOutOfSessionProposal(): Promise<void> {
 }
 
 describe("AgentPanel autonomy + bridge", () => {
-  it("renders the autonomy control INSIDE the composer's scope controls", async () => {
-    useAgentPanel.setState({
-      currentSessionId: null,
-      panelView: "transcript",
-    });
+  it("carries NO standing permission pill in the composer row", async () => {
+    useAgentPanel.setState({ currentSessionId: null });
     renderPanel();
-    // The served scope-level mode (GET /v1/mode) resolves to a default, so the
-    // control renders even with an empty queue. D3 relocated it from a panel band
-    // into the composer's row-2 LEFT group — the "what the agent may touch" side —
-    // so composer-ADJACENT became composer-RESIDENT.
-    //
-    // Since S45 what RESIDES in the row is the pill; the two-option control lives
-    // behind it. The placement law this guards is unchanged, so the selector moves
-    // to the pill and the expansion is asserted separately below.
-    const control = await waitFor(
+    // No captured composer renders a standing permission/autonomy control in its
+    // control row — the pill was our invention and is DELETED. The C7 banner is
+    // the elevated-posture surface, and the mode SETTER lives on the review
+    // surface. The row keeps its left/right law: scope group first, thinking
+    // controls after it.
+    const scopeControls = await waitFor(
       () => {
-        const el = document.querySelector<HTMLElement>("[data-agent-autonomy]");
+        const el = document.querySelector<HTMLElement>("[data-composer-scope]");
         expect(el).not.toBeNull();
         return el!;
       },
       { timeout: 15_000 },
     );
-    // The row holds ONE control, not the expanded pair (S45 — the pair overlapped
-    // the row's right-hand cluster at panel width).
+    expect(document.querySelector("[data-agent-autonomy]")).toBeNull();
     expect(document.querySelector("[data-autonomy-control]")).toBeNull();
-    const scopeControls = document.querySelector("[data-composer-scope]");
-    expect(scopeControls).not.toBeNull();
-    expect(scopeControls?.contains(control)).toBe(true);
-    // And the scope group is the LEFT of the row: the thinking controls follow it.
     const thinking = document.querySelector("[data-composer-thinking]");
     expect(
-      scopeControls!.compareDocumentPosition(thinking!) &
+      scopeControls.compareDocumentPosition(thinking!) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
 
-  it("does not render the autonomy control (or a composer) in the pending view", () => {
-    useAgentPanel.setState({
-      currentSessionId: null,
-      panelView: "pending",
-    });
-    renderPanel();
-    // The pending view hosts only the queue body — structurally no autonomy control
-    // and no composer (the inbox has neither).
-    expect(document.querySelector("[data-agent-pending-changes]")).not.toBeNull();
-    expect(document.querySelector("[data-autonomy-control]")).toBeNull();
-    expect(document.querySelector("[data-agent-composer-slot]")).toBeNull();
-  });
-
-  it("shows the pending bridge for out-of-session changes and switches to the inbox", async () => {
+  it("shows the pending bridge for out-of-session changes and expands the region in place", async () => {
     await seedOutOfSessionProposal();
-    useAgentPanel.setState({
-      currentSessionId: null,
-      panelView: "transcript",
-    });
+    useAgentPanel.setState({ currentSessionId: null });
     renderPanel();
     const bridge = await waitFor(
       () => {
@@ -462,22 +559,60 @@ describe("AgentPanel autonomy + bridge", () => {
       },
       { timeout: 15_000 },
     );
-    // The affordance is composer-adjacent in the transcript view (not a modal).
+    // The affordance is composer-adjacent inside the one conversation view.
     expect(document.querySelector("[data-agent-panel]")?.contains(bridge)).toBe(true);
+    expect(bridge.getAttribute("aria-expanded")).toBe("false");
     fireEvent.click(bridge);
-    // Clicking switches the panel to the pending inbox view.
-    expect(useAgentPanel.getState().panelView).toBe("pending");
+    // Clicking expands the in-flow region — the composer stays mounted (D9).
+    expect(useAgentPanel.getState().pendingChangesOpen).toBe(true);
     await waitFor(() =>
       expect(document.querySelector("[data-agent-pending-changes]")).not.toBeNull(),
     );
+    expect(document.querySelector("[data-agent-composer-slot]")).not.toBeNull();
+    // The strip stays rendered as the collapse affordance, and collapses in place.
+    const openBridge = document.querySelector<HTMLElement>(
+      "[data-pending-changes-bridge]",
+    );
+    expect(openBridge?.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(openBridge!);
+    expect(useAgentPanel.getState().pendingChangesOpen).toBe(false);
   });
 });
 
 describe("AgentPanel header", () => {
-  it("opens the sessions menu and offers New session", () => {
+  it("offers New and History; End conversation does not exist (D10)", () => {
     useAgentPanel.setState({ currentSessionId: null });
     renderPanel();
-    fireEvent.click(screen.getByRole("button", { name: "Sessions" }));
-    expect(screen.getByRole("menuitem", { name: "New session" })).toBeTruthy();
+    // New conversation and the recents History popover are standing icon
+    // affordances — never buried in a sessions dropdown.
+    expect(document.querySelector("[data-agent-new-session]")).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "History" }));
+    expect(document.querySelector("[data-agent-history-menu]")).not.toBeNull();
+    // The retired vocabulary is GONE, not hidden.
+    expect(document.querySelector("[data-agent-end-conversation]")).toBeNull();
+    // With no open conversation the title is plain text — no empty menu.
+    expect(document.querySelector("[data-agent-title]")).not.toBeNull();
+  });
+
+  it("archives the open conversation from the title's own menu", async () => {
+    const sessionId = await createLiveSession(`Archive drill ${run}`);
+    useAgentPanel.setState({ currentSessionId: sessionId });
+    renderPanel();
+    // The conversation title carries its own actions menu once the session
+    // resolves (the captured title-with-menu idiom).
+    const titleMenu = await waitFor(
+      () => {
+        const el = screen.getByRole("button", { name: "Conversation options" });
+        expect(el).toBeTruthy();
+        return el;
+      },
+      { timeout: 10_000 },
+    );
+    fireEvent.click(titleMenu);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Archive conversation" }));
+    // Archiving the OPEN conversation clears the pointer → begin state.
+    await waitFor(() => expect(useAgentPanel.getState().currentSessionId).toBeNull(), {
+      timeout: 10_000,
+    });
   });
 });

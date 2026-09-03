@@ -10,7 +10,8 @@
 // through `onClick`, and reflects the caller-owned `open` flag for ARIA + chevron.
 
 import { ChevronDown } from "lucide-react";
-import type { ReactNode } from "react";
+import { forwardRef } from "react";
+import type { AriaAttributes, ReactNode } from "react";
 
 // 14px structural-chrome chevron, matching the kit's other Lucide marks.
 const CHEVRON_PX = 14;
@@ -26,46 +27,63 @@ export interface DropdownButtonProps {
   icon?: ReactNode;
   /** Accessible name when the label is not plain text. */
   ariaLabel?: string;
+  /** The role exposed by the associated popup. Defaults to the standard menu. */
+  ariaHasPopup?: AriaAttributes["aria-haspopup"];
+  /** Id of the menu this trigger owns, for a menu rendered OUTSIDE the trigger's
+   *  DOM subtree. A portaled menu (one escaping an `overflow-hidden` ancestor) is
+   *  no longer a descendant, so the accessibility tree loses the relationship
+   *  `aria-expanded` alone implies; `aria-owns` restores it. Omit for the common
+   *  case where the menu renders inline beside the trigger. */
+  ariaOwns?: string;
   disabled?: boolean;
   id?: string;
 }
 
-export function DropdownButton({
-  label,
-  onClick,
-  open = false,
-  icon,
-  ariaLabel,
-  disabled,
-  id,
-}: DropdownButtonProps) {
-  return (
-    <button
-      type="button"
-      id={id}
-      onClick={onClick}
-      disabled={disabled}
-      aria-haspopup="menu"
-      aria-expanded={open}
-      aria-label={ariaLabel}
-      className="inline-flex shrink-0 items-center gap-fg-1-5 rounded-fg-md border border-rule bg-paper-raised px-fg-2 py-fg-1 text-label text-ink transition-colors duration-ui-fast hover:border-rule-strong hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:opacity-50"
-      data-kit="dropdown-button"
-      data-open={open ? "" : undefined}
-    >
-      {icon && (
-        <span className="shrink-0 text-ink-muted" aria-hidden>
-          {icon}
-        </span>
-      )}
-      <span className="min-w-0 truncate">{label}</span>
-      <span
-        className={`shrink-0 text-ink-faint transition-transform duration-ui-fast ${
-          open ? "rotate-180" : ""
-        }`}
-        aria-hidden
+export const DropdownButton = forwardRef<HTMLButtonElement, DropdownButtonProps>(
+  function DropdownButton(
+    {
+      label,
+      onClick,
+      open = false,
+      icon,
+      ariaLabel,
+      ariaHasPopup = "menu",
+      ariaOwns,
+      disabled,
+      id,
+    },
+    ref,
+  ) {
+    return (
+      <button
+        ref={ref}
+        type="button"
+        id={id}
+        onClick={onClick}
+        disabled={disabled}
+        aria-haspopup={ariaHasPopup}
+        aria-expanded={open}
+        aria-owns={ariaOwns}
+        aria-label={ariaLabel}
+        className="inline-flex shrink-0 items-center gap-fg-1-5 rounded-fg-md border border-rule bg-paper-raised px-fg-2 py-fg-1 text-label text-ink transition-colors duration-ui-fast hover:border-rule-strong hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:opacity-50"
+        data-kit="dropdown-button"
+        data-open={open ? "" : undefined}
       >
-        <ChevronDown size={CHEVRON_PX} />
-      </span>
-    </button>
-  );
-}
+        {icon && (
+          <span className="shrink-0 text-ink-muted" aria-hidden>
+            {icon}
+          </span>
+        )}
+        <span className="min-w-0 truncate">{label}</span>
+        <span
+          className={`shrink-0 text-ink-faint transition-transform duration-ui-fast ${
+            open ? "rotate-180" : ""
+          }`}
+          aria-hidden
+        >
+          <ChevronDown size={CHEVRON_PX} />
+        </span>
+      </button>
+    );
+  },
+);

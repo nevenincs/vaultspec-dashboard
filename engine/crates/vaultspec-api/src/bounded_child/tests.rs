@@ -4,6 +4,12 @@ use std::io::Write as _;
 
 /// Env switch that turns this test binary into the chatty child below.
 const ENV_CHATTY: &str = "VAULTSPEC_BOUNDED_CHILD_CHATTY";
+/// Env switch that turns this test binary into a child which never exits by
+/// itself. The parent proof below must terminate and reap it at the deadline.
+const ENV_TIMEOUT: &str = "VAULTSPEC_BOUNDED_CHILD_TIMEOUT";
+/// Path which the timeout child updates while it is alive. The parent uses it
+/// to prove the timeout path reaped the child rather than merely returning.
+const ENV_TIMEOUT_HEARTBEAT: &str = "VAULTSPEC_BOUNDED_CHILD_TIMEOUT_HEARTBEAT";
 /// Far more stderr than any OS pipe buffer (64 KiB on Windows and Linux), so an
 /// undrained stderr pipe provably blocks the child mid-write.
 const CHATTY_STDERR_BYTES: usize = 512 * 1024;
@@ -40,6 +46,40 @@ fn chatty_command() -> tokio::process::Command {
             "--test-threads=1",
         ])
         .env(ENV_CHATTY, "1");
+    command
+}
+
+/// The real child half of the timeout proof. It deliberately gives the parent
+/// no EOF to observe, so returning from [`run_bounded`] requires the deadline
+/// path to terminate the process rather than merely abandon its pipes.
+#[test]
+fn bounded_child_timeout_process() {
+    if std::env::var(ENV_TIMEOUT).is_err() {
+        return;
+    }
+    let heartbeat =
+        std::env::var_os(ENV_TIMEOUT_HEARTBEAT).expect("timeout child receives a heartbeat path");
+    let mut tick = 0_u64;
+    loop {
+        std::fs::write(&heartbeat, tick.to_le_bytes())
+            .expect("timeout child updates its liveness heartbeat");
+        tick += 1;
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+}
+
+/// Spawn this test binary as the child that requires timeout termination.
+fn timeout_command(heartbeat: &std::path::Path) -> tokio::process::Command {
+    let mut command = tokio::process::Command::new(std::env::current_exe().unwrap());
+    command
+        .args([
+            "bounded_child::tests::bounded_child_timeout_process",
+            "--exact",
+            "--nocapture",
+            "--test-threads=1",
+        ])
+        .env(ENV_TIMEOUT, "1")
+        .env(ENV_TIMEOUT_HEARTBEAT, heartbeat);
     command
 }
 
@@ -105,6 +145,39 @@ async fn the_byte_cap_refuses_a_runaway_child_and_kills_it() {
         .await
         .expect_err("a child over the cap is a refusal");
     assert!(matches!(fault, BoundedFault::OverCap), "got {fault:?}");
+}
+
+#[tokio::test]
+async fn a_timed_out_child_is_killed_and_reaped_before_the_fault_returns() {
+    let heartbeat_dir = tempfile::tempdir().expect("temporary heartbeat directory");
+    let heartbeat = heartbeat_dir.path().join("timeout-child-heartbeat");
+    let timeout = std::time::Duration::from_millis(500);
+    let started = std::time::Instant::now();
+    let fault = run_bounded(
+        timeout_command(&heartbeat),
+        None,
+        BoundedLimits {
+            cap: 4 * 1024,
+            timeout,
+        },
+        CapPolicy::Refuse,
+    )
+    .await
+    .expect_err("a child with no EOF must reach the wall-clock timeout");
+
+    assert!(matches!(fault, BoundedFault::Timeout), "got {fault:?}");
+    let heartbeat_before = std::fs::read(&heartbeat)
+        .expect("the child must have recorded liveness before the deadline");
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    assert_eq!(
+        std::fs::read(&heartbeat).expect("heartbeat remains readable after reaping"),
+        heartbeat_before,
+        "the heartbeat changed after timeout; the child was not reaped"
+    );
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(3),
+        "the runner must kill and reap the indefinitely-running child at its {timeout:?} deadline"
+    );
 }
 
 #[tokio::test]

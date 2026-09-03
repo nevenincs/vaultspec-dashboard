@@ -4,6 +4,7 @@ tags:
   - '#rail-feature-metadata'
 date: '2026-08-01'
 modified: '2026-08-01'
+body_hash: 'sha256:7f6e6656e767c6253bf95ade7f4560bc481397e464a0a94124fbf1c690cfe306'
 tier: L1
 related:
   - '[[2026-08-01-rail-feature-metadata-adr]]'

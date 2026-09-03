@@ -26,6 +26,7 @@ import {
 import type { ContentView } from "../../stores/server/queries";
 import type { LineChange } from "../authoring/editorChanges";
 import { CodeViewer } from "./CodeViewer";
+import { languageDisplayDescriptor } from "./languages";
 
 function available(text: string, patch: Partial<ContentView> = {}): ContentView {
   return {
@@ -65,7 +66,6 @@ describe("CodeViewer", () => {
     const header = container.querySelector("header")!;
     const footer = container.querySelector("footer")!;
     const path = within(header).getByText("mod.rs");
-    const language = within(header).getByText("Shell");
     const readOnly = within(header).getByText(
       resolveMessage(runtime, CODE_VIEWER_MESSAGES.labels.readOnly),
     );
@@ -81,7 +81,6 @@ describe("CodeViewer", () => {
 
     await act(async () => runtime.changeLanguage(ltrTestLocale));
     expect(within(header).getByText("mod.rs")).toBe(path);
-    expect(within(header).getByText("Interpréteur de commandes")).toBe(language);
     expect(
       within(header).getByText(
         resolveMessage(runtime, CODE_VIEWER_MESSAGES.labels.readOnly),
@@ -106,10 +105,24 @@ describe("CodeViewer", () => {
 
     await act(async () => runtime.changeLanguage(rtlTestLocale));
     expect(within(header).getByText("mod.rs")).toBe(path);
-    expect(within(header).getByText("واجهة الأوامر")).toBe(language);
     expect(footer.textContent).toBe(
       resolveMessage(runtime, codeViewerFooterDescriptor(1, "واجهة الأوامر", "UTF-8")),
     );
+  });
+
+  it("does not restate the language in the header \u2014 the footer already carries it", () => {
+    // Owner review [msbavmdz]: the type pill duplicated the footer summary, and it
+    // spent the widest line in the component on a fact already on screen. The
+    // footer assertion above proves the language is still stated, and localized,
+    // in every locale; this proves the header no longer says it a second time.
+    const { container, runtime } = renderViewer(
+      available("printf 'hello'\n", { languageHint: "sh" }),
+    );
+    const header = container.querySelector("header")!;
+    const footer = container.querySelector("footer")!;
+    const language = resolveMessage(runtime, languageDisplayDescriptor("sh", "code"));
+    expect(footer.textContent).toContain(language);
+    expect(header.textContent).not.toContain(language);
   });
 
   it("uses safe generic copy for an unknown language hint", () => {

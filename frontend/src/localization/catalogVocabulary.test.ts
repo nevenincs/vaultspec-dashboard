@@ -9,7 +9,7 @@
 import { describe, expect, it } from "vitest";
 
 import { resources, sourceLocale } from "../locales/en";
-import { PROHIBITED_UI_TERMS } from "./messagePolicy";
+import { PROHIBITED_TERM_EXEMPTIONS, PROHIBITED_UI_TERMS } from "./messagePolicy";
 
 interface CatalogValue {
   readonly identity: string;
@@ -38,10 +38,23 @@ function sourceCatalogValues(): readonly CatalogValue[] {
   return out;
 }
 
-function prohibitedHits(value: string): string[] {
-  return PROHIBITED_UI_TERMS.filter((term) => term.pattern.test(value)).map(
-    (term) => term.id,
-  );
+/** A dotted catalog identity in message-key form (`ns.a.b` → `ns:a.b`), the
+ *  shape the policy-layer exemption table is scoped by. */
+function messageKeyOf(identity: string): string {
+  const dot = identity.indexOf(".");
+  return dot === -1 ? identity : `${identity.slice(0, dot)}:${identity.slice(dot + 1)}`;
+}
+
+function prohibitedHits(value: string, identity = ""): string[] {
+  const key = messageKeyOf(identity);
+  return PROHIBITED_UI_TERMS.filter(
+    (term) =>
+      term.pattern.test(value) &&
+      // The same scoped narrowing the message policy applies: an exempted
+      // term/namespace pair (the Advanced console's operator vocabulary) is not
+      // an offender HERE either — one exemption table, two guards.
+      !PROHIBITED_TERM_EXEMPTIONS[term.id]?.some((prefix) => key.startsWith(prefix)),
+  ).map((term) => term.id);
 }
 
 describe("catalog vocabulary", () => {
@@ -52,13 +65,31 @@ describe("catalog vocabulary", () => {
 
   it("contains no prohibited internal or development vocabulary", () => {
     const offenders = sourceCatalogValues()
-      .filter(({ value }) => prohibitedHits(value).length > 0)
+      .filter(({ identity, value }) => prohibitedHits(value, identity).length > 0)
       .map(
         ({ identity, value }) =>
-          `${identity}: "${value}" [${prohibitedHits(value).join(", ")}]`,
+          `${identity}: "${value}" [${prohibitedHits(value, identity).join(", ")}]`,
       );
 
     expect(offenders).toEqual([]);
+  });
+
+  it("keeps the service exemption scoped to the advanced-console namespaces", () => {
+    // The narrowing admits "service" only where the exemption table says so; an
+    // identical value anywhere else stays an offender, and the package names
+    // stay offenders even inside the exempted namespaces.
+    expect(
+      prohibitedHits("Pause service", "operations.searchMaintenance.actions.pause"),
+    ).toEqual([]);
+    expect(prohibitedHits("Pause service", "common.actions.pause")).toContain(
+      "service",
+    );
+    expect(
+      prohibitedHits(
+        "Managed by vaultspec-rag",
+        "operations.searchMaintenance.identity.title",
+      ),
+    ).toContain("internal-package");
   });
 
   it("flags each prohibited term family in an adverse value", () => {

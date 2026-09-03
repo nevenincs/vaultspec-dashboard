@@ -5,7 +5,7 @@ tags:
 date: '2026-08-01'
 modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:73209042e8460a3aced032cf49747e0a322ed7a87655e1c4acb81b4bcb3c8f18'
+body_hash: 'sha256:96d3814f1233d955a32226649290ba74e9a783f8d0ba16458417e687c60b3b83'
 related: []
 ---
 
@@ -28,3 +28,12 @@ Four owner review notes converge on one displacement: the framework status chips
 1. One Settings ▸ Advanced section hosting the consolidated service console (rag console redesigned as the TUI's UI pair; framework/engine status summary; a2a lifecycle relocated), chips removed from user chrome, approvals affordance retained minimally. (Recommended — matches all four notes.)
 2. A separate dev-mode window/page outside Settings — rejected: the owner named Settings Advanced as the canonical home twice.
 3. Piecemeal removal now, console later — rejected: orphans rag/a2a controls; violates the full-cutover discipline.
+
+## Sources
+
+- The owner's four review notes on the rail-footer status chips, the rag job dashboard and its footer, the service-control shape, and the A2A lifecycle panel — the originating brief for all three displacements above.
+- The mounting trace through the app shell, the right-rail footer cluster, the modal control-panel host, and the compact rail, establishing that the chips are the sole navigation into the panels being moved.
+- The settings dialog and its engine settings registry, establishing that the dialog is schema-driven for VALUES and that a console section is therefore a deliberate non-schema extension.
+- The rag service's codified HTTP control plane and the machine-global discovery record, establishing which identity and monitoring facts already exist without new wire.
+- The engine's brokered ops routes for the rag lifecycle, jobs, log window, and storage rollup, plus the A2A lifecycle plane, establishing that the move needs no engine change.
+- Correction recorded at execution: the discovery record's port/pid are read by the engine and never forwarded, so the SERVICE's own host, port, and pid are not reachable by a browser client. Only the store's address, process, and version are served. The governing decision record carries this amendment.

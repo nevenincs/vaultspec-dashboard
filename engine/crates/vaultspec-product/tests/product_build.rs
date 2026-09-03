@@ -12,7 +12,7 @@ use std::collections::BTreeMap;
 
 use vaultspec_product::manifest::{ComponentLock, Target};
 use vaultspec_product::product_build::{
-    A2aComponentEvidence, BundledRuntimeEvidence, ComposedArtifact, ComposedMember,
+    A2aComponentEvidence, A2aSources, BundledRuntimeEvidence, ComposedArtifact, ComposedMember,
     DashboardArtifact, EvidenceArtifact, LicenseArtifact, ProductBuildError, RuntimeSource,
     SbomArtifact, emit_member_manifest, file_digests_from_scan, scan_composed_tree,
     verify_member_covers_tree,
@@ -52,7 +52,7 @@ fn composed_member() -> ComposedMember {
             size: 16,
             digest: "c".repeat(64),
         },
-        a2a_component: A2aComponentEvidence {
+        a2a_component: Some(A2aComponentEvidence {
             component_lock: EvidenceArtifact {
                 path: "packaging/a2a-component.lock.json".to_string(),
                 digest: "d".repeat(64),
@@ -62,7 +62,7 @@ fn composed_member() -> ComposedMember {
                 entrypoint: "a2a/vaultspec-a2a.exe".to_string(),
                 file_count: 3,
             },
-        },
+        }),
         licenses: vec![LicenseArtifact {
             component: "vaultspec-a2a".to_string(),
             spdx: "MIT".to_string(),
@@ -81,10 +81,21 @@ fn composed_member() -> ComposedMember {
     }
 }
 
+/// The same composed member with no bundled runtime: the shape a product tree
+/// built without the frozen a2a onedir emits. Built by MUTATING the with-a2a
+/// fixture rather than by a second literal, so the two can only differ in the
+/// one field under test.
+fn composed_member_without_a2a() -> ComposedMember {
+    ComposedMember {
+        a2a_component: None,
+        ..composed_member()
+    }
+}
+
 #[test]
 fn a_lock_consistent_member_emits_and_self_verifies() {
     let lock = lock();
-    let raw = emit_member_manifest(&composed_member(), &lock)
+    let raw = emit_member_manifest(&composed_member(), Some(&lock))
         .expect("a lock-consistent member must emit and self-verify");
     // The emitted bytes are the schema-2.0 member manifest, already proven through
     // the production verifier inside emit; confirm it is the intended shape.
@@ -105,7 +116,7 @@ fn the_emitter_derives_the_source_pin_from_the_lock_not_the_caller() {
     // binds them from the trusted lock, so a member cannot smuggle a divergent
     // source pin past a consumer that trusts the same lock.
     let lock = lock();
-    let raw = emit_member_manifest(&composed_member(), &lock).unwrap();
+    let raw = emit_member_manifest(&composed_member(), Some(&lock)).unwrap();
     let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
     assert_eq!(value["a2a_component"]["commit"], lock.a2a_source.commit);
     assert_eq!(
@@ -123,7 +134,7 @@ fn an_incomplete_cohort_roster_fails_self_verification() {
     let lock = lock();
     let mut member = composed_member();
     member.cohort_targets.pop(); // three targets, not four
-    let refused = emit_member_manifest(&member, &lock);
+    let refused = emit_member_manifest(&member, Some(&lock));
     assert!(
         matches!(refused, Err(ProductBuildError::SelfVerify(_))),
         "an incomplete cohort roster must fail the emitter's self-verification, got {refused:?}"
@@ -320,11 +331,13 @@ fn minimal_sources(
             write_source(src, "updater.exe", b"updater-bytes"),
             "bin/updater.exe",
         ),
-        a2a_runtime,
-        component_lock: source(
-            write_source(src, "lock.json", LOCK_JSON.as_bytes()),
-            "packaging/a2a-component.lock.json",
-        ),
+        a2a: Some(A2aSources {
+            runtime: a2a_runtime,
+            component_lock: source(
+                write_source(src, "lock.json", LOCK_JSON.as_bytes()),
+                "packaging/a2a-component.lock.json",
+            ),
+        }),
         licenses: vec![vaultspec_product::product_build::LicenseSource {
             source: write_source(src, "a2a.txt", b"MIT license text"),
             dest_relative: "licenses/a2a.txt".to_string(),
@@ -366,11 +379,13 @@ fn compose_product_tree_places_scans_emits_and_covers() {
             write_source(src.path(), "updater.exe", b"updater-bytes"),
             "bin/updater.exe",
         ),
-        a2a_runtime: write_onedir(src.path()),
-        component_lock: source(
-            write_source(src.path(), "lock.json", LOCK_JSON.as_bytes()),
-            "packaging/a2a-component.lock.json",
-        ),
+        a2a: Some(A2aSources {
+            runtime: write_onedir(src.path()),
+            component_lock: source(
+                write_source(src.path(), "lock.json", LOCK_JSON.as_bytes()),
+                "packaging/a2a-component.lock.json",
+            ),
+        }),
         licenses: vec![LicenseSource {
             source: write_source(src.path(), "a2a.txt", b"MIT license text"),
             dest_relative: "licenses/a2a.txt".to_string(),
@@ -384,7 +399,7 @@ fn compose_product_tree_places_scans_emits_and_covers() {
         sbom_format: "cyclonedx".to_string(),
     };
 
-    let raw = compose_product_tree(&generation_root, &sources, &lock)
+    let raw = compose_product_tree(&generation_root, &sources, Some(&lock))
         .expect("a complete source set must compose, emit, self-verify, and cover the tree");
 
     // The manifest was written into the tree and describes the real placed files.
@@ -425,7 +440,7 @@ fn compose_fails_on_a_missing_source_payload() {
     let mut sources = minimal_sources(src.path(), write_onedir(src.path()));
     sources.updater = source(src.path().join("does-not-exist.exe"), "bin/updater.exe");
 
-    let refused = compose_product_tree(&generation_root, &sources, &lock);
+    let refused = compose_product_tree(&generation_root, &sources, Some(&lock));
     assert!(
         matches!(refused, Err(ProductBuildError::Io(_))),
         "a missing source payload must fail the compose with a bounded I/O error, got {refused:?}"
@@ -442,7 +457,7 @@ fn the_bundled_runtime_is_placed_as_a_nested_tree_of_regular_files() {
     let generation_root = out.path().join("generations").join("0001");
     let sources = minimal_sources(src.path(), write_onedir(src.path()));
 
-    let raw = compose_product_tree(&generation_root, &sources, &lock)
+    let raw = compose_product_tree(&generation_root, &sources, Some(&lock))
         .expect("a built onedir must place as ordinary regular files");
     let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
 
@@ -474,7 +489,7 @@ fn an_entrypoint_the_freeze_recipe_did_not_emit_is_refused() {
     runtime.entrypoint_relative = "vaultspec-a2a-renamed.exe".to_string();
     let sources = minimal_sources(src.path(), runtime);
 
-    let refused = compose_product_tree(&generation_root, &sources, &lock);
+    let refused = compose_product_tree(&generation_root, &sources, Some(&lock));
     assert!(
         matches!(refused, Err(ProductBuildError::FileDigestsMismatch { .. })),
         "an absent entrypoint must fail the compose, got {refused:?}"
@@ -496,7 +511,7 @@ fn an_empty_directory_in_the_built_onedir_is_refused() {
     std::fs::create_dir_all(runtime.source_dir.join("_internal/empty")).unwrap();
     let sources = minimal_sources(src.path(), runtime);
 
-    let refused = compose_product_tree(&generation_root, &sources, &lock);
+    let refused = compose_product_tree(&generation_root, &sources, Some(&lock));
     assert!(
         matches!(refused, Err(ProductBuildError::EmptyDirectory { .. })),
         "an empty directory in the built onedir must be refused, got {refused:?}"
@@ -513,6 +528,27 @@ fn scan_rejects_a_non_portable_file_name() {
     assert!(
         matches!(refused, Err(ProductBuildError::NonPortablePath { .. })),
         "a non-portable file name must fail the build scan, got {refused:?}"
+    );
+}
+
+#[test]
+fn a_non_portable_rejection_names_the_whole_path() {
+    let temp = tempfile::tempdir().unwrap();
+    // The offending SEGMENT alone does not say where the file came from, and a
+    // composed tree carries the frozen runtime's entire dependency closure. A
+    // rejection naming only the segment leaves the reader searching two
+    // repositories for a file that is in neither, so the message must carry
+    // the path that reaches the emitter.
+    let nested = temp.path().join("_internal/vendor/data");
+    std::fs::create_dir_all(&nested).unwrap();
+    std::fs::write(nested.join("my file.txt"), b"x").unwrap();
+
+    let Err(ProductBuildError::NonPortablePath { detail }) = scan_composed_tree(temp.path()) else {
+        panic!("a non-portable file name must fail the build scan");
+    };
+    assert!(
+        detail.contains("_internal/vendor/data/my file.txt"),
+        "the rejection must name the whole path, got {detail:?}"
     );
 }
 
@@ -560,11 +596,13 @@ fn composed_tree() -> (tempfile::TempDir, tempfile::TempDir, std::path::PathBuf)
             write_source(src.path(), "updater.exe", b"updater-bytes"),
             "bin/updater.exe",
         ),
-        a2a_runtime: write_onedir(src.path()),
-        component_lock: source(
-            write_source(src.path(), "lock.json", LOCK_JSON.as_bytes()),
-            "packaging/a2a-component.lock.json",
-        ),
+        a2a: Some(A2aSources {
+            runtime: write_onedir(src.path()),
+            component_lock: source(
+                write_source(src.path(), "lock.json", LOCK_JSON.as_bytes()),
+                "packaging/a2a-component.lock.json",
+            ),
+        }),
         licenses: vec![LicenseSource {
             source: write_source(src.path(), "a2a.txt", b"MIT license text"),
             dest_relative: "licenses/a2a.txt".to_string(),
@@ -577,8 +615,120 @@ fn composed_tree() -> (tempfile::TempDir, tempfile::TempDir, std::path::PathBuf)
         ),
         sbom_format: "cyclonedx".to_string(),
     };
-    compose_product_tree(&generation_root, &sources, &lock).unwrap();
+    compose_product_tree(&generation_root, &sources, Some(&lock)).unwrap();
     (src, out, generation_root)
+}
+
+/// The same real compose with NO bundled runtime: the shape the product ships
+/// while the runtime is unadopted. Sources carry no `a2a` at all, so there is no
+/// lock to load and none to place.
+fn composed_tree_without_a2a() -> (tempfile::TempDir, tempfile::TempDir, std::path::PathBuf) {
+    use vaultspec_product::product_build::compose_product_tree;
+    let src = tempfile::tempdir().unwrap();
+    let out = tempfile::tempdir().unwrap();
+    let generation_root = out.path().join("generations").join("0001");
+    let sources = vaultspec_product::product_build::BuildSources {
+        a2a: None,
+        ..minimal_sources(src.path(), write_onedir(src.path()))
+    };
+    compose_product_tree(&generation_root, &sources, None).unwrap();
+    (src, out, generation_root)
+}
+
+#[test]
+fn an_a2a_less_tree_composes_and_omits_the_component_block_entirely() {
+    let (_src, _out, root) = composed_tree_without_a2a();
+    let raw = std::fs::read_to_string(root.join("release.json")).unwrap();
+    let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
+
+    // Omitted, not emptied and not zeroed: absence is the encoding.
+    assert!(
+        value.get("a2a_component").is_none(),
+        "a tree with no bundled runtime must omit a2a_component outright, got {}",
+        value["a2a_component"]
+    );
+    // Everything else the member always describes is still there.
+    assert_eq!(value["schema_version"], "2.0");
+    assert!(value["dashboard"]["digest"].is_string());
+    assert!(value["updater"]["digest"].is_string());
+    assert!(value["sbom"]["digest"].is_string());
+    assert!(value["licenses"][0]["digest"].is_string());
+}
+
+#[test]
+fn an_a2a_less_tree_carries_neither_the_runtime_nor_the_lock_that_pins_it() {
+    let (_src, _out, root) = composed_tree_without_a2a();
+    let raw = std::fs::read_to_string(root.join("release.json")).unwrap();
+    let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
+
+    // The lock pins a source the tree does not carry, so it is not placed and
+    // not declared. A lock in an a2a-less tree would be a pin with nothing
+    // pinned to it, and a consumer could mistake its presence for adoption.
+    assert!(!root.join("packaging/a2a-component.lock.json").exists());
+    assert!(
+        value["file_digests"]
+            .get("packaging/a2a-component.lock.json")
+            .is_none()
+    );
+    assert!(!root.join("a2a").exists());
+    for path in value["file_digests"].as_object().unwrap().keys() {
+        assert!(
+            !path.starts_with("a2a/"),
+            "no installed file may live under the bundled-runtime root, found {path}"
+        );
+    }
+}
+
+#[test]
+fn an_a2a_less_composed_tree_verifies_as_an_installed_tree() {
+    use vaultspec_product::product_build::verify_installed_tree;
+    // The acceptance property for the whole change: `vaultspec-cli` embeds the
+    // component lock and hands it to this verifier on every install, so a
+    // product tree that ships no bundled runtime must verify under that same
+    // lock. A refusal here is every install failing.
+    let (_src, _out, root) = composed_tree_without_a2a();
+    verify_installed_tree(&root, "release.json", &lock())
+        .expect("a tree that carries no bundled runtime must verify against its own release.json");
+}
+
+#[test]
+fn an_a2a_less_tree_still_fails_on_a_corrupted_file() {
+    use vaultspec_product::product_build::verify_installed_tree;
+    // Dropping the runtime must not soften the placement-integrity proof for
+    // everything that IS in the tree.
+    let (_src, _out, root) = composed_tree_without_a2a();
+    std::fs::write(root.join("bin/dashboard.exe"), b"tampered").unwrap();
+    assert!(matches!(
+        verify_installed_tree(&root, "release.json", &lock()),
+        Err(ProductBuildError::FileDigestsMismatch { .. })
+    ));
+}
+
+#[test]
+fn an_a2a_less_member_cannot_smuggle_the_source_pin_in_anyway() {
+    // The pin has exactly one source — the trusted lock — and it rides WITH the
+    // placed evidence. A member with no placed evidence emits no pin even when a
+    // lock is right there to copy one out of, so an a2a-less manifest can never
+    // claim a source build the tree does not carry.
+    let lock = lock();
+    let raw = emit_member_manifest(&composed_member_without_a2a(), Some(&lock)).unwrap();
+    assert!(!raw.contains(&lock.a2a_source.commit));
+    assert!(!raw.contains("a2a_component"));
+    assert!(!raw.contains("packaging/a2a-component.lock.json"));
+    let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
+    assert!(value.get("a2a_component").is_none());
+}
+
+#[test]
+fn bundled_evidence_with_no_trusted_lock_is_refused_rather_than_pinned_by_the_caller() {
+    // The inverse smuggle: placed runtime evidence and no lock to pin its
+    // source. There is no honest manifest for that — inventing the commit is the
+    // one thing the emitter must never do — so it refuses.
+    let refused = emit_member_manifest(&composed_member(), None);
+    assert!(
+        matches!(refused, Err(ProductBuildError::UnpinnedA2aSource)),
+        "bundled evidence without a trusted lock must be refused, got {refused:?}"
+    );
 }
 
 #[test]

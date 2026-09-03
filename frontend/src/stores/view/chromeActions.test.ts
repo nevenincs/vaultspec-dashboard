@@ -31,7 +31,7 @@ afterEach(() => {
   resetKeybindings();
   collapseAdvancedConsoles();
   closeSettingsDialog();
-  useAgentPanel.setState({ panelView: "transcript" });
+  useAgentPanel.setState({ pendingChangesOpen: false });
   setFollowMode(true);
   setShellCenterSlot("graph");
 });
@@ -98,7 +98,7 @@ describe("state-aware chrome toggles", () => {
     expect(useAdvancedConsole.getState().expanded).toBe("index");
   });
 
-  it("routes the pending chip to the Agent pending view on the agent plane", () => {
+  it("routes the pending chip to the Agent panel's pending region", () => {
     const pending = agentPendingChangesAction();
     // The retired Approvals modal's id and vocabulary are GONE: the verb is enrolled
     // where it acts, and its label lives under common:agent.*.
@@ -107,9 +107,10 @@ describe("state-aware chrome toggles", () => {
 
     setShellCenterSlot("graph");
     pending.run?.();
-    // It gives the center slot to the Agent panel, never opens a modal panel.
+    // It gives the center slot to the Agent panel, never opens a modal panel,
+    // and expands the in-conversation region (D9 — no view switch exists).
     expect(getShellCenterSlot()).toBe("agent");
-    expect(useAgentPanel.getState().panelView).toBe("pending");
+    expect(useAgentPanel.getState().pendingChangesOpen).toBe(true);
   });
 
   it("resolves every chrome descriptor through the real localization runtime", () => {

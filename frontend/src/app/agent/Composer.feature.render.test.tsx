@@ -18,7 +18,11 @@ import { I18nextProvider } from "react-i18next";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createTestLocalizationRuntime } from "../../localization/testing";
-import { a2aKeys, type TeamPreset } from "../../stores/server/agent/a2aTeam";
+import {
+  a2aKeys,
+  type ProviderCatalogResult,
+  type TeamPreset,
+} from "../../stores/server/agent/a2aTeam";
 import { engineKeys } from "../../stores/server/queries/internal";
 import { useViewStore } from "../../stores/view/viewStore";
 import { useAgentPanel } from "../../stores/view/agentPanel";
@@ -36,9 +40,42 @@ const servedPreset = (id: string, capability: string): TeamPreset => ({
   required_roles: [],
   is_mock: false,
   authoring_capability: capability,
-  default_profile_id: "team-defaults",
-  profiles: [],
 });
+
+const SERVED_CATALOG: ProviderCatalogResult = {
+  providers: [
+    {
+      provider_id: "provider-issued-id",
+      display_name: "Provider-issued display",
+      execution_mode: "execution-lane-issued-id",
+      health: {
+        configured: "available",
+        transport: "available",
+        authentication: "authenticated",
+        catalog: "available",
+        admission: "admitted",
+        selectable: true,
+        reasons: [],
+      },
+      catalog: {
+        state: {
+          status: "available",
+          revision: "catalog-revision-issued-id",
+          checked_at: "2026-08-02T09:00:00Z",
+          expires_at: "2099-08-02T09:00:00Z",
+        },
+        models: [
+          {
+            entry_id: "entry-issued-id",
+            display_name: "Entry-issued display",
+            capabilities: [],
+          },
+        ],
+        native_controls: [],
+      },
+    },
+  ],
+};
 
 const VAULT_TREE = {
   entries: [
@@ -71,6 +108,7 @@ function seed(presets: TeamPreset[], activeDocId: string | null): void {
     },
   });
   client.setQueryData(a2aKeys.presets(), { presets });
+  client.setQueryData(a2aKeys.providerCatalog(SCOPE), SERVED_CATALOG);
   client.setQueryData(engineKeys.vaultTree(SCOPE), VAULT_TREE);
   useViewStore.setState({
     scope: SCOPE,
@@ -138,14 +176,42 @@ async function pickPreset(id: string): Promise<void> {
   fireEvent.click(document.querySelector(`[data-team-preset="${id}"]`) as HTMLElement);
 }
 
+async function pickCatalogEntry(): Promise<void> {
+  const trigger = document.querySelector(
+    "[data-composer-model-trigger] button",
+  ) as HTMLButtonElement | null;
+  expect(trigger).not.toBeNull();
+  fireEvent.click(trigger!);
+  await waitFor(() => {
+    expect(
+      document.querySelector('[data-model-entry-id="entry-issued-id"]'),
+    ).not.toBeNull();
+  });
+  fireEvent.click(
+    document.querySelector('[data-model-entry-id="entry-issued-id"]') as HTMLElement,
+  );
+}
+
 function chip(): HTMLElement | null {
   return document.querySelector("[data-composer-feature]");
 }
 
-function startButton(): HTMLButtonElement {
-  const el = document.querySelector("[data-composer-team-start]");
+/** Enter on the input is the team start now (D11 — the Start button is deleted
+ *  with the send arrow; no captured composer has either). */
+function pressEnterToStart(): void {
+  const el = document.querySelector("[data-composer-input]") as HTMLTextAreaElement;
   expect(el).not.toBeNull();
-  return el as HTMLButtonElement;
+  fireEvent.keyDown(el, { key: "Enter" });
+}
+
+/** The selected preset's name on the team pill — the settle signal that team
+ *  mode is armed (the former Start button's presence played this role). */
+function teamPillNames(id: string): void {
+  const trigger = document.querySelector(
+    "[data-composer-team-trigger] button",
+  ) as HTMLButtonElement;
+  expect(trigger).not.toBeNull();
+  expect(trigger.textContent ?? "").toContain(id);
 }
 
 describe("the standing feature chip", () => {
@@ -153,7 +219,7 @@ describe("the standing feature chip", () => {
     seed([servedPreset("vaultspec-doc-editor", "coding")], `doc:${DOC_STEM}`);
     renderComposer();
     await pickPreset("vaultspec-doc-editor");
-    await waitFor(() => expect(startButton()).not.toBeNull());
+    await waitFor(() => teamPillNames("vaultspec-doc-editor"));
     expect(chip()).toBeNull();
   });
 
@@ -165,6 +231,7 @@ describe("the standing feature chip", () => {
     renderComposer();
     await pickPreset("vaultspec-adr-research");
     await waitFor(() => expect(chip()).not.toBeNull());
+    await pickCatalogEntry();
     expect(chip()!.getAttribute("data-feature-tag")).toBe("agent-panel");
     expect(
       chip()!
@@ -198,13 +265,13 @@ describe("what actually reaches the wire", () => {
     renderComposer();
     await pickPreset("vaultspec-adr-research");
     await waitFor(() => expect(chip()).not.toBeNull());
+    await pickCatalogEntry();
 
     const input = document.querySelector(
       "[data-composer-input]",
     ) as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: "Draft the decision record." } });
-    await waitFor(() => expect(startButton().disabled).toBe(false));
-    fireEvent.click(startButton());
+    pressEnterToStart();
 
     await waitFor(() => {
       expect(fetchCalls.some((call) => call.url.includes("run-start"))).toBe(true);
@@ -212,19 +279,27 @@ describe("what actually reaches the wire", () => {
     const runStart = fetchCalls.find((call) => call.url.includes("run-start"))!;
     // The exact field the sibling refuses the run without.
     expect((runStart.body as Record<string, unknown>).feature_tag).toBe("agent-panel");
+    expect((runStart.body as Record<string, unknown>).selection).toEqual({
+      schema_version: 1,
+      provider_id: "provider-issued-id",
+      execution_mode: "execution-lane-issued-id",
+      catalog_revision: "catalog-revision-issued-id",
+      entry_id: "entry-issued-id",
+      controls: {},
+    });
   });
 
   it("sends NO feature_tag for a coding lane", async () => {
     seed([servedPreset("vaultspec-doc-editor", "coding")], `doc:${DOC_STEM}`);
     renderComposer();
     await pickPreset("vaultspec-doc-editor");
+    await pickCatalogEntry();
 
     const input = document.querySelector(
       "[data-composer-input]",
     ) as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: "Tidy this document." } });
-    await waitFor(() => expect(startButton().disabled).toBe(false));
-    fireEvent.click(startButton());
+    pressEnterToStart();
 
     await waitFor(() => {
       expect(fetchCalls.some((call) => call.url.includes("run-start"))).toBe(true);
@@ -238,16 +313,16 @@ describe("what actually reaches the wire", () => {
     renderComposer();
     await pickPreset("vaultspec-adr-research");
     await waitFor(() => expect(chip()).not.toBeNull());
+    await pickCatalogEntry();
 
     const input = document.querySelector(
       "[data-composer-input]",
     ) as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: "Draft the decision record." } });
-    // The start is held, and the composer says what is missing rather than leaving
-    // a dead button to be interpreted.
-    expect(startButton().disabled).toBe(true);
+    // The start is HELD: Enter is a no-op, and the composer says what is missing
+    // rather than silently swallowing the keystroke.
     expect(document.querySelector("[data-composer-feature-hint]")).not.toBeNull();
-    fireEvent.click(startButton());
+    pressEnterToStart();
     expect(fetchCalls.some((call) => call.url.includes("run-start"))).toBe(false);
   });
 
@@ -256,6 +331,7 @@ describe("what actually reaches the wire", () => {
     renderComposer();
     await pickPreset("vaultspec-adr-research");
     await waitFor(() => expect(chip()).not.toBeNull());
+    await pickCatalogEntry();
 
     fireEvent.click(
       document.querySelector("[data-composer-feature-trigger]") as HTMLElement,
@@ -276,8 +352,7 @@ describe("what actually reaches the wire", () => {
       "[data-composer-input]",
     ) as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: "Draft the decision record." } });
-    await waitFor(() => expect(startButton().disabled).toBe(false));
-    fireEvent.click(startButton());
+    pressEnterToStart();
 
     await waitFor(() => {
       expect(fetchCalls.some((call) => call.url.includes("run-start"))).toBe(true);

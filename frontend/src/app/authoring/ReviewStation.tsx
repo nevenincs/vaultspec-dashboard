@@ -40,6 +40,8 @@ import {
   StateBlock,
 } from "../kit";
 import { ActionConfirmationDialog } from "../chrome/ActionConfirmationDialog";
+import { Check, MessageSquareReply, Send, Undo2, X } from "lucide-react";
+
 import { DiffPanel } from "./DiffPanel";
 import { ProposalDiffstat } from "./ProposalDiffstat";
 import type { ReactNode } from "react";
@@ -163,6 +165,54 @@ function outcomeFeedback(
     : { tone: "refused", descriptor: REVIEW_STATION_MESSAGES.actionNotAllowed };
 }
 
+/** Rendered edge length of a verdict mark, sized to sit on the button's text
+ *  baseline rather than dominate the label beside it. */
+const VERDICT_MARK_REM = "0.875rem";
+
+/** The mark for each verdict.
+ *
+ *  The owner's note asks the approval vocabulary AND its iconography to follow
+ *  the reference desktop agents, whose verdict marks are the plainest possible
+ *  reading of the act: a tick accepts, a cross declines, a reply-arrow sends it
+ *  back with a message, an upward send commits it, and a return-arrow undoes it.
+ *  Nothing here is decorative and nothing is a brand mark — each one restates its
+ *  label so the row is readable at a glance without reading every word.
+ *
+ *  These are Lucide, the structural family, so the icon law holds. They are
+ *  PRESENTATION only: the wire verdict is unchanged and the label remains the
+ *  accessible name, so the mark is `aria-hidden` and a reader hears the verb.
+ *
+ *  ATTESTATION, stated because the rule here is "follow the captures where they
+ *  show something, keep what we serve where they do not". NO capture contains an
+ *  approve/reject/request-changes moment — the four in `.tmp/ui-captures/` show a
+ *  composer, two navigation chromes, and a finished-run outcome card. So:
+ *    - ATTESTED: "Review changes" as the label on the affordance that opens a
+ *      finished change (`chatgpt-desktop.png`).
+ *    - UNATTESTED: every verdict label and every mark below. The labels are the
+ *      vocabulary we already served, shortened to drop a restated object
+ *      ("Approve proposal" → "Approve"); no verb here is coined, and the served
+ *      verdict set is untouched. The marks are the plainest reading of each verb
+ *      rather than a copied glyph.
+ *  If the owner has a view on the unattested half, it is a relabel and a swap of
+ *  this table — not a redesign. */
+const VERDICT_MARK: Readonly<
+  Record<ReviewCommand, (props: { size: string }) => ReactNode>
+> = Object.freeze({
+  approve: ({ size }) => <Check size={size} aria-hidden />,
+  reject: ({ size }) => <X size={size} aria-hidden />,
+  edit_proposal: ({ size }) => <MessageSquareReply size={size} aria-hidden />,
+  request_apply: ({ size }) => <Send size={size} aria-hidden />,
+  submit_for_review: ({ size }) => <Send size={size} aria-hidden />,
+  create_rollback: ({ size }) => <Undo2 size={size} aria-hidden />,
+});
+
+/** The mark for a command, or nothing when the command is outside the closed set
+ *  (a newer engine must never make this client draw an unmarked guess). */
+function VerdictMark({ command }: { command: ReviewCommand }) {
+  const Mark = VERDICT_MARK[command];
+  return Mark === undefined ? null : <Mark size={VERDICT_MARK_REM} />;
+}
+
 function ActionButton({
   eligibility,
   command,
@@ -204,6 +254,7 @@ function ActionButton({
       data-action={command}
       data-allowed={eligibility.allowed}
     >
+      <VerdictMark command={command} />
       {label}
     </Button>
   );
@@ -221,8 +272,14 @@ export function ProposalCard({
   /** The C4 stat block, supplied by the HOST rather than read here. The card is a
    *  prop-driven export with three consumers and no provider of its own; giving it
    *  a query would make it un-renderable outside one. `ProposalDiffstat` is that
-   *  block, and `proposalDiffstatSlot` is the one place hosts build it. */
-  diffstat?: ReactNode;
+   *  block, and `proposalDiffstatSlot` is the one place hosts build it.
+   *
+   *  It is a FUNCTION of the action rather than a plain node because the captured
+   *  reference grammar puts the open-the-change affordance terminal-right INSIDE
+   *  the stat card, and only this card knows the disclosure state that affordance
+   *  toggles. The host still owns what the stat block IS; the card supplies the
+   *  one control that belongs to it. */
+  diffstat?: (action: ReactNode) => ReactNode;
 }) {
   const resolveMessage = useLocalizedMessageResolver();
   const [busy, setBusy] = useState(false);
@@ -249,7 +306,13 @@ export function ProposalCard({
     resolveMessage,
     REVIEW_STATION_MESSAGES.untitledProposal,
   );
-  const showChanges = safeMessage(resolveMessage, REVIEW_STATION_MESSAGES.showChanges);
+  // The closed state carries the captured reference label ("Review changes"); the
+  // open state stays "Hide changes", because a disclosure that is already open
+  // must say what closing it does. The reference only ever shows the closed state.
+  const reviewChanges = safeMessage(
+    resolveMessage,
+    REVIEW_STATION_MESSAGES.reviewChanges,
+  );
   const hideChanges = safeMessage(resolveMessage, REVIEW_STATION_MESSAGES.hideChanges);
   const acknowledgeLabel = safeMessage(
     resolveMessage,
@@ -297,7 +360,7 @@ export function ProposalCard({
     !author ||
     !changes ||
     !untitled ||
-    !showChanges ||
+    !reviewChanges ||
     !hideChanges ||
     (proposal.policy && !policy) ||
     (proposal.validation.present && proposal.validation.status && !validation) ||
@@ -379,6 +442,19 @@ export function ProposalCard({
     : null;
   if (pending && !confirmation) return null;
 
+  // Built once and placed by the branch below, so the control is identical
+  // whether the stat card hosts it or it stands on its own row.
+  const reviewChangesToggle = (
+    <Button
+      variant="ghost"
+      onClick={() => setShowDiff((open) => !open)}
+      aria-expanded={showDiff}
+      data-toggle-diff
+    >
+      {showDiff ? hideChanges : reviewChanges}
+    </Button>
+  );
+
   return (
     <li
       className="flex flex-col gap-fg-2 rounded-fg-sm border border-rule bg-paper-raised px-fg-2 py-fg-2"
@@ -414,10 +490,22 @@ export function ProposalCard({
 
       {conflict && <StateBlock mode="degraded" layout="inline" message={conflict} />}
 
-      {/* C4: the change renders as a STAT card — an aggregate plus a per-file
-          breakdown — with the full diff still deferred to the expansion below.
-          Actions stay terminal-right, after the stat. */}
-      {diffstat}
+      {/* C4: the change renders as a STAT card — a title, an aggregate, and a
+          per-file breakdown — with the full diff still deferred to the expansion
+          below. Per the captured reference grammar the affordance that opens the
+          change sits terminal-right INSIDE that card, beside what it opens,
+          rather than trailing the verdict buttons where it read as a fourth
+          decision. The verdict actions stay in their own row underneath.
+
+          The disclosure is UNCONDITIONAL: when a host supplies no stat slot the
+          card still has a diff to open, so the control falls back to its own row
+          rather than disappearing with the slot. Hosting it is the stat card's
+          job; existing is not. */}
+      {diffstat === undefined ? (
+        <div className="flex justify-end">{reviewChangesToggle}</div>
+      ) : (
+        diffstat(reviewChangesToggle)
+      )}
 
       <div className="flex flex-wrap items-center justify-end gap-fg-2">
         {eligibilityForRender.map(({ entry, command, label, presentation }) => (
@@ -456,6 +544,7 @@ export function ProposalCard({
                 onClick={() => setPending({ command: "create_rollback", proposal })}
                 data-action="create_rollback"
               >
+                <VerdictMark command="create_rollback" />
                 {label}
               </Button>
             );
@@ -478,14 +567,6 @@ export function ProposalCard({
             {acknowledgeLabel}
           </Button>
         )}
-        <Button
-          variant="ghost"
-          onClick={() => setShowDiff((open) => !open)}
-          aria-expanded={showDiff}
-          data-toggle-diff
-        >
-          {showDiff ? hideChanges : showChanges}
-        </Button>
       </div>
 
       {composing && (
@@ -635,8 +716,12 @@ function RequestChangesComposer({
 
 /** Build the C4 stat block for a proposal. The ONE place a host mounts it, so the
  *  three card consumers cannot drift into three different stat treatments. */
-export function proposalDiffstatSlot(proposal: ProposalProjection): ReactNode {
-  return <ProposalDiffstat changesetId={proposal.changeset_id} />;
+export function proposalDiffstatSlot(
+  proposal: ProposalProjection,
+): (action: ReactNode) => ReactNode {
+  return (action) => (
+    <ProposalDiffstat changesetId={proposal.changeset_id} action={action} />
+  );
 }
 
 export function AppliedUnderPolicyLane({
@@ -738,7 +823,7 @@ export function ReviewStationBody({
         />
       )}
       {view.rows.length > 0 && (
-        <ul className="flex flex-col gap-fg-2" role="list" data-proposal-list>
+        <ul className="flex flex-col gap-fg-3" role="list" data-proposal-list>
           {view.rows.map((proposal) => (
             <ProposalCard
               key={proposal.changeset_id}
@@ -760,13 +845,22 @@ export function ReviewStationBody({
   );
 }
 
-/** The autonomy / operation-mode control (agentic-authoring-ux ADR D5, Figma
- *  `AutonomyControl` 1226:4520): a compact two-mode segmented control under an
- *  "Autonomy" eyebrow reflecting the SERVED worktree mode. Manual → "Review each
- *  change" (human approval required); autonomous → "Apply automatically". Plain
- *  labels mapped from the served mode token; the segments write via the mode seam
- *  with ambient provenance. A served "assisted" mode (not one of the two segments)
- *  shows neither active — honest, never a fabricated selection. */
+/** The approval-mode control (agentic-authoring-ux ADR D5, Figma `AutonomyControl`
+ *  1226:4520): a two-mode segmented control reflecting the SERVED worktree mode.
+ *  Manual → "Review each change" (human approval required); autonomous → "Apply
+ *  automatically". Plain labels mapped from the served mode token; the segments
+ *  write via the mode seam with ambient provenance. A served "assisted" mode (not
+ *  one of the two segments) shows neither active — honest, never a fabricated
+ *  selection.
+ *
+ *  THIS IS NOW THE ONLY PLACE A USER CHANGES APPROVAL MODE. The composer's
+ *  permission pill was deleted, so what was one entry point among two is the
+ *  single one, and a control buried as a queue detail no longer matches its
+ *  importance. It therefore states its CONSEQUENCE rather than only its options:
+ *  choosing "Apply automatically" means an agent's changes land without anyone
+ *  reading them, and that sentence belongs beside the switch that does it, not
+ *  discovered afterwards. The line is read from the active served mode, so it
+ *  describes what IS true right now — never a warning about a state nobody is in. */
 export function AutonomyControl({
   mode,
   onSelect,
@@ -811,6 +905,16 @@ export function AutonomyControl({
     ? safeMessage(resolveMessage, feedback.descriptor)
     : null;
 
+  // What the ACTIVE mode means, in one sentence. Only the automatic mode carries a
+  // consequence worth stating: manual review is the safe default and needs no
+  // caveat, and a served "assisted" mode is neither, so it says nothing rather
+  // than guessing. This is a statement of the current state, not a warning about
+  // a hypothetical one.
+  const consequence =
+    mode === "autonomous"
+      ? safeMessage(resolveMessage, { key: "common:agent.autonomyBanner.warning" })
+      : null;
+
   return (
     <div className="flex flex-col gap-fg-1" data-autonomy-control data-mode={mode}>
       <SectionLabel>{eyebrow}</SectionLabel>
@@ -825,6 +929,11 @@ export function AutonomyControl({
         <Segment value="manual">{reviewEach}</Segment>
         <Segment value="autonomous">{applyAutomatically}</Segment>
       </SegmentedToggle>
+      {consequence && (
+        <p className="text-meta text-state-stale" data-autonomy-consequence>
+          {consequence}
+        </p>
+      )}
       {feedbackMessage && feedback && (
         <p
           className={`text-meta ${feedback.tone === "error" ? "text-diff-remove" : "text-ink-muted"}`}

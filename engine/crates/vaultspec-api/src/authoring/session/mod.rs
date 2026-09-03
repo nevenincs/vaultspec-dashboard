@@ -192,6 +192,7 @@ impl SessionRepository<'_, '_> {
             langgraph,
             cancellation_reason: None,
             failure_reason: None,
+            provider_condition: None,
             created_at_ms: now_ms,
             updated_at_ms: now_ms,
             cancelled_at_ms: None,
@@ -307,6 +308,10 @@ impl SessionRepository<'_, '_> {
         run.status = RunStatus::Failed;
         run.active = false;
         run.failure_reason = Some(failure_reason.to_string());
+        // No provider condition: an abandoned run is a runtime that stopped
+        // reporting, which says nothing about whether a provider refused
+        // anything. Stamping the floor member here would look like an observed
+        // classification and would be a claim this path cannot make.
         run.updated_at_ms = now_ms;
         run.completed_at_ms = Some(now_ms);
         self.insert_or_update_run(&run)?;
@@ -391,8 +396,10 @@ impl SessionRepository<'_, '_> {
 
     /// Settle an active run into its terminal state. The reported `outcome`
     /// (`completed` — the default preserving pre-outcome callers — or `failed`) picks
-    /// the terminal `RunStatus`; a `failed` outcome may carry a `failure_reason`, a
-    /// `completed` one must not. Authorization is owner-only: the settling `actor` must
+    /// the terminal `RunStatus`; a `failed` outcome may carry a `failure_reason` and a
+    /// `provider_condition`, a `completed` one must carry neither. The reason and the
+    /// condition are recorded as reported and independently of one another — nothing
+    /// here reads one to fill in the other. Authorization is owner-only: the settling `actor` must
     /// be the run's owner or its delegator (a typed `RunForbidden` 403 otherwise) —
     /// nobody else may forge settlement. A terminal run replays idempotently. The
     /// session is LEFT `Active`; the caller promotes the next queued turn.
@@ -406,10 +413,22 @@ impl SessionRepository<'_, '_> {
         validate_completion_summary(input.summary.as_deref())?;
         let outcome = input.outcome.unwrap_or(RunOutcome::Completed);
         match outcome {
-            RunOutcome::Failed => validate_failure_reason(input.failure_reason.as_deref())?,
+            RunOutcome::Failed => {
+                validate_failure_reason(input.failure_reason.as_deref())?;
+                validate_provider_condition(input.provider_condition.as_deref())?;
+            }
+            // A provider condition on a run that did not fail is a contradiction,
+            // not a harmless extra: it would tell every downstream reader to act
+            // on a refusal that never happened. Refused here rather than trusted,
+            // exactly like the reason it accompanies.
             RunOutcome::Completed if input.failure_reason.is_some() => {
                 return Err(StoreError::Session(
                     "a completed run carries no failure_reason".to_string(),
+                ));
+            }
+            RunOutcome::Completed if input.provider_condition.is_some() => {
+                return Err(StoreError::Session(
+                    "a completed run carries no provider_condition".to_string(),
                 ));
             }
             RunOutcome::Completed => {}
@@ -430,6 +449,7 @@ impl SessionRepository<'_, '_> {
         };
         run.active = false;
         run.failure_reason = input.failure_reason;
+        run.provider_condition = input.provider_condition;
         run.updated_at_ms = now_ms;
         run.completed_at_ms = Some(now_ms);
         self.insert_or_update_run(&run)?;

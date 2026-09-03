@@ -153,9 +153,38 @@ function AddProjectDialogBody() {
   // Browser navigation and selection update the shared path draft.
   // `programmaticDraft` distinguishes those writes from operator typing so
   // they never bounce back through the typed-path parser.
-  const programmaticDraft = useRef(false);
+  // Holds the VALUE last written programmatically, not a bare flag. A flag is
+  // consumed by the next effect run, and when the write does not change `path`
+  // that run never happens - so the flag stays armed and silences the
+  // operator's next real keystroke instead. Comparing the value lets the effect
+  // consume it unconditionally and skip only the render that write produced.
+  const programmaticDraft = useRef<string | null>(null);
+  // The in-flight debounced parse, held so a programmatic write can cancel it
+  // even when that write changes nothing about `path`.
+  const pendingParse = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelPendingParse = () => {
+    if (pendingParse.current !== null) {
+      clearTimeout(pendingParse.current);
+      pendingParse.current = null;
+    }
+  };
   const writeDraft = (next: string) => {
-    programmaticDraft.current = true;
+    programmaticDraft.current = next;
+    // Cancelled HERE rather than left to the effect's cleanup. That cleanup
+    // runs only when a dependency CHANGES, so a write resolving to the string
+    // already in the box leaves the pending parse alive to fire against a path
+    // the operator has already committed.
+    //
+    // That is the common case, not an edge one. The engine answers in forward
+    // slashes, so on Linux and macOS a typed absolute path comes back spelled
+    // exactly as it was typed - identical string, no dependency change, timer
+    // survives. Windows never sees it, because a drive path is typed with
+    // separators the engine rewrites, and the changed string re-runs the
+    // effect and clears the timer. When the timer does survive it fires with
+    // `enterRequested` false, sets `operatorDraft`, and `target` collapses to
+    // null: the confirm goes permanently disabled with no error raised and
+    // nothing to clear it.
+    cancelPendingParse();
     setAddProjectPath(next);
   };
 
@@ -199,13 +228,22 @@ function AddProjectDialogBody() {
     setQuery(parsed.filter);
   }, []);
   useEffect(() => {
-    if (programmaticDraft.current) {
-      programmaticDraft.current = false;
-      return;
-    }
+    // Consumed unconditionally: a programmatic write is stale by the time any
+    // later render arrives, and leaving it armed is how a no-op write used to
+    // swallow the operator's next edit.
+    const wrote = programmaticDraft.current;
+    programmaticDraft.current = null;
+    if (wrote !== null && path === wrote) return;
     if (!open || submitting) return;
-    const timer = setTimeout(() => applyTypedPath(path), PATH_PARSE_DEBOUNCE_MS);
-    return () => clearTimeout(timer);
+    const timer = setTimeout(() => {
+      pendingParse.current = null;
+      applyTypedPath(path);
+    }, PATH_PARSE_DEBOUNCE_MS);
+    pendingParse.current = timer;
+    return () => {
+      clearTimeout(timer);
+      if (pendingParse.current === timer) pendingParse.current = null;
+    };
   }, [path, open, submitting, applyTypedPath]);
 
   useEffect(() => {
