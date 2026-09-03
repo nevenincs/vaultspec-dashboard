@@ -85,7 +85,12 @@ github-build-setup = "../release-build-setup.yml"
 # release.yml against `dist generate-ci` output whenever cargo-dist-version moves.
 allow-dirty = ["ci"]
 # Which actions to run on pull requests
-pr-run-mode = "plan"
+# TEMPORARY - verification only, this PR is not for merge. Setting this to
+# "upload" makes `build-local-artifacts` run on a pull request, which is the
+# only way to exercise the four release legs without cutting a tag: a tag run
+# uses the workflow as it existed at that tag, and release-please will not mint
+# a new tag for workflow-only commits.
+pr-run-mode = "upload"
 # Whether dist should create a Github Release or use an existing draft
 create-release = false
 # Post-announce jobs to run in CI
