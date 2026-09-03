@@ -5,9 +5,11 @@ tags:
 date: '2026-07-31'
 related:
   - "[[2026-06-14-dashboard-design-adoption-adr]]"
+  - '[[2026-07-30-visual-review-harness-research]]'
+  - '[[2026-07-31-visual-review-harness-audit]]'
 supersedes:
   - '2026-07-30-visual-review-harness-adr'
-modified: '2026-07-31'
+modified: '2026-09-03'
 body_schema: 'body-v1'
 body_hash: 'sha256:0fe0e91ccf53da82c2ee239e771281263e69929ecf84800f6363b3b11b064311'
 ---
