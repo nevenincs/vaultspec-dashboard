@@ -123,11 +123,9 @@ enum Command {
                             dashboard — holds the installation lock for the whole \
                             transaction, resolves an interrupted one, and relaunches the \
                             seat afterwards.\n\nOnly a complete product installation carries \
-                            that authority. A copy installed by a package manager updates \
-                            through the manager that owns its files — `scoop update \
-                            vaultspec`, `winget upgrade vaultspec`, or Windows Installer for \
-                            an MSI copy — and this verb refuses rather than writing files it \
-                            does not own."
+                            that authority. A copy a package manager installed updates through that \
+                            manager, and this verb refuses rather than writing files it does not own \
+                            — naming the manager it recognised and the command to run instead."
     )]
     Update,
     /// The dashboard-owned A2A companion lifecycle: bounded status and
