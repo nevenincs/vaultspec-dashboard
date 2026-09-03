@@ -5,7 +5,7 @@ tags:
 date: '2026-09-03'
 modified: '2026-09-03'
 body_schema: 'body-v2'
-body_hash: 'sha256:ff4c83bd4f19f07edb6b0bd32bc1776d641a6c4bf0421b7b045b3adc4cf216dc'
+body_hash: 'sha256:2a7d07c594572e6d28349318e894cc6b2e7d11fe08a22b6ed3680a0c544a7992'
 related:
   - '[[2026-09-03-application-host-research]]'
   - '[[2026-07-12-single-app-runtime-adr]]'
@@ -54,6 +54,9 @@ design. Grounding is `2026-09-03-application-host-research`.
   delegation on Linux, admission-only on macOS (F7).
 - Workspace `unsafe_code = "forbid"` and the `graph` rule's no-GPU-dependency
   law constrain where native and probe code may live (F1, F7).
+- The served page already hands the bearer to whoever reaches the loopback
+  port, so an SSH forward yields the full GUI today; remote vault reading is
+  a strength to retain, not a hole to close (research F1 substrate).
 - The a2a generation tree, sealed transaction, receipts and TUF authority are
   delivered and certified; the component question is what fills that tree,
   not its shape (F1, F6).
@@ -220,6 +223,24 @@ High-level layering; the plan owns sequencing.
   with a bounded subprocess, or the provisioned interpreter's own report,
   surfaced through `tiers` and the provisioning projection. No engine crate
   gains a GPU dependency. Available memory comes from `sysinfo`.
+- **D8 Degradation policy.** Every component carries one of three declared
+  degradation classes in its `ComponentSpec`, served through `tiers`:
+  *blocking* (the seat refuses to serve the GUI and reports the remediation:
+  a missing or below-floor core, an unverifiable generation), *parking* (the
+  feature greys and the supervisor stops retrying: a crash-looped rag, a
+  refused a2a attach), and *advisory* (a warning only: no GPU, low memory
+  headroom). The class is declared once in the spec, never inferred by a
+  surface, and the launcher, the status verb and the SPA read the same value.
+- **D9 Remote reachability.** Anyone who reaches the seat's port is served
+  the GUI. The bind stays loopback with Host validation, the page is served
+  bearer-less with the token injected, and the sanctioned remote path is an
+  SSH port forward to that loopback port: a user forwarding a remote machine's
+  seat reads that machine's vaults in the full dashboard with no extra step.
+  This is a retained capability, guarded by the live-wire suite through a
+  forwarded-origin case. Binding to a non-loopback interface (a Tailscale or
+  LAN address) is not decided here; it changes the trust boundary and needs
+  its own record covering Host validation, TLS or tailnet identity, and
+  bearer custody.
 
 ## Rationale
 
@@ -270,6 +291,11 @@ unsigned bundle would degrade the macOS experience the tarball delivers today.
   `tiers`; a runaway rag on macOS is killed by the watchdog, not capped.
 - Tauri (O2) is the recorded next increment for tray and bundling; adopting
   it is a new ADR, not an amendment.
+- Reading a remote machine's vaults through an SSH-forwarded seat is a named
+  product capability with a guard; any future bind or Host-validation change
+  must keep it or supersede D9 explicitly.
+- Degradation gains a hard-stop class: a below-floor core now refuses the GUI
+  at the seat instead of serving greyed surfaces.
 - The a2a provisioning ADRs are amended in wording only: their root moves to
   `components/a2a` and their capsule becomes one of several components under
   one lock.
