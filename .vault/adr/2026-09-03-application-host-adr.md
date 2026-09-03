@@ -5,7 +5,7 @@ tags:
 date: '2026-09-03'
 modified: '2026-09-03'
 body_schema: 'body-v2'
-body_hash: 'sha256:2a7d07c594572e6d28349318e894cc6b2e7d11fe08a22b6ed3680a0c544a7992'
+body_hash: 'sha256:134e12a62ec503edf136e83a11047bcb9641c6f0e48041483d859dcb0fb29140'
 related:
   - '[[2026-09-03-application-host-research]]'
   - '[[2026-07-12-single-app-runtime-adr]]'
@@ -139,6 +139,10 @@ design. Grounding is `2026-09-03-application-host-research`.
   `command-group` is verified against the existing grandchild-cleanup tests.
 - **Relocatability of python-build-standalone** requires path rewriting; the
   existing relocation certification case extends to the carried interpreter.
+- **Identity fields are owner inputs, not authoring decisions.** Publisher
+  name, namespace, contact and description are supplied by the owner before
+  the first identity-bearing build; the record requires them and holds no
+  placeholder values. Signing material lives only in CI secrets.
 - **Parent stability:** the seat law, lifecycle verbs, provisioning broker,
   generation tree, sealed transaction and TUF authority are accepted and
   delivered; this record extends their scope and changes none of their
@@ -241,6 +245,41 @@ High-level layering; the plan owns sequencing.
   LAN address) is not decided here; it changes the trust boundary and needs
   its own record covering Host validation, TLS or tailnet identity, and
   bearer custody.
+- **D10 Application identity record.** One owner-authored, checked-in
+  identity file (`packaging/product.toml`) is the sole source for every
+  human- and trust-facing field, and every packaging step derives from it;
+  no installer, manifest, resource script or formula hand-types a value. It
+  carries, as required fields with no defaults: product name and short name;
+  the reverse-DNS namespace that becomes the macOS bundle identifier, the
+  WinGet package identifier and the MSI upgrade family; publisher legal name
+  and publisher display name; copyright line and licence identifier;
+  homepage, support URL, privacy URL and a contact address; the one-line
+  description and the paragraph summary used by the WinGet locale manifest,
+  the Scoop and Homebrew descriptions, the MSI property table, the desktop
+  entry comment and the release page; and the icon reference. Version is
+  never in this file; it derives from the workspace version. Consumers:
+  `winresource` VERSIONINFO on both Windows binaries (`CompanyName`,
+  `FileDescription`, `ProductName`, `LegalCopyright`, `OriginalFilename`),
+  the WiX `Product`/`Manufacturer`/`UpgradeCode`, `Info.plist`
+  (`CFBundleIdentifier`, `CFBundleDisplayName`, `NSHumanReadableCopyright`),
+  the `.desktop` entry, the WinGet, Scoop and Homebrew manifests, the SBOM
+  supplier block and `release.json`. A guard fails the release when any
+  field is empty or when a consumer's rendered value drifts from the record.
+  Signing inputs are declared here by NAME only and supplied as CI secrets,
+  never checked in: the Apple Team ID and Developer ID Application
+  certificate reference, the Authenticode certificate subject or the
+  SignPath organisation and project slugs, and the timestamp authority URL.
+  The record states which of these are present, and D5's signing gate reads
+  that, so an unsigned build is a declared state rather than a missing
+  secret.
+- **D11 Product icon.** One master icon authored in the design system as the
+  binding source, in the Phosphor family on its grid per the design-system
+  law, and exported by one generator script into every derived form: a
+  multi-resolution `.ico` (16 to 256), an `.icns`, and hicolor PNGs (16 to
+  512) for Linux. The generator is the only producer; derived files are
+  build products, never hand-edited, and the identity record points at the
+  master. The existing documentation logo is not the product icon unless it
+  is promoted through that path.
 
 ## Rationale
 
@@ -291,6 +330,9 @@ unsigned bundle would degrade the macOS experience the tarball delivers today.
   `tiers`; a runaway rag on macOS is killed by the watchdog, not capped.
 - Tauri (O2) is the recorded next increment for tray and bundling; adopting
   it is a new ADR, not an amendment.
+- The first identity-bearing release is blocked until the owner fills the
+  identity record and the master icon exists; the plan's identity phase
+  begins with that hand-off and the guard keeps a blank field from shipping.
 - Reading a remote machine's vaults through an SSH-forwarded seat is a named
   product capability with a guard; any future bind or Host-validation change
   must keep it or supersede D9 explicitly.
