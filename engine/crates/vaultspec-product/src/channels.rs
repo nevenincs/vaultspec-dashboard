@@ -19,6 +19,7 @@ use std::path::{Path, PathBuf};
 use crate::receipt::Channel;
 
 pub mod msi;
+pub mod owner;
 pub mod scoop;
 pub mod self_install;
 pub mod winget;

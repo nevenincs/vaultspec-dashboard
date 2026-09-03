@@ -222,13 +222,16 @@ How you update depends on how you installed.
   Installer rather than editing installed files. To return to an earlier release, install
   its package.
 - **Scoop or WinGet:** update through the manager — `scoop update vaultspec` or
-  `winget upgrade vaultspec.vaultspec`. `vaultspec update` refuses on a
-  manager-installed copy and names the command to run instead.
+  `winget upgrade vaultspec.vaultspec`.
 - **Homebrew:** `brew upgrade vaultspec`, and `brew uninstall vaultspec` to
-  remove it. Do not run `vaultspec update` on a Homebrew copy: it does *not*
-  refuse there — the only thing it checks is whether `vaultspec-updater` sits
-  beside the dashboard, and the formula installs them as siblings — so it would
-  hand a release transaction to a helper that rewrites files Homebrew owns.
+  remove it.
+
+On any manager-installed copy, `vaultspec update` refuses and names that
+manager's own command. It recognises the copy from the layout the manager put it
+in — Scoop's `apps` directory beside its `shims`, Homebrew's `Cellar`, WinGet's
+packages directory — because no manager records which one installed a copy, so
+the layout is the only evidence there is. A copy the product installed itself is
+recognised by none of those rules and updates normally.
 
 #### Removing it, and what stays
 
