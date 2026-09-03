@@ -32,7 +32,7 @@ repos:
     - markdown
   - id: vault-fix
     name: Vault Doctor (Fix)
-    entry: uv run --no-sync vaultspec-core vault check all --fix
+    entry: uv run --no-sync vaultspec-core vault check all
     language: system
     types:
     - markdown

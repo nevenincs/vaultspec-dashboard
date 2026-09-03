@@ -8,8 +8,8 @@ body_hash: 'sha256:955b9f7a45083995ca38e3d62d9d950b722e36e224b41dd3f9815e51c0a9e
 tier: L2
 related:
   - '[[2026-07-11-document-editor-redesign-adr]]'
+  - '[[2026-07-11-document-editor-redesign-audit]]'
 ---
-
 # `document-editor-redesign` plan
 
 ### Phase `P01` - Foundations: corpus reader and formatting helper

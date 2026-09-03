@@ -8,8 +8,8 @@ body_hash: 'sha256:b9ca5f14ab23617a9ea2b29607a140bea9dba0f59d9edb30704d716785688
 tier: L1
 related:
   - '[[2026-07-08-mobile-enrichment-adr]]'
+  - '[[2026-07-09-mobile-enrichment-audit]]'
 ---
-
 # `mobile-enrichment` plan
 
 - [x] `S01` - D2: surface document review metadata inline on compact (date + plain-language ADR acceptance / plan progress) as a second meta line; `desktop one-value+tooltip untouched; `frontend/src/app/left/TreeBrowser.tsx`.

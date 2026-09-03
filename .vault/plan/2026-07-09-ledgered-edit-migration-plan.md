@@ -9,8 +9,8 @@ tier: L3
 related:
   - '[[2026-07-09-ledgered-edit-migration-adr]]'
   - '[[2026-06-30-agentic-spec-authoring-backend-plan]]'
+  - '[[2026-07-09-ledgered-edit-migration-reference]]'
 ---
-
 # `ledgered-edit-migration` plan
 
 ## Wave `W01` - Editor identity and Save cutover

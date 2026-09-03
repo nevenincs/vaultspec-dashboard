@@ -3,32 +3,13 @@ tags:
   - '#audit'
   - '#a2a-orchestration-edge'
 date: '2026-08-02'
-modified: '2026-08-02'
+modified: '2026-09-03'
 body_schema: 'body-v1'
-body_hash: 'sha256:32941a509895341fb9f619fac3db0b6014147b8c34fa66482e361610de5805b1'
+body_hash: 'sha256:33f3920f52bdcd49f9ad8beb9430963351d9650036527c9b5ebc51b0cfed25c6'
 related:
   - "[[2026-08-02-a2a-orchestration-edge-provider-catalog-inversion-audit]]"
   - "[[2026-07-14-a2a-orchestration-edge-adr]]"
 ---
-
-<!-- FRONTMATTER RULES:
-     tags: one directory tag (hardcoded #audit) and one feature tag.
-     Replace a2a-orchestration-edge with a kebab-case feature tag, e.g. #foo-bar.
-     Additional tags may be appended below the required pair.
-
-     Related: use wiki-links as '[[yyyy-mm-dd-foo-bar]]'.
-
-     modified: CLI-maintained last-modified stamp; set at scaffold time,
-     refreshed by mutating CLI verbs and vault check fix; never hand-edit.
-
-     DO NOT add fields beyond those scaffolded; metadata lives
-     only in the frontmatter. -->
-
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the related: field above.
-     - NEVER use [[wiki-links]] or markdown links in the document body.
-     - NEVER reference file paths in the body. If you must name a source file,
-       class, or function, use inline backtick code: `src/module.py`. -->
 
 # `a2a-orchestration-edge` audit: `how a total run-start outage sat green`
 

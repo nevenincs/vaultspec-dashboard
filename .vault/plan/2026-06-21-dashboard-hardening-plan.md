@@ -8,8 +8,8 @@ body_hash: 'sha256:b3563329709c32525b40aa5dc6cfc613910a5796b31157f310f7141deaff5
 tier: L3
 related:
   - "[[2026-06-21-dashboard-hardening-adr]]"
+  - '[[2026-06-21-dashboard-hardening-audit]]'
 ---
-
 # `dashboard-hardening` plan
 
 Harden the dashboard across five axes (adversarial, mutation/destruction, degradation,

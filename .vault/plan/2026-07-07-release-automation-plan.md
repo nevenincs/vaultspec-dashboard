@@ -9,8 +9,8 @@ tier: L1
 related:
   - '[[2026-07-07-release-automation-adr]]'
   - '[[2026-07-04-dashboard-packaging-adr]]'
+  - '[[2026-07-07-release-automation-audit]]'
 ---
-
 # `release-automation` plan
 
 Layer a rust-typed release-please release PR in front of the unchanged dist tag pipeline so releasing becomes one merge click.

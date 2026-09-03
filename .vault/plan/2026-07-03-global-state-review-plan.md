@@ -8,8 +8,8 @@ body_hash: 'sha256:fcc9bbf18ffdade7d7dedd547cb55a8d94811618943bdfeef4f99ade95d45
 tier: L1
 related:
   - '[[2026-07-03-global-state-review-adr]]'
+  - '[[2026-07-02-global-state-review-audit]]'
 ---
-
 # `global-state-review` plan
 
 - [x] `S01` - Add the view-local session-intent freshness seam: bounded guarded-localStorage per-scope activity stamps plus the pure staleness derivation and the 8h window constant, with unit tests; `frontend/src/stores/view/sessionIntentFreshness.ts`.

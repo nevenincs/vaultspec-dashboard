@@ -3,8 +3,8 @@ tags:
   - '#audit'
   - '#a2a-product-provisioning'
 date: '2026-07-19'
-modified: '2026-08-02'
-body_hash: 'sha256:df050282b220d81d2c72f6b9668cc7a2989309f4bcace8799321022f3f002d85'
+modified: '2026-09-03'
+body_hash: 'sha256:294b536f3e7981d8d5b057de63c44335fdb54bf64f89736a99886e3ac1cca418'
 related:
   - "[[2026-07-18-a2a-product-provisioning-plan]]"
 ---
@@ -832,7 +832,6 @@ activation contract; not a P06 blocker.
   commit set and the revision. All three findings re-checked as resolved with no
   regression.
 
-
 ## `W06 P14 S143` cross-repository release-set reconciliation
 
 Reconciled the dashboard's release-set contract against the supplier's accepted records, and against a real built artifact rather than either side's prose. Both repositories were internally consistent and disagreed with each other; only reading both revealed it.
@@ -844,4 +843,3 @@ Reconciled the dashboard's release-set contract against the supplier's accepted 
 **Verified against a real artifact, not a promise.** The Apple Silicon member of the 0.3.0 build was downloaded and checked: the sidecar digest matches the archive byte-for-byte; the tree unpacks as the expected onedir with the binary beside its `_internal` closure, 1547 entries; and it contains NO links or reparse objects, which our composed-tree verification refuses. That last property was absent until this reconciliation: the freeze reproduced the versioned shared-library symlink chains its dependencies ship, and our verifier would have refused the tree at install time on a user's machine. The producer now flattens links before its own smoke gate.
 
 **Outstanding.** Three of four targets build and verify; the Windows member fails publishing its discovery credential against an external holder, so no cohort has published yet and the version-reference reshape of our component lock cannot be completed against a full set. Two self-inflicted causes of that failure were found and fixed in the supplier during this reconciliation - a credential reader that withheld DELETE sharing, and a by-name re-ACL of the file about to be renamed - and are recorded there.
-

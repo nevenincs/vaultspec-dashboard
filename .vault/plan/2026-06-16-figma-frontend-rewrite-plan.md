@@ -8,8 +8,8 @@ body_hash: 'sha256:a19e3631fc3b0b2950441cdc75897d42466aadbeccc776c26fe9f7dc7e2f7
 tier: L3
 related:
   - '[[2026-06-16-figma-frontend-rewrite-adr]]'
+  - '[[2026-06-16-figma-frontend-rewrite-reference]]'
 ---
-
 # `figma-frontend-rewrite` plan
 
 ## Wave `W01` - Foundation: tokens + centralized component kit
