@@ -8,8 +8,8 @@ body_hash: 'sha256:b05e8eacb5059ef573c548f554ed685be98d8615728a9aa7306b421211149
 tier: L2
 related:
   - '[[2026-07-12-touch-selectability-adr]]'
+  - '[[2026-07-12-touch-selectability-audit]]'
 ---
-
 # `touch-selectability` plan
 
 ### Phase `P01` - Selection-guard substrate

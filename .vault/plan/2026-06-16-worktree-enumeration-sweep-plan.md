@@ -8,8 +8,8 @@ body_hash: 'sha256:6a47f8db2b89e27fa014af36ee5a79f75f16c55983d846ef04ff13e4db3b5
 tier: L2
 related:
   - '[[2026-06-16-status-worktree-latency-adr]]'
+  - '[[2026-06-16-worktree-enumeration-sweep-audit]]'
 ---
-
 # `worktree-enumeration-sweep` plan
 
 ### Phase `P01` - add the cheap path-list API

@@ -9,8 +9,8 @@ tier: L2
 related:
   - '[[2026-07-08-distribution-channels-adr]]'
   - '[[2026-07-04-dashboard-packaging-adr]]'
+  - '[[2026-07-08-distribution-channels-audit]]'
 ---
-
 # `distribution-channels` plan
 
 Ship the scoop, cargo-binstall, and winget channels over the published artifacts, fixing the embed's crate-boundary escape on the way.

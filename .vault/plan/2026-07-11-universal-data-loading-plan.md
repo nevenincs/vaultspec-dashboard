@@ -8,8 +8,8 @@ body_hash: 'sha256:9a3d853e88eb0efd3863b787f01f749039ec42cc261d9bcdf84fe2462195c
 tier: L2
 related:
   - '[[2026-07-11-universal-data-loading-adr]]'
+  - '[[2026-07-11-universal-data-loading-reference]]'
 ---
-
 # `universal-data-loading` plan
 
 ### Phase `P01` - Data-activity core (stores plane)

@@ -1,0 +1,152 @@
+---
+tags:
+  - '#exec'
+  - '#agentic-spec-authoring-backend'
+date: '2026-06-30'
+modified: '2026-09-03'
+body_schema: 'body-v2'
+body_hash: 'sha256:bd9bcd39653e0346bdc6ade849ac19e2d280f381beefaba2db0e519165754d0a'
+related:
+  - "[[2026-06-30-agentic-spec-authoring-backend-plan]]"
+---
+
+# `agentic-spec-authoring-backend` ledger
+
+## Changes
+
+- `S01` `T` `.vault/adr/`
+- `S02` `T` `engine/crates/vaultspec-api/src/authoring/`
+- `S03` `T` `engine/crates/vaultspec-api/src/routes/`
+- `S04` `T` `.vault/audit/`
+- `S05` `T` `engine/crates/vaultspec-api/src/routes/`
+- `S06` `T` `.vault/adr/`
+- `S07` `T` `engine/crates/vaultspec-api/src/authoring/response.rs`
+- `S08` `T` `engine/crates/vaultspec-api/src/authoring/response.rs`
+- `S09` `T` `.vault/audit/`
+- `S10` `T` `engine/crates/vaultspec-api/src/authoring/response.rs`
+- `S11` `T` `.vault/adr/`
+- `S12` `T` `engine/crates/vaultspec-api/src/authoring/model.rs`
+- `S13` `T` `engine/crates/vaultspec-api/src/authoring/model.rs`
+- `S14` `T` `.vault/audit/`
+- `S15` `T` `engine/crates/vaultspec-api/src/authoring/model.rs`
+- `S16` `T` `.vault/adr/`
+- `S17` `T` `engine/crates/vaultspec-api/src/authoring/api.rs`
+- `S18` `T` `engine/crates/vaultspec-api/src/authoring/api.rs`
+- `S19` `T` `.vault/audit/`
+- `S20` `T` `engine/crates/vaultspec-api/src/authoring/api.rs`
+- `S21` `T` `.vault/adr/`
+- `S22` `T` `engine/crates/vaultspec-api/src/authoring/store/`
+- `S23` `T` `engine/crates/vaultspec-api/src/authoring/store/`
+- `S24` `T` `.vault/audit/`
+- `S25` `T` `engine/crates/vaultspec-api/src/authoring/store/`
+- `S26` `T` `.vault/adr/`
+- `S27` `T` `engine/crates/vaultspec-api/src/authoring/store/unit_of_work.rs`
+- `S28` `T` `engine/crates/vaultspec-api/src/authoring/store/unit_of_work.rs`
+- `S29` `T` `.vault/audit/`
+- `S30` `T` `engine/crates/vaultspec-api/src/authoring/store/unit_of_work.rs`
+- `S31` `T` `.vault/adr/`
+- `S32` `T` `engine/crates/vaultspec-api/src/authoring/store/idempotency.rs`
+- `S33` `T` `engine/crates/vaultspec-api/src/authoring/store/idempotency.rs`
+- `S34` `T` `.vault/audit/`
+- `S35` `T` `engine/crates/vaultspec-api/src/authoring/store/idempotency.rs`
+- `S36` `T` `.vault/adr/`
+- `S37` `T` `engine/crates/vaultspec-api/src/authoring/store/retention.rs`
+- `S38` `T` `engine/crates/vaultspec-api/src/authoring/store/retention.rs`
+- `S39` `T` `.vault/audit/`
+- `S40` `T` `engine/crates/vaultspec-api/src/authoring/store/retention.rs`
+- `S41` `T` `.vault/adr/`
+- `S42` `T` `engine/crates/vaultspec-api/src/authoring/store/outbox.rs`
+- `S43` `T` `engine/crates/vaultspec-api/src/authoring/store/outbox.rs`
+- `S44` `T` `.vault/audit/`
+- `S45` `T` `engine/crates/vaultspec-api/src/authoring/store/outbox.rs`
+- `S46` `T` `.vault/adr/`
+- `S47` `T` `engine/crates/vaultspec-api/src/authoring/documents.rs`
+- `S48` `T` `engine/crates/vaultspec-api/src/authoring/documents.rs`
+- `S49` `T` `.vault/audit/`
+- `S50` `T` `engine/crates/vaultspec-api/src/authoring/documents.rs`
+- `S51` `T` `.vault/adr/`
+- `S52` `T` `engine/crates/vaultspec-api/src/authoring/snapshots.rs`
+- `S53` `T` `engine/crates/vaultspec-api/src/authoring/snapshots.rs`
+- `S54` `T` `.vault/audit/`
+- `S55` `T` `engine/crates/vaultspec-api/src/authoring/snapshots.rs`
+- `S61` `T` `.vault/adr/`
+- `S62` `T` `engine/crates/vaultspec-api/src/authoring/operations.rs`
+- `S63` `T` `engine/crates/vaultspec-api/src/authoring/operations.rs`
+- `S64` `T` `.vault/audit/`
+- `S65` `T` `engine/crates/vaultspec-api/src/authoring/operations.rs`
+- `S66` `T` `.vault/adr/`
+- `S67` `T` `engine/crates/vaultspec-api/src/authoring/validation.rs`
+- `S68` `T` `engine/crates/vaultspec-api/src/authoring/validation.rs`
+- `S69` `T` `.vault/audit/`
+- `S70` `T` `engine/crates/vaultspec-api/src/authoring/validation.rs`
+- `S71` `T` `.vault/adr/`
+- `S72` `T` `engine/crates/vaultspec-api/src/authoring/ledger.rs`
+- `S73` `T` `engine/crates/vaultspec-api/src/authoring/ledger.rs`
+- `S74` `T` `.vault/audit/`
+- `S75` `T` `engine/crates/vaultspec-api/src/authoring/ledger.rs`
+- `S76` `T` `.vault/adr/`
+- `S77` `T` `engine/crates/vaultspec-api/src/authoring/transitions.rs`
+- `S77` `T` `engine/crates/vaultspec-api/src/authoring/ledger.rs`
+- `S78` `T` `engine/crates/vaultspec-api/src/authoring/transitions.rs`
+- `S78` `T` `engine/crates/vaultspec-api/src/authoring/ledger.rs`
+- `S79` `T` `.vault/audit/`
+- `S80` `T` `engine/crates/vaultspec-api/src/authoring/transitions.rs`
+- `S81` `T` `.vault/adr/`
+- `S82` `T` `engine/crates/vaultspec-api/src/authoring/proposal.rs`
+- `S83` `T` `engine/crates/vaultspec-api/src/authoring/proposal.rs`
+- `S84` `T` `.vault/audit/`
+- `S85` `T` `engine/crates/vaultspec-api/src/authoring/proposal.rs`
+- `S91` `T` `.vault/adr/`
+- `S92` `T` `engine/crates/vaultspec-api/src/authoring/actors.rs`
+- `S93` `T` `engine/crates/vaultspec-api/src/authoring/actors.rs`
+- `S94` `T` `.vault/audit/`
+- `S95` `T` `engine/crates/vaultspec-api/src/authoring/actors.rs`
+- `S101` `T` `.vault/adr/`
+- `S102` `T` `engine/crates/vaultspec-api/src/authoring/policy.rs`
+- `S103` `T` `engine/crates/vaultspec-api/src/authoring/policy.rs`
+- `S104` `T` `.vault/audit/`
+- `S105` `T` `engine/crates/vaultspec-api/src/authoring/policy.rs`
+- `S121` `T` `.vault/adr/`
+- `S122` `T` `engine/crates/vaultspec-api/src/authoring/session.rs`
+- `S123` `T` `engine/crates/vaultspec-api/src/authoring/session.rs`
+- `S124` `T` `.vault/audit/`
+- `S125` `T` `engine/crates/vaultspec-api/src/authoring/session.rs`
+- `S146` `T` `.vault/adr/`
+- `S147` `T` `engine/crates/vaultspec-api/src/authoring/langgraph.rs`
+- `S148` `T` `engine/crates/vaultspec-api/src/authoring/langgraph.rs`
+- `S149` `T` `.vault/audit/`
+- `S150` `T` `engine/crates/vaultspec-api/src/authoring/langgraph.rs`
+- `S151` `T` `.vault/adr/`
+- `S152` `T` `engine/crates/vaultspec-api/src/authoring/tools.rs`
+- `S153` `T` `engine/crates/vaultspec-api/src/authoring/tools.rs`
+- `S161` `T` `.vault/adr/`
+- `S162` `T` `engine/crates/vaultspec-api/src/authoring/events.rs`
+- `S163` `T` `engine/crates/vaultspec-api/src/authoring/events.rs`
+- `S164` `T` `.vault/audit/`
+- `S165` `T` `engine/crates/vaultspec-api/src/authoring/events.rs`
+- `S166` `T` `.vault/adr/`
+- `S167` `T` `engine/crates/vaultspec-api/src/authoring/stream.rs`
+- `S168` `T` `engine/crates/vaultspec-api/src/authoring/stream.rs`
+- `S169` `T` `.vault/audit/`
+- `S170` `T` `engine/crates/vaultspec-api/src/authoring/stream.rs`
+- `S171` `T` `.vault/adr/`
+- `S216` `T` `.vault/adr/`
+- `S217` `T` `engine/crates/vaultspec-api/src/authoring/modes.rs`
+- `S218` `T` `engine/crates/vaultspec-api/src/authoring/modes.rs`
+- `S219` `T` `.vault/audit/`
+- `S220` `T` `engine/crates/vaultspec-api/src/authoring/modes.rs`
+- `S221` `T` `.vault/adr/`
+- `S222` `T` `engine/crates/vaultspec-api/src/authoring/direct_write.rs`
+- `S223` `T` `engine/crates/vaultspec-api/src/authoring/direct_write.rs`
+- `S224` `T` `.vault/audit/`
+- `S225` `T` `engine/crates/vaultspec-api/src/authoring/direct_write.rs`
+- `S226` `T` `.vault/adr/`
+- `S227` `T` `engine/crates/vaultspec-api/src/authoring/projections.rs`
+- `S228` `T` `engine/crates/vaultspec-api/src/authoring/projections.rs`
+- `S229` `T` `.vault/audit/`
+- `S230` `T` `engine/crates/vaultspec-api/src/authoring/projections.rs`
+- `S231` `T` `.vault/adr/`
+- `S232` `T` `frontend/src/stores/server/authoring.ts`
+- `S233` `T` `frontend/src/stores/server/authoring.test.ts`
+- `S234` `T` `.vault/audit/`
+- `S235` `T` `frontend/src/stores/server/authoring.ts`

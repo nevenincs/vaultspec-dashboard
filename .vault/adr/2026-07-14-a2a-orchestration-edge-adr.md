@@ -3,8 +3,8 @@ tags:
   - '#adr'
   - '#a2a-orchestration-edge'
 date: '2026-07-14'
-modified: '2026-08-02'
-body_hash: 'sha256:6d83386b6b136ad13332cde4571861b04482f34a01df19e7cd5fc62ce213216e'
+modified: '2026-09-03'
+body_hash: 'sha256:3ce3fbf312c1f4aa577bd23237abdfc07f03e16b6d34071d2f69b3f51e20a09a'
 related:
   - "[[2026-07-14-a2a-orchestration-edge-research]]"
   - '[[2026-06-29-agentic-authoring-boundary-adr]]'

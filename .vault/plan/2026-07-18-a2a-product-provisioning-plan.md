@@ -4,6 +4,7 @@ tags:
   - '#a2a-product-provisioning'
 date: '2026-07-18'
 modified: '2026-08-02'
+body_hash: 'sha256:dab7f5ee945f70f3a0bc6cc910f670185a6a33f129b9e61fc92f617e44bcd8e1'
 tier: L3
 related:
   - '[[2026-07-18-a2a-product-provisioning-adr]]'

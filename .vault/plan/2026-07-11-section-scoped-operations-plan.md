@@ -10,8 +10,8 @@ related:
   - '[[2026-07-11-section-scoped-operations-adr]]'
   - '[[2026-06-29-agentic-change-format-and-chunking-adr]]'
   - '[[2026-06-30-agentic-spec-authoring-backend-plan]]'
+  - '[[2026-07-11-section-scoped-operations-audit]]'
 ---
-
 # `section-scoped-operations` plan
 
 ### Phase `P01` - Section selector schema and resolution

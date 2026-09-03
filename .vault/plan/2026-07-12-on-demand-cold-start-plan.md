@@ -8,8 +8,8 @@ body_hash: 'sha256:32c9c2a1bd93ff7f078207077401da794babdc218252902d749da2a67a0d0
 tier: L1
 related:
   - '[[2026-07-12-on-demand-cold-start-adr]]'
+  - '[[2026-07-12-on-demand-cold-start-reference]]'
 ---
-
 # `on-demand-cold-start` plan
 
 - [x] `S01` - Build useProgressiveGraphSlice: wrap useGraphSlice so a live, cold, document-granularity request serves the same-identity feature-LOD slice as held data (isPending masked) until the document slice lands; `bypass for asOf; memoized result object; `frontend/src/stores/server/queries.ts`.
