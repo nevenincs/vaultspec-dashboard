@@ -171,3 +171,5 @@ playwright-report/
 
 # Generated empty demo corpus backing the review desk `empty` condition.
 frontend/dev/.demo-vault-empty/
+
+# CI probe: throwaway line to verify pr-run-mode does not queue release build legs.
