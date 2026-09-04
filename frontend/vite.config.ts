@@ -143,7 +143,11 @@ export default defineConfig(({ command }) => ({
     // deterministic fixture vault once and publishes ENGINE_BASE_URL/ENGINE_TOKEN.
     globalSetup: ["./src/testing/liveEngine.globalSetup.ts"],
     // Bind the app-wide engine client to the live transport in every worker.
-    setupFiles: ["./src/testing/liveSetup.ts"],
+    // Two setup files, and the ORDER matters: vitest registers their hooks in
+    // listing order and runs afterEach hooks in reverse (`sequence.hooks:
+    // "stack"`), so the unmount barrier declared second tears components down
+    // BEFORE liveSetup drains and aborts the window.
+    setupFiles: ["./src/testing/liveSetup.ts", "./src/testing/rtlCleanup.ts"],
     // All test files share ONE spawned engine with mutable state (settings,
     // session, the editor write seam). Running files sequentially makes write
     // round-trips deterministic — a parallel file can't overwrite the global a
