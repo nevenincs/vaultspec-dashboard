@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { useReducedMotion } from "./useReducedMotion";
@@ -8,6 +8,11 @@ import { ENGINE_WAIT } from "../../testing/timing";
 
 describe("useReducedMotion", () => {
   afterEach(() => {
+    // Unmount explicitly: this suite runs without `globals: true`, so
+    // @testing-library/react never registers its auto-cleanup. Without this a
+    // hook mounted by one test stays subscribed through the next, leaving two
+    // live MutationObserver subscriptions racing over the same attribute.
+    cleanup();
     document.documentElement.removeAttribute("data-reduce-motion");
   });
 
