@@ -4,9 +4,9 @@ tags:
   - '#index'
   - '#a2a-integration-verification'
 date: '2026-08-02'
-modified: '2026-08-02'
-body_schema: 'body-v1'
-body_hash: 'sha256:f188fa4062fc9ed6413f2c61978afc6624386f77f36de4aef8b4d88684b658f1'
+modified: '2026-09-05'
+body_schema: 'body-v2'
+body_hash: 'sha256:ec8f9a5b3f3fabd55bbccf57beaa54046c64e46220e1d6919812ea867164f26e'
 related:
   - '[[2026-07-31-a2a-integration-verification-W01-P01-S01]]'
   - '[[2026-07-31-a2a-integration-verification-W01-P01-S02]]'
@@ -31,6 +31,7 @@ related:
   - '[[2026-07-31-a2a-integration-verification-verification-surface-inventory-reference]]'
   - '[[2026-08-01-a2a-integration-verification-audit]]'
   - '[[2026-08-01-a2a-integration-verification-deterministic-completion-review-research]]'
+  - '[[2026-09-05-a2a-integration-verification-embedded-runtime-coordinated-contract-reference]]'
 ---
 
 # `a2a-integration-verification` feature index
@@ -75,6 +76,7 @@ Auto-generated index of all documents tagged with `#a2a-integration-verification
 ### reference
 
 - `2026-07-31-a2a-integration-verification-verification-surface-inventory-reference` - `a2a-integration-verification` reference: `verification surface inventory`
+- `2026-09-05-a2a-integration-verification-embedded-runtime-coordinated-contract-reference` - `a2a-integration-verification` reference: `A2A Embedded Runtime Coordinated Contract`
 
 ### research
 
