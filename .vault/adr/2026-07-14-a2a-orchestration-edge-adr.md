@@ -4,7 +4,7 @@ tags:
   - '#a2a-orchestration-edge'
 date: '2026-07-14'
 modified: '2026-09-05'
-body_hash: 'sha256:1dfa2b7a2b65dd5cc15fbd0add7a83fbc7ecd71e783b1d1a062c761a1b10dc3d'
+body_hash: 'sha256:8f69732829066e88c4870b7e140c30857607a8d67d8c96b45f604698ef87d0dd'
 related:
   - '[[2026-07-14-a2a-orchestration-edge-research]]'
   - '[[2026-06-29-agentic-authoring-boundary-adr]]'
@@ -344,7 +344,22 @@ namespace — it is orchestration control only.
 > independently observed context reduction; echoing command text is not an
 > effect.
 >
-> For all three mutations, the idempotency key is mandatory and stable for one
+> Retry and reconciliation are fixed for all eleven verbs. `presets-list`,
+> `provider-catalog`, `active-runs`, `run-status`, and `native-commands-list`
+> receive no automatic retry; a caller may issue a new independently bounded
+> read. `run-start` permits exactly one retry only after an ambiguous connection
+> or protocol failure, using the identical run id, reservation id, and complete
+> payload; Dashboard then reads authoritative `run-status`, retains the token
+> lease when the result remains unknown, and never starts a second identity.
+> `run-cancel` receives no blind retry; after ambiguity Dashboard reconciles
+> authoritative `run-status`, and only a later explicit caller action can issue
+> another cancel. `clarification-respond` receives no blind retry, preserves the
+> exact run id, request id, and resolution, and reconciles the authoritative
+> run-status/checkpoint result before permitting another caller action.
+> `run-message`, `permission-respond`, and `native-command-execute` use the
+> mandatory idempotency replay rule below.
+> For `run-message`, `permission-respond`, and `native-command-execute`, the
+> idempotency key is mandatory and stable for one
 > user intent. A2A durably binds it to the complete normalized payload before
 > dispatch. Reuse with the same payload replays the same receipt; reuse with a
 > different payload is `idempotency_conflict`. Dashboard performs no blind
@@ -373,7 +388,7 @@ namespace — it is orchestration control only.
 > output remains under the existing 8 MiB cap. Any new verb, field meaning,
 > enum member, route, or bound is another reviewed cross-repository contract
 > event.
-+**D2 — Actors and tokens are provisioned by the engine at run start.** The
+**D2 — Actors and tokens are provisioned by the engine at run start.** The
 brokered `run-start` verb is the provisioning moment: the engine registers (or
 re-resolves) one agent actor per pipeline role in the run (researcher,
 analyst, planner, executor, reviewer — plus the supervisor as a distinct

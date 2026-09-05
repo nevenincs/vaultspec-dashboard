@@ -5,7 +5,7 @@ tags:
 date: '2026-09-05'
 modified: '2026-09-05'
 body_schema: 'body-v2'
-body_hash: 'sha256:7efed9e6b454e46f29622ce5e1ff1c9a890e336a65508a60832941387f4ce17e'
+body_hash: 'sha256:5c1eca206a67d868b32d10eae4baa36910ffbd6359bf010cbf35ec5db02cc250'
 related:
   - "[[2026-07-14-a2a-orchestration-edge-adr]]"
   - "[[2026-07-24-a2a-product-provisioning-adr]]"
@@ -56,20 +56,19 @@ The accepted orchestration-edge ADR's 2026-09-05 contract event is authoritative
 
 All browser requests use the Dashboard machine bearer, carry `expected_scope` (1..4096 characters), and accept no credential, endpoint, path, or actor token. Dashboard compares the fence to its current scope and injects that canonical root. It resolves only the receipt-joined product gateway and uses its server-held attach bearer. `run_id` matches `[A-Za-z0-9_][A-Za-z0-9_-]{0,127}`. `request_id`, `command_id`, and `idempotency_key` are 1..128 characters matching `[A-Za-z0-9_.:-]+`; command ids are percent-encoded as one segment. Unknown request fields fail before discovery.
 
-| Engine verb | A2A method and path | Exact browser fields | Budget |
-| --- | --- | --- | ---: |
-| `presets-list` | `GET /v1/presets` | `expected_scope` | 15 s |
-| `provider-catalog` | `GET /v1/provider-catalog` | `expected_scope` | 45 s |
-| `active-runs` | `GET /v1/runs?state=active` | `expected_scope`, optional bounded `feature_tag`; Dashboard injects root and limit 2 | 15 s |
-| `run-status` | `GET /v1/runs/{run_id}` | `expected_scope`, `run_id` | 15 s |
-| `run-cancel` | `POST /v1/runs/{run_id}/cancel` | `expected_scope`, `run_id` | 60 s |
-| `run-start` | `POST /v1/runs` | existing prepare/commit contract | 60 s |
-| `clarification-respond` | `POST /v1/runs/{run_id}/clarifications/{request_id}/respond` | existing exactly-one-of answers/prompt/decline contract | 60 s |
-| `run-message` | `POST /v1/runs/{run_id}/messages` | `expected_scope`, `run_id`, `content`, optional `agent_id`, `idempotency_key` | 60 s |
-| `permission-respond` | `POST /v1/runs/{run_id}/permissions/{request_id}/respond` | `expected_scope`, `run_id`, `request_id`, `option_id`, optional `notes`, `idempotency_key` | 60 s |
-| `native-commands-list` | `GET /v1/runs/{run_id}/native-commands` | `expected_scope`, `run_id` | 45 s |
-| `native-command-execute` | `POST /v1/runs/{run_id}/native-commands/{command_id}/execute` | `expected_scope`, `run_id`, `command_id`, `session_revision`, optional `arguments`, `idempotency_key` | 60 s |
-
+| Engine verb | A2A method and path | Exact browser fields | Budget | Retry and authoritative reconciliation |
+| --- | --- | --- | ---: | --- |
+| `presets-list` | `GET /v1/presets` | `expected_scope` | 15 s | No automatic retry; caller may issue a new bounded read. |
+| `provider-catalog` | `GET /v1/provider-catalog` | `expected_scope` | 45 s | No automatic retry; caller may issue a new bounded discovery read. |
+| `active-runs` | `GET /v1/runs?state=active` | `expected_scope`, optional bounded `feature_tag`; Dashboard injects root and limit 2 | 15 s | No automatic retry; caller may issue a new bounded read. |
+| `run-status` | `GET /v1/runs/{run_id}` | `expected_scope`, `run_id` | 15 s | No automatic retry; caller may issue a new bounded authoritative read. |
+| `run-cancel` | `POST /v1/runs/{run_id}/cancel` | `expected_scope`, `run_id` | 60 s | No blind retry; after ambiguity read authoritative `run-status`; another cancel requires a later explicit caller action. |
+| `run-start` | `POST /v1/runs` | existing prepare/commit contract | 60 s | Exactly one retry only after ambiguous connection/protocol failure with identical run id, reservation id, and complete payload; then reconcile authoritative `run-status`, retain an inconclusive token lease, and never start another identity. |
+| `clarification-respond` | `POST /v1/runs/{run_id}/clarifications/{request_id}/respond` | existing exactly-one-of answers/prompt/decline contract | 60 s | No blind retry; preserve run id, request id, and resolution; reconcile authoritative run-status/checkpoint result before another explicit caller action. |
+| `run-message` | `POST /v1/runs/{run_id}/messages` | `expected_scope`, `run_id`, `content`, optional `agent_id`, `idempotency_key` | 60 s | After ambiguity, one reconciliation replay with identical run/idempotency/payload; receipt is authoritative, second ambiguity is `outcome_unknown`. |
+| `permission-respond` | `POST /v1/runs/{run_id}/permissions/{request_id}/respond` | `expected_scope`, `run_id`, `request_id`, `option_id`, optional `notes`, `idempotency_key` | 60 s | After ambiguity, one reconciliation replay with identical run/request/idempotency/payload; receipt is authoritative, second ambiguity is `outcome_unknown`. |
+| `native-commands-list` | `GET /v1/runs/{run_id}/native-commands` | `expected_scope`, `run_id` | 45 s | No automatic retry; caller may issue a new bounded discovery read. |
+| `native-command-execute` | `POST /v1/runs/{run_id}/native-commands/{command_id}/execute` | `expected_scope`, `run_id`, `command_id`, `session_revision`, optional `arguments`, `idempotency_key` | 60 s | After ambiguity, one reconciliation replay with identical run/command/revision/idempotency/payload; receipt is authoritative, second ambiguity is `outcome_unknown`. |
 `run-message` forwards `{"content", "agent_id"?}` and the idempotency header. Content is trim-nonblank, at most 65,536 Unicode scalar values and 262,144 UTF-8 bytes. Agent id uses the run-id grammar and must be in the current authoritative run roster; omission selects the supervisor. A2A HTTP 202 success is exactly `{api_version:"v1",run_id,accepted:true,applied,action_status,action_id,idempotency_key}`. Accepted status is `accepted_not_applied`, `applied`, or `duplicate`; action and idempotency ids are non-null and form the durable dispatch receipt. Completion remains run-status truth.
 
 `permission-respond` forwards `{"option_id","notes"?}` and the idempotency header. Option id is 1..64 characters; notes are at most 2,048 characters and 8,192 UTF-8 bytes. Dashboard first re-reads run-status and requires the exact pending request and option under that run; A2A repeats the check atomically. A2A HTTP 200 success is exactly `{api_version:"v1",run_id,request_id,accepted,applied,action_status,approval_status?,action_id,idempotency_key}`. Accepted statuses are `accepted_not_applied`, `applied`, or `duplicate`; a durably rejected attempt is `rejected_invalid_state`. The receipt retains run/request, option-bound idempotency, action, and application state.
@@ -78,7 +77,7 @@ All browser requests use the Dashboard machine bearer, carry `expected_scope` (1
 
 `native-command-execute` forwards `{"session_revision","arguments"?}` and the idempotency header. Arguments must satisfy the advertised descriptor and are capped at 4,096 characters and 16,384 UTF-8 bytes; Dashboard never interprets them as argv or shell text. A2A HTTP 200/202 success is exactly `{api_version:"v1",run_id,command_id,session_revision,accepted,applied,action_status,action_id,idempotency_key,effect}` with accepted status `accepted_not_applied|applied|duplicate`. Effect is `{kind:"ordinary"|"compact",status:"pending"|"completed"|"failed",before_context_tokens?,after_context_tokens?}` with nonnegative counts. Compact is completed only after an independently observed reduction.
 
-Each mutation requires a stable idempotency key for one user intent. A2A binds it durably to the normalized payload before dispatch. Same key and payload replay the receipt; changed payload returns `idempotency_conflict`. Dashboard never blindly retries. After an ambiguous transport result it may make exactly one reconciliation replay with the same identity, key, and payload. A receipt settles the outcome; a second ambiguity returns typed `outcome_unknown` and preserves the identity. Reads may be reissued as new bounded reads.
+The `run-message`, `permission-respond`, and `native-command-execute` mutations require a stable idempotency key for one user intent. A2A binds it durably to the normalized payload before dispatch. Same key and payload replay the receipt; changed payload returns `idempotency_conflict`. Dashboard never blindly retries. After an ambiguous transport result it may make exactly one reconciliation replay with the same identity, key, and payload. A receipt settles the outcome; a second ambiguity returns typed `outcome_unknown` and preserves the identity. Reads may be reissued as new bounded reads.
 
 Every A2A refusal/error is `{api_version:"v1",error:{code,message,retryable},identity:{run_id,request_id?,command_id?,idempotency_key?},receipt?}`; message is at most 512 characters. A2A codes are exactly `not_found|request_conflict|option_conflict|idempotency_conflict|busy|blocked|unsupported|invalid_arguments|invalid_state|at_capacity|provider_unavailable|internal_failure`. Bound/schema failures use 400/422; absent identity 404; stale-session/superseded-request/busy/idempotency conflicts 409; capacity/breaker 503. Every sibling success or refusal is verbatim under Dashboard `data.envelope`, with `data.sibling_status` for non-2xx and normal tiers. Dashboard-originated failures use its typed API-error envelope: `scope_conflict` at 409, `outcome_unknown` at 502 after the single reconciliation replay is inconclusive, `gateway_timeout` at 504, and `gateway_unavailable|protocol_error` at 502. Known-down is HTTP 200 with degraded agent tier. Output remains under 8 MiB.
 
