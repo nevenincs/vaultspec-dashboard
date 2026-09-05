@@ -245,50 +245,32 @@ fails. Each affected view reports its own limitation.
 
 ## Vaultspec family
 
-| Project                                                       | Role                                                       | Status |
-| ------------------------------------------------------------- | ---------------------------------------------------------- | ------ |
-| [vaultspec-core](https://github.com/nevenincs/vaultspec-core) | Decision-driven harness for coding agents, and humans.     | Beta   |
-| [vaultspec-rag](https://github.com/nevenincs/vaultspec-rag)   | The semantic search component for vault and code.          | Beta   |
-| vaultspec-dashboard                                           | The human-facing visual workspace for a Vaultspec project. | Beta   |
-| [vaultspec-a2a](https://github.com/nevenincs/vaultspec-a2a)   | Headless agent-to-agent orchestration.                     | Beta   |
+- [vaultspec-core](https://github.com/nevenincs/vaultspec-core): Decision-driven harness for coding agents, and humans.
+- [vaultspec-rag](https://github.com/nevenincs/vaultspec-rag): The semantic search component for vault and code.
+- [vaultspec-a2a](https://github.com/nevenincs/vaultspec-a2a): Headless agent-to-agent orchestration for Vaultspec.
 
 ## Documentation
 
-| Task                          | Documentation                                                                                                                                                                                              |
-| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Install the dashboard         | [Download the latest release](https://github.com/nevenincs/vaultspec-dashboard/releases/latest)                                                                                                            |
-| Learn the core workflow       | [Read the Vaultspec framework guide](https://github.com/nevenincs/vaultspec-core/blob/main/docs/framework.md)                                                                                              |
-| Use vaultspec-core            | [Core command-line interface (CLI) reference](https://github.com/nevenincs/vaultspec-core/blob/main/docs/CLI.md) · [Core MCP reference](https://github.com/nevenincs/vaultspec-core/blob/main/docs/MCP.md) |
-| Diagnose a core project       | [Run the core health doctor](https://github.com/nevenincs/vaultspec-core/blob/main/docs/CLI.md#vaultspec-core-spec-doctor)                                                                                 |
-| Install vaultspec-rag         | [RAG installation guide](https://github.com/nevenincs/vaultspec-rag/blob/main/docs/installation.md)                                                                                                        |
-| Search and index content      | [RAG search and indexing guide](https://github.com/nevenincs/vaultspec-rag/blob/main/docs/search-and-index.md)                                                                                             |
-| Use vaultspec-rag             | [RAG CLI reference](https://github.com/nevenincs/vaultspec-rag/blob/main/docs/cli.md) · [RAG MCP reference](https://github.com/nevenincs/vaultspec-rag/blob/main/docs/mcp.md)                              |
-| Troubleshoot the RAG service  | [Service-mode troubleshooting](https://github.com/nevenincs/vaultspec-rag/blob/main/docs/service-mode.md#troubleshooting)                                                                                  |
-| Review dashboard changes      | [Dashboard engine release notes](engine/CHANGELOG.md)                                                                                                                                                      |
-| Report an application problem | [Open a dashboard issue](https://github.com/nevenincs/vaultspec-dashboard/issues)                                                                                                                          |
+- [Follow the feature workflow](https://github.com/nevenincs/vaultspec-core/blob/main/docs/framework.md).
+- [Check your Core setup](https://github.com/nevenincs/vaultspec-core/blob/main/docs/verification.md).
+- [Search and index with RAG](https://github.com/nevenincs/vaultspec-rag/blob/main/docs/search-and-index.md).
+- [Troubleshoot the RAG service](https://github.com/nevenincs/vaultspec-rag/blob/main/docs/service-mode.md#troubleshooting).
+- [Read the release notes](engine/CHANGELOG.md).
 
 ## Status and license
 
-**Status:** Beta. vaultspec-dashboard is public, unarchived, and actively developed. See
-[GitHub Releases](https://github.com/nevenincs/vaultspec-dashboard/releases) for current
-releases and the [changelog](engine/CHANGELOG.md) for release details.
+Dashboard is in beta. [Report bugs or request features](https://github.com/nevenincs/vaultspec-dashboard/issues).
 
-Report bugs and request features through
-[GitHub Issues](https://github.com/nevenincs/vaultspec-dashboard/issues). Include:
+For bug reports, include the output of `vaultspec --version`, your OS, installation
+method, steps to reproduce, and the relevant error or screenshot.
 
-- Output from `vaultspec --version`
-- Operating system, platform, and installation method
-- Exact command and working directory
-- When applicable, selected worktree or `--scope`
-- Steps to reproduce the problem
-- Output from `vaultspec --json status`
-- A relevant error excerpt or screenshot
-- vaultspec-rag health details for semantic-search issues only
+When relevant, add the command, working directory, selected worktree or `--scope`,
+and `vaultspec --json status` output. Include RAG health information for semantic
+search problems.
 
-Keep diagnostics focused. Redact credentials, tokens, private paths, and private content
-before submitting a report.
+Redact credentials, private paths, and private content before posting.
 
-**License:** [MIT](LICENSE).
+Licensed under [MIT](LICENSE).
 
 ## Contributing
 
