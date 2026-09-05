@@ -5,7 +5,7 @@ tags:
 date: '2026-09-06'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:80a627f82a071db0f56e9b8131774fec1bdc84f28e424c1542e63d9e9a6e0422'
+body_hash: 'sha256:b4476330629a876c86f5df147fdd748477836dbd057fc6ca4d3802b45dfa48ea'
 related:
   - "[[2026-08-01-a2a-agent-flow-adr]]"
   - "[[2026-08-01-agent-panel-shell-integration-adr]]"
@@ -176,3 +176,92 @@ is part of this implementation and neither was modified by this pass. Those
 concurrent files remain owned by their graph-simulation workstream. No critical,
 high, or medium finding remains open in the Dashboard no-legacy implementation
 scope.
+
+## 2026-09-06 formal review of Dashboard runtime commit `6ccaba44`
+
+Review target: `6ccaba444b765d9408cca819bbd5cbfa4c48eef5`, parent
+`f93c2fb422f9f8e8d4c2688354ab60ba41ba8c38`. The review covered the exact 27
+committed paths. Concurrent graph-simulation and design-system work and the
+untracked `.vitest-localstorage` artifact were excluded and preserved.
+
+### current-provider-aggregate-regression | high | open
+
+Type: product capability and provisioning-contract regression. The retired
+`gemini` value is correctly rejected, but the implementation also rejects
+`all` and changes both the recommended project setup action and force-install
+action to `provider: "core"`. Core's current `install all` still expands to
+`core`, `claude`, `gemini`, `antigravity`, and `codex`, so forwarding that
+literal would violate the accepted no-Gemini decision. Replacing it with
+`core`, however, installs only `.vaultspec` and silently drops the previously
+available aggregate installation of every supported provider projection.
+
+The required contract is one Dashboard aggregate operation meaning all current
+nonretired providers: `core`, `claude`, `antigravity`, and `codex`. It must not
+delegate to Core's Gemini-bearing literal `all`. The engine must broker the
+four fixed provider installs in a documented deterministic order, under the
+existing bounded execution and cancellation policy, and return per-provider
+outcomes plus an aggregate terminal result that represents complete success,
+partial failure, timeout/cancellation, and outcome-indeterminate reconciliation.
+Duplicate requests must retain the existing single-flight/idempotent behavior.
+The API/CLI/frontend may retain `all` as this redefined bounded aggregate or
+introduce an equally explicit current-provider aggregate value, but setup and
+force-install must use it and tests must prove no spawned argv contains
+`install all` or `gemini`. Literal Gemini remains a typed refusal.
+
+### implementation-validation-evidence-overclaim | medium | open
+
+Type: validation and audit accuracy. The committed implementation-pass record
+states that scoped frontend ESLint passes, but the exact scoped command fails
+with four `@typescript-eslint/no-explicit-any` errors in
+`style-dictionary.config.ts` and two unused-disable warnings in
+`vite-plugins/engine-dev.ts`. These sites substantially predate this commit,
+so they need not expand the runtime correction scope, but the durable claim
+must report the reproduced result and its ownership rather than call it a pass.
+
+The token record also says the new drift test discriminates retired properties
+in both source and built CSS. It reads `STYLES_FILE`, the source stylesheet,
+and token JSON only; it never reads a production build artifact. A reproduced
+Vite build succeeds, but its Tailwind theme output contains the exact names
+`--font-sans`, `--font-mono`, and `--font-serif` as framework-owned variables.
+The hand-authored compatibility aliases are gone and the explicit utilities
+use canonical `--*-fg-*` values, but exact-name absence from built output is
+neither true nor tested. The record and test must distinguish removal of the
+Dashboard compatibility bindings from Tailwind's generated variables, or the
+build configuration must prevent those names if exact generated-output absence
+is the intended acceptance criterion.
+
+### retired-runtime-boundary | low | verified
+
+Type: architecture conformance. Within the 27-path commit, Gemini and retired
+profile support are absent from live API, CLI, frontend, filesystem detection,
+and wire construction. Remaining `gemini`, `.gemini`, `all`, and `profile_id`
+mentions are negative tests or refusal rationale. Provider wire enums are
+closed to the four current install targets, and the filesystem projection no
+longer treats `.gemini` as capability truth.
+
+### dependency-and-harness-review | low | verified with host limitation
+
+Type: dependency and validation review. `yaml_serde` 0.10.7 is a direct
+maintained dependency and `serde_yaml` is absent from the manifest and lock.
+The lock pins Vite 8.2.2, Vitest 5.0.0, Tailwind 4.3.3, and Style Dictionary
+5.5.2; the declared Node range satisfies their effective engine floors and the
+Tailwind peer range includes Vite 8. A clean `npm ci` and `npm audit --json`
+report zero vulnerabilities. The production build succeeds and emits none of
+the deprecated `module.register`, experimental Node localStorage, or extension
+resolution warnings; the web-storage feature is disabled through Node's
+supported capability-gated flag rather than a general warning filter. Six
+focused frontend files pass 55 tests. Their command exits nonzero only during
+unrelated live-engine fixture teardown with a host EPERM. Independent Rust
+recompilation was blocked by Windows error 448 for the host's untrusted-mount
+policy, so the committed Rust pass claims were not independently reproduced.
+
+### dashboard-no-legacy-runtime-review-disposition | high | FAIL
+
+Type: formal review disposition. The dependency replacement, supported
+frontend upgrades, warning cleanup, negative legacy boundaries, and canonical
+token consumer migration are acceptable within the stated evidence limits.
+The open current-provider aggregate regression is a high-severity defect in the
+runtime commit, so `6ccaba44` is not review-passed and must not be accepted as
+the completed no-legacy Dashboard implementation. The medium evidence
+overclaim must also be corrected in the rolling record. No runtime source was
+changed by this review.
