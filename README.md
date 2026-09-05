@@ -13,7 +13,7 @@ vault Markdown alongside your code.
 [![targets](https://img.shields.io/badge/targets-macOS%20arm64%20%7C%20Linux%20arm64%2Fx64%20%7C%20Windows%20x64-3F9AA6?style=flat&labelColor=24292f)](https://github.com/nevenincs/vaultspec-dashboard/releases/latest)
 [![license](https://img.shields.io/github/license/nevenincs/vaultspec-dashboard?style=flat&label=license&logo=opensourceinitiative&logoColor=white&labelColor=24292f&color=B3823C)](LICENSE)
 
-[Visual tour](#visual-tour) · [Project layout](#project-layout) ·
+[Visual tour](#visual-tour) ·
 [Getting started](#getting-started) · [Capabilities](#capabilities) ·
 [Vaultspec family](#vaultspec-family) · [Documentation](#documentation) ·
 [Status](#status-and-license)
@@ -35,61 +35,9 @@ graph context.*
 
 *Review current open plans and search-service state from the running workspace.*
 
-## Project layout
-
-### Project responsibilities
-
-| Project                                                                           | Responsibility                                                                                                                                                  |
-| --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [vaultspec-core](https://github.com/nevenincs/vaultspec-core/blob/main/README.md) | Governs the workflow and `.vault/` record. Owns validation, command-line and Model Context Protocol (MCP) surfaces, and authoritative document materialization. |
-| [vaultspec-rag](https://github.com/nevenincs/vaultspec-rag/blob/main/README.md)   | Provides optional retrieval-augmented generation (RAG). Indexes vault documents and source code, then retrieves both by meaning.                                |
-| **vaultspec-dashboard**                                                           | Owns the `vaultspec` binary, visual workspace, application programming interface (API), session state, and governed review experience.                          |
-
-The dashboard delegates governed writes to core and semantic retrieval to RAG. It uses the
-core command-line interface, RAG's local service API for reads, and bounded RAG commands for
-explicit lifecycle actions.
-
-### Installed runtime
-
-The dashboard installs as a complete product tree, not a single file. Every supported
-channel places the same set:
-
-| Part                                      | What it is                                                                                                                                                                            |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `vaultspec`                               | The dashboard executable: engine, API, live event stream, and web interface in one native Rust binary. Run `vaultspec serve` from a managed worktree. The command prints a local URL. |
-| `vaultspec-updater`                       | A separate executable that installs a new release while the dashboard is stopped, so an update never rewrites files the running application holds open.                               |
-| Manifest, licenses, and bill of materials | The digest of every installed file, third-party license texts, and the software bill of materials (SBOM).                                                                             |
-
-That list is the whole tree. No agent-to-agent runtime is bundled, and its absence is a
-decision rather than an omission: the dashboard resolves that runtime from
-`~/.vaultspec/a2a/generations/` in your home directory, never from its own install
-directory, and no shipped operation populates that location yet — adoption is declared
-but not implemented. Bundling one would therefore have added roughly 269 MB, the
-overwhelming majority of the download, for a directory the dashboard never reads. It
-returns to the release when adoption is implemented; until then the agent-to-agent
-capabilities are unavailable rather than half-present. Nothing downloads on first run
-either way, so the network is needed only to fetch the release.
-
-After placing the tree, every installer checks it against the release manifest with the
-shipped verifier, `vaultspec verify-release`. A tree that fails that check is a failed
-install. A partial or binary-only install isn't supported.
-
-The dashboard uses two independently installed companions:
-
-- [vaultspec-core](https://github.com/nevenincs/vaultspec-core/blob/main/README.md) supplies
-  governed vault operations. Without core, the dashboard warns and continues with those
-  capabilities unavailable. Full authoring requires core 0.1.34 or later.
-- [vaultspec-rag](https://github.com/nevenincs/vaultspec-rag/blob/main/docs/service-mode.md)
-  supplies optional semantic search. The dashboard discovers the machine-wide service and
-  can broker explicit lifecycle actions. Stopping it also affects its other clients.
-
-A source checkout uses a separate Vite and Rust development loop; it isn't the installed
-product model.
-
-![Current-main vaultspec status output showing the active worktree, graph index, core invocation, RAG availability, seat, and watcher](docs/assets/term-status.svg)
-
-*This current-`main` status capture is generated from real `vaultspec --json status` output
-against this worktree. Its lifecycle fields may be newer than the latest release.*
+<p id="project-layout"></p>
+<p id="project-responsibilities"></p>
+<p id="installed-runtime"></p>
 
 ## Getting started
 
@@ -142,10 +90,12 @@ Repeat this step in each new terminal. Confirm the installation:
 vaultspec --version
 ```
 
-`cargo install` and `cargo binstall` aren't supported: they don't install the
-complete [runtime](#installed-runtime).
+`cargo install` and `cargo binstall` aren't supported: they don't install all
+required runtime files.
 
 Release binaries are unsigned. Your operating system may warn before running them.
+
+Agent-to-agent orchestration isn't available in v0.1.12.
 
 #### Updating
 

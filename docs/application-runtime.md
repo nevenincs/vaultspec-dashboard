@@ -37,13 +37,13 @@ machine-level discovery entirely.
 
 ## Lifecycle verbs
 
-| Verb                | What it does                                                         |
-| ------------------- | -------------------------------------------------------------------- |
-| `vaultspec`         | Open the app (attach or start), then open the browser.               |
-| `vaultspec open`    | Same as bare `vaultspec`.                                            |
-| `vaultspec stop`    | Gracefully stop the running app. Safe to run when nothing is up.     |
-| `vaultspec restart` | Stop (if running), then relaunch detached in your last project.      |
-| `vaultspec update`  | Self-update (stop → update → relaunch). Only for copies installed by the shell/PowerShell installer; package-manager installs (scoop, cargo-binstall) are refused with the right command for that manager. |
+| Verb                | What it does                                                                                                                          |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `vaultspec`         | Open the app (attach or start), then open the browser.                                                                                |
+| `vaultspec open`    | Same as bare `vaultspec`.                                                                                                             |
+| `vaultspec stop`    | Gracefully stop the running app. Safe to run when nothing is up.                                                                      |
+| `vaultspec restart` | Stop (if running), then relaunch detached in your last project.                                                                       |
+| `vaultspec update`  | Doesn't download a newer release. Runs the updater for recovery and relaunch.                                                         |
 | `vaultspec status`  | Everything `status` reported before, plus a `seat` block: whether the app is running, its pid/port/uptime, and the projects it knows. |
 
 `vaultspec provision status` / `install` / `upgrade` / `migrate` / `acquire`
@@ -65,18 +65,14 @@ disagree about what is installed or missing.
   `--no-seat` dev/test serves, the workspace-local `service.json`
   (unchanged from previous releases).
 
-**Uninstalling:** remove the binary (or use your package manager), then
-delete `~/.vaultspec/` if you want no trace left. Per-project caches live
-under each project's `.vault/data/` and are always safe to delete.
+To remove Dashboard, follow the [uninstall instructions](../README.md#removing-it-and-what-stays).
 
 ## Windows notes
 
 The binary is a console program so the CLI works everywhere. Double-clicking
-it flashes a console window for well under a second while it hands off to
-the background app and opens your browser. The MSI installer creates a
-Start-Menu entry ("vaultspec" - it opens the dashboard) and adds the
-binary to PATH; the zip and script-installer channels install the binary
-only, so pin it yourself if you want a shortcut with those.
+it briefly opens a console window while it hands off to the background app
+and opens your browser. Follow the [installation instructions](../README.md#prerequisites-and-installation)
+to install Dashboard and set up `PATH`.
 
 If the app fails to launch twice in under a minute, the launcher stops
 retrying and points you at the crash log instead of thrashing — run
