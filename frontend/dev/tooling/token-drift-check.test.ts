@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { build } from "vite";
 
 // Extensionless imports: the test runs under Vite (vitest), which resolves the .ts files;
 // the runtime scripts keep explicit .ts extensions for Node's type stripping.
@@ -109,6 +111,49 @@ describe("token drift check", () => {
       );
       expect(content, source).not.toMatch(/\b(?:legacy|deprecated)\b/i);
     }
+  });
+
+  it("builds canonical utilities without Dashboard compatibility bindings", async () => {
+    const result: unknown = await build({
+      configFile: fileURLToPath(new URL("../../vite.config.ts", import.meta.url)),
+      build: { write: false },
+      logLevel: "silent",
+    });
+    const bundles = Array.isArray(result) ? result : [result];
+    const builtCss = bundles
+      .flatMap((bundle) => {
+        if (typeof bundle !== "object" || bundle === null || !("output" in bundle)) {
+          return [];
+        }
+        return Array.isArray(bundle.output) ? bundle.output : [];
+      })
+      .filter(
+        (asset): asset is { type: "asset"; fileName: string; source: string } =>
+          typeof asset === "object" &&
+          asset !== null &&
+          "type" in asset &&
+          asset.type === "asset" &&
+          "fileName" in asset &&
+          typeof asset.fileName === "string" &&
+          asset.fileName.endsWith(".css") &&
+          "source" in asset &&
+          typeof asset.source === "string",
+      )
+      .map((asset) => asset.source)
+      .join("\n");
+
+    expect(builtCss.length).toBeGreaterThan(0);
+    for (const [frameworkName, canonicalName] of [
+      ["--font-sans", "--font-fg-sans"],
+      ["--font-mono", "--font-fg-mono"],
+      ["--font-serif", "--font-fg-serif"],
+    ]) {
+      expect(builtCss).not.toContain(`${frameworkName}:var(${canonicalName})`);
+      expect(builtCss).toContain(`font-family:var(${canonicalName})`);
+    }
+    // Tailwind owns exact --font-* defaults in compiled theme output. Their
+    // presence is allowed; only Dashboard's retired alias bindings are absent.
+    expect(builtCss).toContain("--font-sans:");
   });
 
   it("coalesces wrapped multi-line declarations (font/shadow stacks)", () => {

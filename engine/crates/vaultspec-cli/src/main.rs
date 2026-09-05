@@ -174,6 +174,15 @@ impl From<&A2aAction> for cmd::a2a_lifecycle::Action {
 enum ProvisionCommand {
     /// The provisioning projection: managed / installable / migratable state.
     Status,
+    /// Set up every provider supported by this Dashboard release.
+    Setup {
+        /// Overwrite existing provider output (requires --confirm).
+        #[arg(long)]
+        force: bool,
+        /// Typed confirm token a --force requires.
+        #[arg(long)]
+        confirm: Option<String>,
+    },
     /// Install the framework into the project.
     Install {
         /// Supported provider scaffolding to install.
@@ -282,6 +291,16 @@ fn split_envelope(payload: Value) -> (Value, Value) {
 fn run_provision(action: Option<ProvisionCommand>) -> Result<Value, String> {
     let invocation = match action {
         None | Some(ProvisionCommand::Status) => None,
+        Some(ProvisionCommand::Setup { force, confirm }) => {
+            Some(cmd::provision::ProvisionInvocation {
+                action: "setup",
+                provider: None,
+                tool: None,
+                upgrade: false,
+                force,
+                confirm,
+            })
+        }
         Some(ProvisionCommand::Install {
             provider,
             force,
@@ -501,5 +520,22 @@ mod tests {
                 "current provider {provider} must remain accepted"
             );
         }
+        assert!(Cli::try_parse_from(["vaultspec", "provision", "setup"]).is_ok());
+        assert!(
+            Cli::try_parse_from([
+                "vaultspec",
+                "provision",
+                "setup",
+                "--force",
+                "--confirm",
+                "confirm-force",
+            ])
+            .is_ok()
+        );
+        assert!(
+            Cli::try_parse_from(["vaultspec", "provision", "setup", "--provider", "core",])
+                .is_err(),
+            "current aggregate setup has no provider operand"
+        );
     }
 }

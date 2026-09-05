@@ -103,6 +103,16 @@ enum Provider {
     Codex,
 }
 
+/// The complete provider set owned by Dashboard's current-project setup intent.
+/// This is deliberately not delegated to Core's broader `all` selector, whose
+/// provider membership is outside Dashboard's release contract.
+const CURRENT_SETUP_PROVIDERS: [Provider; 4] = [
+    Provider::Core,
+    Provider::Claude,
+    Provider::Antigravity,
+    Provider::Codex,
+];
+
 impl Provider {
     fn as_arg(self) -> &'static str {
         match self {
@@ -138,6 +148,9 @@ impl Tool {
 /// (the `core_adapter` discipline). Each variant maps to a FIXED argv shape.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Capability {
+    /// Install every provider projection supported by this Dashboard release.
+    /// The broker expands this into [`CURRENT_SETUP_PROVIDERS`] itself.
+    SetupCurrent { force: bool },
     /// `vaultspec-core install <provider> -t <target> [--force]` — scaffold the
     /// framework into the target project.
     InstallFramework { provider: Provider, force: bool },
@@ -160,7 +173,8 @@ impl Capability {
     fn mutates_project(&self) -> bool {
         matches!(
             self,
-            Capability::InstallFramework { .. }
+            Capability::SetupCurrent { .. }
+                | Capability::InstallFramework { .. }
                 | Capability::UpgradeFramework { .. }
                 | Capability::RunMigrations
         )
@@ -169,6 +183,7 @@ impl Capability {
     /// A short, stable machine label for the job envelope and single-flight key.
     fn label(&self) -> String {
         match self {
+            Capability::SetupCurrent { .. } => "setup:current".to_string(),
             Capability::InstallFramework { provider, force } => {
                 format!(
                     "install:{}{}",
@@ -197,6 +212,9 @@ impl Capability {
     fn argv(&self, target: &FsPath) -> Vec<String> {
         let target = target.to_string_lossy().to_string();
         match self {
+            Capability::SetupCurrent { .. } => {
+                unreachable!("aggregate setup expands through setup_commands")
+            }
             Capability::InstallFramework { provider, force } => {
                 let mut v = ingest_core::runner::CoreRunner::detect().invocation;
                 v.push("install".into());
@@ -246,6 +264,35 @@ impl Capability {
     fn is_machine_acquisition(&self) -> bool {
         matches!(self, Capability::AcquireTool { .. })
     }
+
+    fn posture(&self) -> &'static str {
+        match self {
+            Capability::SetupCurrent { force: true } => "force",
+            Capability::SetupCurrent { force: false } => "safe",
+            _ => "standard",
+        }
+    }
+
+    /// Expand the current setup intent into its exact deterministic command set.
+    fn setup_commands(&self, target: &FsPath) -> Option<Vec<(Provider, Vec<String>)>> {
+        let Capability::SetupCurrent { force } = self else {
+            return None;
+        };
+        Some(
+            CURRENT_SETUP_PROVIDERS
+                .iter()
+                .copied()
+                .map(|provider| {
+                    let argv = Capability::InstallFramework {
+                        provider,
+                        force: *force,
+                    }
+                    .argv(target);
+                    (provider, argv)
+                })
+                .collect(),
+        )
+    }
 }
 
 // --- wire request DTO (bounded, serde-validated) ------------------------------
@@ -256,6 +303,7 @@ impl Capability {
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum Action {
+    Setup,
     Install,
     Upgrade,
     Migrate,
@@ -313,6 +361,7 @@ pub(crate) struct TargetParams {
 /// The `POST /provision/run` body: a bounded action plus its typed operands and
 /// the confirm token a force requires.
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct RunRequest {
     action: Action,
     #[serde(default)]
@@ -336,6 +385,17 @@ impl RunRequest {
     /// forwards a wire string into argv — it maps bounded enums to fixed tokens.
     fn to_capability(&self) -> Result<Capability, (StatusCode, &'static str, String)> {
         match self.action {
+            Action::Setup => {
+                if self.provider.is_some() || self.tool.is_some() || self.upgrade {
+                    return Err((
+                        StatusCode::BAD_REQUEST,
+                        "unexpected_operand",
+                        "setup selects the current provider set and accepts no provider, tool, or upgrade operand"
+                            .to_string(),
+                    ));
+                }
+                Ok(Capability::SetupCurrent { force: self.force })
+            }
             Action::Install => {
                 let provider = self.provider.ok_or((
                     StatusCode::BAD_REQUEST,
@@ -644,6 +704,9 @@ struct Job {
     target: String,
     /// Single-flight key: for a machine acquisition, target-independent.
     key: String,
+    /// Internal request posture used to distinguish safe and force setup while
+    /// retaining one semantic setup single-flight identity.
+    posture: &'static str,
     state: JobState,
     created: Instant,
     outcome: Option<Value>,
@@ -713,12 +776,18 @@ impl Registry {
         }
     }
 
-    /// The id of a RUNNING job already covering `key`, if any (single-flight).
-    fn running_for(&self, key: &str) -> Option<String> {
-        self.jobs
+    /// An identical running request attaches. A different posture under the
+    /// same semantic identity conflicts instead of starting a competing job.
+    fn running_for(&self, key: &str, posture: &str) -> RunningMatch {
+        match self
+            .jobs
             .values()
             .find(|j| j.state == JobState::Running && j.key == key)
-            .map(|j| j.id.clone())
+        {
+            Some(job) if job.posture == posture => RunningMatch::Attach(job.id.clone()),
+            Some(job) => RunningMatch::Conflict(job.id.clone()),
+            None => RunningMatch::None,
+        }
     }
 
     fn insert(&mut self, job: Job) {
@@ -735,6 +804,13 @@ impl Registry {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum RunningMatch {
+    None,
+    Attach(String),
+    Conflict(String),
+}
+
 static REGISTRY: LazyLock<Mutex<Registry>> = LazyLock::new(|| Mutex::new(Registry::new()));
 static JOB_SEQ: AtomicU64 = AtomicU64::new(1);
 
@@ -748,36 +824,38 @@ fn registry_lock() -> std::sync::MutexGuard<'static, Registry> {
 
 // --- the bounded job runner ---------------------------------------------------
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RunTermination {
+    Completed,
+    TimeoutCancelled,
+    Indeterminate,
+}
+
 /// Spawn a capability's argv bounded (output cap + wall-clock), capturing the
-/// combined streams. Returns `(exit_code, combined_output, breached)`. On a
-/// breach the canonical bounded runner kills and reaps the child; `breached`
-/// marks the outcome INDETERMINATE — a `uv run`/console-script grandchild can
-/// outlive a direct kill on either platform, so the caller must re-probe
-/// `GET /provision/status` rather than trust the exit code (mirroring
-/// `core_adapter`).
-async fn run_capability(argv: &[String]) -> (Option<i32>, String, bool) {
+/// combined streams. On a timeout the canonical runner kills and reaps the
+/// direct child and reports a timeout cancellation. An output breach or a
+/// read/wait failure is indeterminate because a console-script grandchild can
+/// outlive the direct child; callers must re-read `GET /provision/status`.
+async fn run_capability_with_limits(
+    argv: &[String],
+    limits: BoundedLimits,
+) -> (Option<i32>, String, RunTermination) {
     let mut command = tokio::process::Command::new(&argv[0]);
     command.args(&argv[1..]);
-    let outcome = match run_bounded(
-        command,
-        None,
-        BoundedLimits {
-            cap: JOB_OUTPUT_CAP,
-            timeout: JOB_TIMEOUT,
-        },
-        CapPolicy::Refuse,
-    )
-    .await
-    {
+    let outcome = match run_bounded(command, None, limits, CapPolicy::Refuse).await {
         Ok(outcome) => outcome,
         Err(BoundedFault::Spawn(error)) => {
-            return (None, format!("spawning {}: {error}", argv[0]), false);
+            return (
+                None,
+                format!("spawning {}: {error}", argv[0]),
+                RunTermination::Completed,
+            );
         }
         Err(BoundedFault::Timeout) => {
             return (
                 None,
-                format!("{} timed out after {}s", argv[0], JOB_TIMEOUT.as_secs()),
-                true,
+                format!("{} timed out after {}s", argv[0], limits.timeout.as_secs()),
+                RunTermination::TimeoutCancelled,
             );
         }
         Err(BoundedFault::OverCap) => {
@@ -785,13 +863,17 @@ async fn run_capability(argv: &[String]) -> (Option<i32>, String, bool) {
                 None,
                 format!(
                     "{} produced over {} bytes of output (capped)",
-                    argv[0], JOB_OUTPUT_CAP
+                    argv[0], limits.cap
                 ),
-                true,
+                RunTermination::Indeterminate,
             );
         }
         Err(BoundedFault::Read(error) | BoundedFault::Wait(error)) => {
-            return (None, format!("running {}: {error}", argv[0]), false);
+            return (
+                None,
+                format!("running {}: {error}", argv[0]),
+                RunTermination::Indeterminate,
+            );
         }
     };
     let combined = match (outcome.stdout.is_empty(), outcome.stderr.is_empty()) {
@@ -804,7 +886,18 @@ async fn run_capability(argv: &[String]) -> (Option<i32>, String, bool) {
         (true, false) => outcome.stderr_lossy().trim().to_string(),
         (true, true) => String::new(),
     };
-    (outcome.code, combined, false)
+    (outcome.code, combined, RunTermination::Completed)
+}
+
+async fn run_capability(argv: &[String]) -> (Option<i32>, String, RunTermination) {
+    run_capability_with_limits(
+        argv,
+        BoundedLimits {
+            cap: JOB_OUTPUT_CAP,
+            timeout: JOB_TIMEOUT,
+        },
+    )
+    .await
 }
 
 /// Interpret a completed run into the job outcome value + final state. A core
@@ -812,9 +905,13 @@ async fn run_capability(argv: &[String]) -> (Option<i32>, String, bool) {
 /// `uv` emits human text (surfaced raw). A zero exit is success; a non-zero exit
 /// or a breach is failure, with `outcome_indeterminate` set when the caller must
 /// re-probe to learn the true post-state.
-fn outcome_value(code: Option<i32>, combined: &str, breached: bool) -> (JobState, Value) {
+fn outcome_value(
+    code: Option<i32>,
+    combined: &str,
+    termination: RunTermination,
+) -> (JobState, Value) {
     let parsed = serde_json::from_str::<Value>(combined).ok();
-    let succeeded = code == Some(0) && !breached;
+    let succeeded = code == Some(0) && termination == RunTermination::Completed;
     let state = if succeeded {
         JobState::Succeeded
     } else {
@@ -822,13 +919,184 @@ fn outcome_value(code: Option<i32>, combined: &str, breached: bool) -> (JobState
     };
     let mut out = json!({
         "exit_code": code,
-        "outcome_indeterminate": breached,
+        "outcome_indeterminate": termination != RunTermination::Completed,
     });
     match parsed {
         Some(env) => out["envelope"] = env,
         None => out["output"] = json!(combined),
     }
     (state, out)
+}
+
+fn setup_receipt(
+    ordinal: usize,
+    provider: Provider,
+    code: Option<i32>,
+    combined: &str,
+    termination: RunTermination,
+) -> Value {
+    let (state, outcome) = outcome_value(code, combined, termination);
+    let receipt_state = match termination {
+        RunTermination::TimeoutCancelled => "timeout_cancelled",
+        RunTermination::Indeterminate => "indeterminate",
+        RunTermination::Completed => state.as_str(),
+    };
+    json!({
+        "ordinal": ordinal,
+        "provider": provider.as_arg(),
+        "attempted": true,
+        "state": receipt_state,
+        "outcome": outcome,
+    })
+}
+
+fn reconcile_setup_receipts(receipts: &mut [Value], before: &[&str], after: &[&str]) {
+    for receipt in receipts {
+        let Some(provider) = receipt["provider"].as_str().map(str::to_string) else {
+            continue;
+        };
+        let state = receipt["state"]
+            .as_str()
+            .unwrap_or("indeterminate")
+            .to_string();
+        let was_present = before.contains(&provider.as_str());
+        let is_present = after.contains(&provider.as_str());
+        let reconciliation = match state.as_str() {
+            "not-run" => "not_attempted",
+            "succeeded" if is_present => "confirmed_present",
+            "failed" if !is_present => "confirmed_absent",
+            "timeout_cancelled" if !is_present && !was_present => "confirmed_absent",
+            "indeterminate" if is_present && !was_present => {
+                receipt["state"] = json!("succeeded");
+                "confirmed_present"
+            }
+            _ => {
+                receipt["state"] = json!("indeterminate");
+                "unresolved"
+            }
+        };
+        receipt["reconciliation"] = json!({
+            "status": reconciliation,
+            "provider_present": is_present,
+        });
+        if !receipt["outcome"].is_null() {
+            receipt["outcome"]["outcome_indeterminate"] = json!(reconciliation == "unresolved");
+        }
+    }
+}
+
+fn current_setup_outcome(receipts: Vec<Value>) -> (JobState, Value) {
+    let states: Vec<&str> = receipts
+        .iter()
+        .filter_map(|receipt| receipt["state"].as_str())
+        .collect();
+    let status = if states.contains(&"indeterminate") {
+        "indeterminate"
+    } else if states.contains(&"timeout_cancelled") {
+        "timeout_cancelled"
+    } else if states.iter().all(|state| *state == "succeeded") {
+        "complete"
+    } else {
+        "partial"
+    };
+    let job_state = if status == "complete" {
+        JobState::Succeeded
+    } else {
+        JobState::Failed
+    };
+    (
+        job_state,
+        json!({
+            "aggregate": {
+                "intent": "setup-current-providers",
+                "status": status,
+                "providers": receipts,
+            },
+            "outcome_indeterminate": matches!(status, "timeout_cancelled" | "indeterminate"),
+            "reconciliation": if status == "indeterminate" {
+                "status-required"
+            } else {
+                "completed"
+            },
+        }),
+    )
+}
+
+async fn run_current_setup(
+    commands: Vec<(Provider, Vec<String>)>,
+    target: &FsPath,
+) -> (JobState, Value) {
+    let mut receipts = Vec::with_capacity(CURRENT_SETUP_PROVIDERS.len());
+    let before = detect_providers(target);
+    let mut stop = false;
+    let started = Instant::now();
+    let mut remaining_output = JOB_OUTPUT_CAP;
+    for (index, (provider, argv)) in commands.into_iter().enumerate() {
+        let ordinal = index + 1;
+        if stop {
+            receipts.push(json!({
+                "ordinal": ordinal,
+                "provider": provider.as_arg(),
+                "attempted": false,
+                "state": "not-run",
+                "outcome": null,
+            }));
+            continue;
+        }
+        let Some(remaining_time) = JOB_TIMEOUT.checked_sub(started.elapsed()) else {
+            receipts.push(json!({
+                "ordinal": ordinal,
+                "provider": provider.as_arg(),
+                "attempted": false,
+                "state": "timeout_cancelled",
+                "outcome": {
+                    "exit_code": null,
+                    "outcome_indeterminate": true,
+                    "output": "aggregate setup deadline reached",
+                },
+            }));
+            stop = true;
+            continue;
+        };
+        if remaining_output < 3 {
+            receipts.push(json!({
+                "ordinal": ordinal,
+                "provider": provider.as_arg(),
+                "attempted": false,
+                "state": "indeterminate",
+                "outcome": {
+                    "exit_code": null,
+                    "outcome_indeterminate": true,
+                    "output": "aggregate setup output budget exhausted",
+                },
+            }));
+            stop = true;
+            continue;
+        }
+        let (code, combined, termination) = run_capability_with_limits(
+            &argv,
+            BoundedLimits {
+                // The shared runner caps stdout and stderr independently. Halve
+                // the remaining aggregate allowance so their combined maximum
+                // cannot exceed the one setup-wide output budget.
+                cap: (remaining_output - 1) / 2,
+                timeout: remaining_time,
+            },
+        )
+        .await;
+        remaining_output = remaining_output.saturating_sub(combined.len() as u64);
+        stop = termination != RunTermination::Completed;
+        receipts.push(setup_receipt(
+            ordinal,
+            provider,
+            code,
+            &combined,
+            termination,
+        ));
+    }
+    let after = detect_providers(target);
+    reconcile_setup_receipts(&mut receipts, &before, &after);
+    current_setup_outcome(receipts)
 }
 
 // --- POST /provision/run ------------------------------------------------------
@@ -891,28 +1159,46 @@ pub(crate) async fn provision_run(
     // duplicate.
     {
         let reg = registry_lock();
-        if let Some(existing) = reg.running_for(&key) {
-            let job = reg
-                .jobs
-                .get(&existing)
-                .map(Job::to_wire)
-                .unwrap_or(Value::Null);
-            drop(reg);
-            return Ok(super::envelope(
-                json!({ "job": job, "attached": true }),
-                super::query_tiers(&state.active_cell()),
-                None,
-            ));
+        match reg.running_for(&key, capability.posture()) {
+            RunningMatch::Attach(existing) => {
+                let job = reg
+                    .jobs
+                    .get(&existing)
+                    .map(Job::to_wire)
+                    .unwrap_or(Value::Null);
+                drop(reg);
+                return Ok(super::envelope(
+                    json!({ "job": job, "attached": true }),
+                    super::query_tiers(&state.active_cell()),
+                    None,
+                ));
+            }
+            RunningMatch::Conflict(existing) => {
+                drop(reg);
+                return Err(super::api_error_kind(
+                    &state,
+                    StatusCode::CONFLICT,
+                    "setup_posture_conflict",
+                    format!(
+                        "setup aggregate {existing} is already running with a different force posture"
+                    ),
+                ));
+            }
+            RunningMatch::None => {}
         }
     }
 
     let id = next_job_id();
-    let argv = capability.argv(target.as_deref().unwrap_or(FsPath::new(".")));
+    let setup_commands = capability.setup_commands(target.as_deref().unwrap_or(FsPath::new(".")));
+    let argv = setup_commands
+        .is_none()
+        .then(|| capability.argv(target.as_deref().unwrap_or(FsPath::new("."))));
     let job = Job {
         id: id.clone(),
         label: capability.label(),
         target: target_label,
         key,
+        posture: capability.posture(),
         state: JobState::Running,
         created: Instant::now(),
         outcome: None,
@@ -928,19 +1214,28 @@ pub(crate) async fn provision_run(
     let mutates_project = capability.mutates_project();
     let bg_target = target.clone();
     tokio::spawn(async move {
-        let (code, combined, breached) = run_capability(&argv).await;
-        let (job_state, outcome) = outcome_value(code, &combined, breached);
-        registry_lock().set_outcome(&bg_id, job_state, outcome);
-        // Reconciliation: on a real success, refresh the memoized core
-        // probe (a new/updated core version) and evict the target scope cell so a
-        // formerly-empty root becomes servable in-session. A breach is NOT a
-        // success, so it never reconciles on a possibly-incomplete write.
-        if job_state == JobState::Succeeded {
+        let (job_state, outcome) = match setup_commands {
+            Some(commands) => {
+                run_current_setup(commands, bg_target.as_deref().expect("setup target")).await
+            }
+            None => {
+                let argv = argv.expect("single capability argv");
+                let (code, combined, termination) = run_capability(&argv).await;
+                outcome_value(code, &combined, termination)
+            }
+        };
+        // Reconcile before publishing the terminal job state, so a client that
+        // observes completion and re-reads status cannot race a stale scope.
+        // Aggregate setup reconciles after every terminal shape because an
+        // earlier provider may have succeeded before a later failure or breach.
+        if job_state == JobState::Succeeded || matches!(capability, Capability::SetupCurrent { .. })
+        {
             let _ = crate::handshake::refresh_core_probe();
             if mutates_project && let Some(t) = bg_target {
                 reconcile_scope(&bg_state, &t);
             }
         }
+        registry_lock().set_outcome(&bg_id, job_state, outcome);
     });
 
     Ok(super::envelope(
@@ -1052,229 +1347,5 @@ pub async fn cli_run(state: Arc<AppState>, request: Value) -> Result<Value, Valu
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn capability_carries_no_wire_deserialize_path() {
-        // A capability is only ever CONSTRUCTED from a validated request; the
-        // wire cannot name one. This is enforced by the type system (no
-        // Deserialize/FromStr on Capability) — the test documents the intent and
-        // exercises the one construction path.
-        let req = RunRequest {
-            action: Action::Install,
-            provider: Some(ProviderArg::Core),
-            tool: None,
-            upgrade: false,
-            force: false,
-            confirm: None,
-            target: TargetParams::default(),
-        };
-        assert_eq!(
-            req.to_capability().unwrap(),
-            Capability::InstallFramework {
-                provider: Provider::Core,
-                force: false
-            }
-        );
-    }
-
-    #[test]
-    fn retired_provider_paths_are_not_in_the_wire_enum_or_filesystem_projection() {
-        for provider in ["gemini", "all"] {
-            let request = serde_json::from_value::<RunRequest>(json!({
-                "action": "install",
-                "provider": provider
-            }));
-            assert!(
-                request.is_err(),
-                "{provider} must fail wire decoding because `all` also installs Gemini"
-            );
-        }
-
-        let dir = tempfile::tempdir().expect("temporary project");
-        std::fs::create_dir(dir.path().join(".gemini")).expect("retired marker fixture");
-        assert!(
-            !detect_providers(dir.path()).contains(&"gemini"),
-            "retired provider files must not become served capability truth"
-        );
-    }
-
-    #[test]
-    fn install_argv_is_fixed_tokens_plus_target() {
-        let cap = Capability::InstallFramework {
-            provider: Provider::Core,
-            force: true,
-        };
-        let argv = cap.argv(FsPath::new("/tmp/proj"));
-        // The core invocation prefix varies by machine; assert the fixed tail.
-        let tail: Vec<&str> = argv
-            .iter()
-            .rev()
-            .take(6)
-            .rev()
-            .map(|s| s.as_str())
-            .collect();
-        assert_eq!(
-            tail,
-            ["install", "core", "-t", "/tmp/proj", "--force", "--json"]
-        );
-    }
-
-    #[test]
-    fn upgrade_argv_omits_force_carries_upgrade() {
-        let cap = Capability::UpgradeFramework {
-            provider: Provider::Core,
-        };
-        let argv = cap.argv(FsPath::new("/p"));
-        assert!(argv.contains(&"--upgrade".to_string()));
-        assert!(!argv.contains(&"--force".to_string()));
-        assert!(argv.contains(&"--json".to_string()));
-    }
-
-    #[test]
-    fn acquire_argv_never_carries_json_and_targets_only_companions() {
-        let core = Capability::AcquireTool {
-            tool: Tool::Core,
-            upgrade: false,
-        }
-        .argv(FsPath::new("."));
-        assert_eq!(core, ["uv", "tool", "install", "vaultspec-core"]);
-        let rag = Capability::AcquireTool {
-            tool: Tool::Rag,
-            upgrade: true,
-        }
-        .argv(FsPath::new("."));
-        assert_eq!(rag, ["uv", "tool", "install", "--upgrade", "vaultspec-rag"]);
-        assert!(!core.contains(&"--json".to_string()));
-    }
-
-    #[test]
-    fn migrate_requires_no_operands() {
-        let req = RunRequest {
-            action: Action::Migrate,
-            provider: None,
-            tool: None,
-            upgrade: false,
-            force: false,
-            confirm: None,
-            target: TargetParams::default(),
-        };
-        assert_eq!(req.to_capability().unwrap(), Capability::RunMigrations);
-    }
-
-    #[test]
-    fn install_without_provider_is_typed_error() {
-        let req = RunRequest {
-            action: Action::Install,
-            provider: None,
-            tool: None,
-            upgrade: false,
-            force: false,
-            confirm: None,
-            target: TargetParams::default(),
-        };
-        let (status, kind, _) = req.to_capability().unwrap_err();
-        assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert_eq!(kind, "provider_required");
-    }
-
-    #[test]
-    fn acquire_is_machine_wide_project_verbs_are_not() {
-        assert!(
-            Capability::AcquireTool {
-                tool: Tool::Rag,
-                upgrade: false
-            }
-            .is_machine_acquisition()
-        );
-        assert!(!Capability::RunMigrations.is_machine_acquisition());
-        assert!(Capability::RunMigrations.mutates_project());
-        assert!(
-            !Capability::AcquireTool {
-                tool: Tool::Core,
-                upgrade: false
-            }
-            .mutates_project()
-        );
-    }
-
-    #[test]
-    fn outcome_parses_sync_envelope_on_success() {
-        let (state, out) = outcome_value(Some(0), r#"{"status":"created"}"#, false);
-        assert_eq!(state, JobState::Succeeded);
-        assert_eq!(out["envelope"]["status"], "created");
-        assert_eq!(out["outcome_indeterminate"], false);
-    }
-
-    #[test]
-    fn outcome_failure_on_nonzero_and_breach_is_indeterminate() {
-        let (state, _) = outcome_value(Some(1), "boom", false);
-        assert_eq!(state, JobState::Failed);
-        let (state, out) = outcome_value(None, "killed", true);
-        assert_eq!(state, JobState::Failed);
-        assert_eq!(out["outcome_indeterminate"], true);
-    }
-
-    #[test]
-    fn registry_bounds_and_single_flight() {
-        let mut reg = Registry::new();
-        for i in 0..(MAX_JOBS + 10) {
-            reg.insert(Job {
-                id: format!("j{i}"),
-                label: "install:all".into(),
-                target: "/p".into(),
-                key: format!("k{i}"),
-                state: JobState::Succeeded,
-                created: Instant::now(),
-                outcome: None,
-            });
-        }
-        assert!(reg.jobs.len() <= MAX_JOBS, "registry stays capped");
-
-        let mut reg = Registry::new();
-        reg.insert(Job {
-            id: "run1".into(),
-            label: "acquire:vaultspec-rag".into(),
-            target: "machine".into(),
-            key: "machine:acquire:vaultspec-rag".into(),
-            state: JobState::Running,
-            created: Instant::now(),
-            outcome: None,
-        });
-        assert_eq!(
-            reg.running_for("machine:acquire:vaultspec-rag").as_deref(),
-            Some("run1")
-        );
-        assert_eq!(reg.running_for("machine:acquire:vaultspec-core"), None);
-    }
-
-    #[test]
-    fn running_jobs_are_never_evicted_by_cap() {
-        let mut reg = Registry::new();
-        for i in 0..(MAX_JOBS + 5) {
-            reg.insert(Job {
-                id: format!("r{i}"),
-                label: "install:all".into(),
-                target: "/p".into(),
-                key: format!("k{i}"),
-                state: JobState::Running,
-                created: Instant::now(),
-                outcome: None,
-            });
-        }
-        // All running: the cap cannot shed them, so every one survives.
-        assert_eq!(reg.jobs.len(), MAX_JOBS + 5);
-    }
-
-    #[tokio::test]
-    async fn version_probe_interprets_a_real_rustc_process() {
-        let version = probe_version("rustc", &["--version"])
-            .await
-            .expect("the test toolchain provides rustc on PATH");
-        assert!(
-            version.starts_with("rustc "),
-            "expected rustc version output, got {version:?}"
-        );
-    }
-}
+#[path = "provision/tests.rs"]
+mod tests;

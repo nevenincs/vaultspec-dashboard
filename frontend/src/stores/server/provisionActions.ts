@@ -13,9 +13,25 @@ import { engineClient, type ProvisionJob, type ProvisionRunBody } from "./engine
 
 export const PROVISION_RUN_ACTION = "provision:run";
 
-const PROVISION_ACTIONS = new Set(["install", "upgrade", "migrate", "acquire"]);
+const PROVISION_ACTIONS = new Set([
+  "setup",
+  "install",
+  "upgrade",
+  "migrate",
+  "acquire",
+]);
 const PROVISION_PROVIDERS = new Set(["core", "claude", "antigravity", "codex"]);
 const PROVISION_TOOLS = new Set(["core", "rag"]);
+const PROVISION_FIELDS = new Set([
+  "action",
+  "provider",
+  "tool",
+  "upgrade",
+  "force",
+  "confirm",
+  "workspace",
+  "worktree",
+]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -28,6 +44,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  *  legal, this only rejects malformed shapes early. */
 export function isProvisionRunPayload(value: unknown): value is ProvisionRunBody {
   if (!isRecord(value)) return false;
+  if (Object.keys(value).some((field) => !PROVISION_FIELDS.has(field))) return false;
   if (typeof value.action !== "string" || !PROVISION_ACTIONS.has(value.action)) {
     return false;
   }
@@ -50,6 +67,14 @@ export function isProvisionRunPayload(value: unknown): value is ProvisionRunBody
     return false;
   }
   if (value.worktree !== undefined && typeof value.worktree !== "string") {
+    return false;
+  }
+  if (
+    value.action === "setup" &&
+    (value.provider !== undefined ||
+      value.tool !== undefined ||
+      value.upgrade !== undefined)
+  ) {
     return false;
   }
   return true;

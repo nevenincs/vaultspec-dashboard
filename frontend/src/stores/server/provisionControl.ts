@@ -115,7 +115,7 @@ export function recommendedRunBody(
     case "acquire-core":
       return { action: "acquire", tool: "core" };
     case "install-framework":
-      return { action: "install", provider: "core", workspace: undefined };
+      return { action: "setup", workspace: undefined };
     case "run-migrations":
       return { action: "migrate" };
     case "upgrade-core":
@@ -130,13 +130,11 @@ export function recommendedRunBody(
 /** Build a force (overwrite) install body carrying the required confirm token —
  *  the ONLY supported way to request a destructive re-install from the client, so
  *  the token is never hand-typed at a call site. */
-export function forceInstallBody(
-  provider: NonNullable<ProvisionRunBody["provider"]>,
+export function forceSetupBody(
   target: { workspace?: string; worktree?: string } = {},
 ): ProvisionRunBody {
   return {
-    action: "install",
-    provider,
+    action: "setup",
     force: true,
     confirm: PROVISION_FORCE_CONFIRM,
     workspace: target.workspace,

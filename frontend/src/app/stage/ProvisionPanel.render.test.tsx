@@ -162,8 +162,7 @@ describe("dispatchPayload", () => {
   it("extracts the dispatch-lane payload from a runnable descriptor", () => {
     const action = provisionForceInstallAction(status());
     expect(dispatchPayload(action)).toEqual({
-      action: "install",
-      provider: "core",
+      action: "setup",
       force: true,
       confirm: PROVISION_FORCE_CONFIRM,
       workspace: undefined,
@@ -403,6 +402,57 @@ describe("ProvisionPanelBody", () => {
       outcome: {
         exit_code: 77,
         outcome_indeterminate: true,
+        reconciliation: "status-required",
+        aggregate: {
+          intent: "setup-current-providers",
+          status: "indeterminate",
+          providers: [
+            {
+              ordinal: 1,
+              provider: "core",
+              attempted: true,
+              state: "succeeded",
+              outcome: { exit_code: 0, outcome_indeterminate: false },
+              reconciliation: {
+                status: "confirmed_present",
+                provider_present: true,
+              },
+            },
+            {
+              ordinal: 2,
+              provider: "claude",
+              attempted: true,
+              state: "indeterminate",
+              outcome: { exit_code: null, outcome_indeterminate: true },
+              reconciliation: {
+                status: "unresolved",
+                provider_present: false,
+              },
+            },
+            {
+              ordinal: 3,
+              provider: "antigravity",
+              attempted: false,
+              state: "not-run",
+              outcome: null,
+              reconciliation: {
+                status: "not_attempted",
+                provider_present: false,
+              },
+            },
+            {
+              ordinal: 4,
+              provider: "codex",
+              attempted: false,
+              state: "not-run",
+              outcome: null,
+              reconciliation: {
+                status: "not_attempted",
+                provider_present: false,
+              },
+            },
+          ],
+        },
         output: "private service traceback",
         envelope: {
           schema: "internal.schema.v99",

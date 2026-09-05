@@ -81,7 +81,7 @@ async fn provision_run_force_without_confirm_is_refused_before_any_spawn() {
     let (status, body) = post_json_with_token(
         router,
         "/provision/run",
-        json!({ "action": "install", "provider": "core", "force": true }),
+        json!({ "action": "setup", "force": true }),
         Some(&token),
     )
     .await;
@@ -143,6 +143,15 @@ async fn provision_run_rejects_retired_provider_paths_before_spawning() {
         );
         assert!(body["tiers"].is_object(), "rejection carries tiers: {body}");
     }
+
+    let (status, body) = post_json_with_token(
+        router,
+        "/provision/run",
+        json!({ "action": "setup", "profile_id": "retired-profile" }),
+        Some(&token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
 }
 
 #[tokio::test]

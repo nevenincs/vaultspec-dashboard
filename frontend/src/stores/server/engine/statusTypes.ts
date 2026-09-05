@@ -222,7 +222,7 @@ export interface ProvisionStatus {
 /** The bounded `POST /provision/run` body: a semantic action plus typed operands.
  *  The engine maps this to a fixed installer argv; no wire string reaches argv. */
 export interface ProvisionRunBody {
-  action: "install" | "upgrade" | "migrate" | "acquire";
+  action: "setup" | "install" | "upgrade" | "migrate" | "acquire";
   provider?: "core" | "claude" | "antigravity" | "codex";
   tool?: "core" | "rag";
   upgrade?: boolean;
@@ -247,6 +247,36 @@ export interface ProvisionJob {
     outcome_indeterminate?: boolean;
     envelope?: { schema?: string; status?: string; [k: string]: unknown };
     output?: string;
+    aggregate?: {
+      intent: "setup-current-providers";
+      status: "complete" | "partial" | "timeout_cancelled" | "indeterminate";
+      providers: Array<{
+        ordinal: 1 | 2 | 3 | 4;
+        provider: "core" | "claude" | "antigravity" | "codex";
+        attempted: boolean;
+        state:
+          | "succeeded"
+          | "failed"
+          | "timeout_cancelled"
+          | "indeterminate"
+          | "not-run";
+        outcome: {
+          exit_code?: number | null;
+          outcome_indeterminate?: boolean;
+          envelope?: { schema?: string; status?: string; [k: string]: unknown };
+          output?: string;
+        } | null;
+        reconciliation: {
+          status:
+            | "confirmed_present"
+            | "confirmed_absent"
+            | "not_attempted"
+            | "unresolved";
+          provider_present: boolean;
+        };
+      }>;
+    };
+    reconciliation?: "completed" | "status-required";
   } | null;
 }
 

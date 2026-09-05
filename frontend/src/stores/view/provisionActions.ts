@@ -9,7 +9,7 @@
 // Global (non-entity) chrome-style verbs live in stores/view alongside
 // `chromeActions.ts`/`graphCommands.ts`; this depends on stores/server
 // provisioning types + the run-body derivation already owned there
-// (`recommendedRunBody`/`forceInstallBody`, provisionControl.ts), so it stays
+// (`recommendedRunBody`/`forceSetupBody`, provisionControl.ts), so it stays
 // out of that file to keep its escape-hatch charter unmixed.
 
 import { Download, RotateCcw } from "lucide-react";
@@ -17,11 +17,11 @@ import { Download, RotateCcw } from "lucide-react";
 import type { ActionDescriptor } from "../../platform/actions/action";
 import type { MessageDescriptor } from "../../platform/localization/message";
 import type { ProvisionRecommendation, ProvisionStatus } from "../server/engine";
-import { forceInstallBody, recommendedRunBody } from "../server/provisionControl";
+import { forceSetupBody, recommendedRunBody } from "../server/provisionControl";
 import { PROVISION_RUN_ACTION } from "../server/provisionActions";
 
 export const PROVISION_RECOMMENDED_ACTION_ID = "provision:recommended";
-export const PROVISION_FORCE_INSTALL_ACTION_ID = "provision:force-install";
+export const PROVISION_FORCE_SETUP_ACTION_ID = "provision:force-setup";
 
 /** Plain-language action per served recommendation, never the raw wire token. */
 const RECOMMENDATION_LABEL: Record<ProvisionRecommendation, MessageDescriptor> = {
@@ -103,14 +103,14 @@ export function provisionRecommendedAction(
  * primary affordance never carries. A forced setup is destructive because it
  * prunes stale files and can overwrite user-authored content.
  * The typed confirmation explains the destructive change before dispatch, and
- * `forceInstallBody` carries the engine-required confirmation token. It is
+ * `forceSetupBody` carries the engine-required confirmation token. It is
  * enabled only when an existing setup can be replaced.
  */
 export function provisionForceInstallAction(
   status: ProvisionStatus | undefined,
 ): ActionDescriptor {
   const base = {
-    id: PROVISION_FORCE_INSTALL_ACTION_ID,
+    id: PROVISION_FORCE_SETUP_ACTION_ID,
     label: { key: "projects:destructiveActions.replaceSetup" } as const,
     section: "danger" as const,
     icon: RotateCcw,
@@ -132,6 +132,6 @@ export function provisionForceInstallAction(
       confirmLabel: { key: "projects:destructiveActions.replaceSetup" },
       cancelLabel: { key: "common:actions.cancel" },
     } as const,
-    dispatch: { type: PROVISION_RUN_ACTION, payload: forceInstallBody("core") },
+    dispatch: { type: PROVISION_RUN_ACTION, payload: forceSetupBody() },
   };
 }

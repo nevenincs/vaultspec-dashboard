@@ -58,33 +58,61 @@ export const MARKERS = {
   },
 };
 
+type DtcgObject = Record<string, unknown>;
+
+function objectOrNull(value: unknown): DtcgObject | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as DtcgObject)
+    : null;
+}
+
+function requiredObject(value: unknown, label: string): DtcgObject {
+  const object = objectOrNull(value);
+  if (object === null) throw new Error(`expected token object at ${label}`);
+  return object;
+}
+
+function scalarValue(value: unknown, label: string): string | number {
+  if (typeof value !== "string" && typeof value !== "number") {
+    throw new Error(`expected scalar token value at ${label}`);
+  }
+  return value;
+}
+
 function leafPaths(
-  obj: any,
+  obj: DtcgObject,
   prefix: string[] = [],
   acc = new Set<string>(),
 ): Set<string> {
   for (const k of Object.keys(obj)) {
     if (k.startsWith("$")) continue;
     const v = obj[k];
-    if (v && typeof v === "object" && "$value" in v) acc.add([...prefix, k].join("."));
-    else if (v && typeof v === "object") leafPaths(v, [...prefix, k], acc);
+    const child = objectOrNull(v);
+    if (child && "$value" in child) acc.add([...prefix, k].join("."));
+    else if (child) leafPaths(child, [...prefix, k], acc);
   }
   return acc;
 }
 
 /** The token paths that appear in a [data-theme] block (== the override files). */
-const THEMED = leafPaths(JSON.parse(readFileSync(DARK, "utf8")));
+const THEMED = leafPaths(requiredObject(JSON.parse(readFileSync(DARK, "utf8")), DARK));
 
-function walkVars(obj: any, prefix: string[], map: Map<string, string>): void {
+function walkVars(obj: DtcgObject, prefix: string[], map: Map<string, string>): void {
   for (const k of Object.keys(obj)) {
     if (k.startsWith("$")) continue;
     const v = obj[k];
     const path = [...prefix, k];
-    if (v && typeof v === "object" && "$value" in v) {
-      const pinned = v.$extensions?.["com.vaultspec.css"]?.var;
-      map.set(path.join("."), pinned ?? defaultCssVar(path.join(".")));
-    } else if (v && typeof v === "object") {
-      walkVars(v, path, map);
+    const child = objectOrNull(v);
+    if (child && "$value" in child) {
+      const extensions = objectOrNull(child.$extensions);
+      const cssExtension = objectOrNull(extensions?.["com.vaultspec.css"]);
+      const pinned = cssExtension?.var;
+      map.set(
+        path.join("."),
+        typeof pinned === "string" ? pinned : defaultCssVar(path.join(".")),
+      );
+    } else if (child) {
+      walkVars(child, path, map);
     }
   }
 }
@@ -92,7 +120,7 @@ function walkVars(obj: any, prefix: string[], map: Map<string, string>): void {
 function buildVarMap(): Map<string, string> {
   const map = new Map<string, string>();
   for (const file of [PRIMITIVES, SEMANTIC]) {
-    walkVars(JSON.parse(readFileSync(file, "utf8")), [], map);
+    walkVars(requiredObject(JSON.parse(readFileSync(file, "utf8")), file), [], map);
   }
   return map;
 }
@@ -174,24 +202,28 @@ type NonColorLeaf = { path: string[]; value: string | number };
 
 /** Flatten a DTCG file to leaves carrying the raw $value (non-color: scalar). */
 function flatLeaves(
-  obj: any,
+  obj: DtcgObject,
   prefix: string[] = [],
   acc: NonColorLeaf[] = [],
 ): NonColorLeaf[] {
   for (const k of Object.keys(obj)) {
     if (k.startsWith("$")) continue;
     const v = obj[k];
-    if (v && typeof v === "object" && "$value" in v) {
-      acc.push({ path: [...prefix, k], value: v.$value as string | number });
-    } else if (v && typeof v === "object") {
-      flatLeaves(v, [...prefix, k], acc);
+    const child = objectOrNull(v);
+    if (child && "$value" in child) {
+      acc.push({
+        path: [...prefix, k],
+        value: scalarValue(child.$value, [...prefix, k].join(".")),
+      });
+    } else if (child) {
+      flatLeaves(child, [...prefix, k], acc);
     }
   }
   return acc;
 }
 
-function readJson(path: string): any {
-  return JSON.parse(readFileSync(path, "utf8"));
+function readJson(path: string): DtcgObject {
+  return requiredObject(JSON.parse(readFileSync(path, "utf8")), path);
 }
 
 /** Build the foundation region body (declaration lines, no markers), at 2-space indent. */
@@ -201,29 +233,43 @@ export function generateFoundation(): string {
     out.push(`  ${name}: ${value};`);
 
   // -- type: families, then per-role size / line-height / weight ----------------
-  const type = readJson(TYPE).type;
-  for (const fam of Object.keys(type.family).filter((k) => !k.startsWith("$"))) {
-    push(`--font-fg-${fam}`, type.family[fam].$value);
+  const type = requiredObject(readJson(TYPE).type, "type");
+  const family = requiredObject(type.family, "type.family");
+  for (const fam of Object.keys(family).filter((k) => !k.startsWith("$"))) {
+    const token = requiredObject(family[fam], `type.family.${fam}`);
+    push(`--font-fg-${fam}`, scalarValue(token.$value, `type.family.${fam}`));
   }
-  for (const role of Object.keys(type.role).filter((k) => !k.startsWith("$"))) {
-    const r = type.role[role];
-    push(`--text-fg-${role}`, r.size.$value);
-    push(`--text-fg-${role}--line-height`, r["line-height"].$value);
-    push(`--text-fg-${role}--weight`, r.weight.$value);
+  const roles = requiredObject(type.role, "type.role");
+  for (const role of Object.keys(roles).filter((k) => !k.startsWith("$"))) {
+    const roleObject = requiredObject(roles[role], `type.role.${role}`);
+    const size = requiredObject(roleObject.size, `type.role.${role}.size`);
+    const lineHeight = requiredObject(
+      roleObject["line-height"],
+      `type.role.${role}.line-height`,
+    );
+    const weight = requiredObject(roleObject.weight, `type.role.${role}.weight`);
+    push(`--text-fg-${role}`, scalarValue(size.$value, `${role}.size`));
+    push(
+      `--text-fg-${role}--line-height`,
+      scalarValue(lineHeight.$value, `${role}.line-height`),
+    );
+    push(`--text-fg-${role}--weight`, scalarValue(weight.$value, `${role}.weight`));
   }
 
   // -- radius -------------------------------------------------------------------
-  for (const l of flatLeaves(readJson(RADIUS).radius)) {
+  for (const l of flatLeaves(requiredObject(readJson(RADIUS).radius, "radius"))) {
     push(`--radius-fg-${l.path.join("-")}`, l.value);
   }
 
   // -- elevation (base/light shadows; per-theme remaps stay hand-authored) -------
-  for (const l of flatLeaves(readJson(ELEVATION).elevation)) {
+  for (const l of flatLeaves(
+    requiredObject(readJson(ELEVATION).elevation, "elevation"),
+  )) {
     push(`--shadow-fg-${l.path.join("-")}`, l.value);
   }
 
   // -- spacing ------------------------------------------------------------------
-  for (const l of flatLeaves(readJson(SPACING).spacing)) {
+  for (const l of flatLeaves(requiredObject(readJson(SPACING).spacing, "spacing"))) {
     push(`--spacing-fg-${l.path.join("-")}`, l.value);
   }
 

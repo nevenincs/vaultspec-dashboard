@@ -41,12 +41,10 @@ const RESPAWN_DELAY_MS = 1500;
 const MAX_RESPAWNS = 5;
 
 function log(message: string): void {
-  // eslint-disable-next-line no-console
   console.log(`\x1b[36m[engine]\x1b[0m ${message}`);
 }
 
 function warn(message: string): void {
-  // eslint-disable-next-line no-console
   console.warn(`\x1b[33m[engine]\x1b[0m ${message}`);
 }
 

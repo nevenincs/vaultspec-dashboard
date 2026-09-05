@@ -26,6 +26,7 @@ describe("provisioning dispatch seam", () => {
 
   it("validates the run body's typed/bounded shape before it reaches transport", () => {
     expect(isProvisionRunPayload({ action: "migrate" })).toBe(true);
+    expect(isProvisionRunPayload({ action: "setup" })).toBe(true);
     expect(isProvisionRunPayload({ action: "install", provider: "core" })).toBe(true);
     expect(
       isProvisionRunPayload({ action: "acquire", tool: "core", upgrade: true }),
@@ -46,12 +47,25 @@ describe("provisioning dispatch seam", () => {
       false,
     );
     expect(isProvisionRunPayload({ action: "install", provider: "all" })).toBe(false);
+    expect(isProvisionRunPayload({ action: "setup", provider: "core" })).toBe(false);
+    expect(isProvisionRunPayload({ action: "setup", profile_id: "retired" })).toBe(
+      false,
+    );
     expect(isProvisionRunPayload({ action: "acquire", tool: "bogus" })).toBe(false);
     expect(isProvisionRunPayload({ action: "migrate", upgrade: "yes" })).toBe(false);
     expect(isProvisionRunPayload({ action: "migrate", force: "yes" })).toBe(false);
     expect(isProvisionRunPayload({ action: "migrate", confirm: 1 })).toBe(false);
     expect(isProvisionRunPayload({ action: "migrate", workspace: 1 })).toBe(false);
     expect(isProvisionRunPayload({ action: "migrate", worktree: 1 })).toBe(false);
+  });
+
+  it("accepts exactly the four current per-provider install targets", () => {
+    for (const provider of ["core", "claude", "antigravity", "codex"]) {
+      expect(isProvisionRunPayload({ action: "install", provider })).toBe(true);
+    }
+    for (const provider of ["all", "gemini", "future-provider"]) {
+      expect(isProvisionRunPayload({ action: "install", provider })).toBe(false);
+    }
   });
 
   it("rejects a malformed payload before transport", () => {

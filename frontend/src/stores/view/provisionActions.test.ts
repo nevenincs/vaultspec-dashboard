@@ -9,7 +9,7 @@ import type { ProvisionRecommendation, ProvisionStatus } from "../server/engine"
 import { PROVISION_FORCE_CONFIRM } from "../server/provisionControl";
 import { PROVISION_RUN_ACTION } from "../server/provisionActions";
 import {
-  PROVISION_FORCE_INSTALL_ACTION_ID,
+  PROVISION_FORCE_SETUP_ACTION_ID,
   PROVISION_RECOMMENDED_ACTION_ID,
   provisionForceInstallAction,
   provisionRecommendedAction,
@@ -50,7 +50,7 @@ describe("provisionRecommendedAction", () => {
     expect(action.disabled).toBeUndefined();
     expect(action.dispatch).toEqual({
       type: PROVISION_RUN_ACTION,
-      payload: { action: "install", provider: "core", workspace: undefined },
+      payload: { action: "setup", workspace: undefined },
     });
     expect(action.label).toEqual({ key: "projects:actions.setUpProject" });
   });
@@ -127,7 +127,7 @@ describe("provisionRecommendedAction", () => {
 describe("provisionForceInstallAction", () => {
   it("is disabled with a reason when nothing is installed to overwrite", () => {
     const action = provisionForceInstallAction(status("not-a-git-project"));
-    expect(action.id).toBe(PROVISION_FORCE_INSTALL_ACTION_ID);
+    expect(action.id).toBe(PROVISION_FORCE_SETUP_ACTION_ID);
     expect(action.label).toEqual({
       key: "projects:destructiveActions.replaceSetup",
     });
@@ -164,8 +164,7 @@ describe("provisionForceInstallAction", () => {
     expect(action.dispatch).toEqual({
       type: PROVISION_RUN_ACTION,
       payload: {
-        action: "install",
-        provider: "core",
+        action: "setup",
         force: true,
         confirm: PROVISION_FORCE_CONFIRM,
         workspace: undefined,

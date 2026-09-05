@@ -5,7 +5,7 @@ tags:
 date: '2026-09-06'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:c5a25b5a7537a4f47959495e7c92fef6e337a0b4199d7217e8cbade26cab935f'
+body_hash: 'sha256:fc0994c33f0c02b34b216c9493fe896081de648bae09d2309678dac3feeab3bd'
 related:
   - "[[2026-08-01-a2a-agent-flow-adr]]"
   - "[[2026-08-01-agent-panel-shell-integration-adr]]"
@@ -393,3 +393,72 @@ implementation remains subject to a separate runtime review. No critical,
 high, or medium architecture defect remains in `b118ccbc`; the existing high
 runtime finding remains open until committed implementation and tests prove
 D8-D10.
+
+## 2026-09-06 Dashboard current-provider setup correction
+
+This pass implements the accepted project-provisioning D8-D10 amendment and
+corrects the validation claims challenged by the formal review. The failed
+review and its open findings remain intact above as historical evidence.
+
+### current-provider-aggregate-regression | high | resolved; formal re-review pending
+
+Type: product capability and provisioning contract. Dashboard now exposes one
+provider-less setup action and CLI command. It expands internally, in the fixed
+order core, claude, antigravity, codex, to four provider-specific Core install
+commands. Command-tail tests prove the exact membership and order and prove no
+child argv contains install all or Gemini. Recommended setup and force setup
+both dispatch this provider-less operation; individual current-provider install
+and upgrade remain available, while Gemini, all, and profile_id remain typed
+refusals.
+
+One target has one setup label and key across safe and force posture. An
+identical posture attaches to the live aggregate; a different posture receives
+a typed 409 conflict naming that aggregate. The ordered sequence shares one
+wall-clock deadline and one combined-output allowance. Receipts retain ordinal,
+provider, attempted state, Core envelope or bounded failure, and reconciliation
+evidence. The aggregate vocabulary is exactly complete, partial,
+timeout_cancelled, and indeterminate. Reconciliation compares Core evidence
+with the same provider filesystem projection served by provisioning status
+before terminal publication. Unresolved evidence remains indeterminate with a
+status-required marker; it is not automatically replayed.
+
+Evidence: provisioning unit tests pass 17/17, provisioning HTTP tests pass 5/5,
+and CLI parsing tests pass 2/2 under the pinned Rust 1.96 toolchain. Focused
+Clippy for API and CLI all targets passes with warnings denied.
+
+### implementation-validation-evidence-overclaim | medium | resolved by measured correction
+
+Type: validation accuracy. The earlier scoped-ESLint pass statement was too
+broad. The four explicit-any failures in style-dictionary.config.ts were
+replaced with checked unknown/object/scalar narrowing, and the two stale
+no-console disable comments in engine-dev.ts were removed. ESLint over the
+exact ten-file correction surface now exits clean with zero findings.
+
+The token discriminator now performs an in-memory Vite production build and
+inspects its CSS assets. It rejects Dashboard bindings from framework
+--font-sans, --font-mono, and --font-serif names to canonical --font-fg
+properties, while explicitly allowing Tailwind's independently owned exact
+theme names. It also proves each canonical font utility reaches its canonical
+property. The expanded token drift suite passes 8/8. Four focused frontend
+provisioning, action, panel, and token suites pass 47/47; TypeScript and the
+production Vite build pass. npm audit remains zero at every severity.
+
+### command-teardown-eperm | low | queued host limitation
+
+Type: validation-host reliability. The formal review intermittently reached a
+Windows EPERM while removing a live-engine fixture command directory after all
+assertions had passed. Subsequent focused runs completed without that teardown
+failure. No warning suppression, retry loop, or product compatibility branch
+was added. Retain this as a host/test-harness limitation for the test
+infrastructure workstream if it recurs; it is not evidence against the setup
+broker result.
+
+### current-provider-setup-correction-disposition | low | implementation complete; formal re-review pending
+
+Type: implementation review disposition. The correction satisfies the accepted
+D8-D10 shape and closes the high capability regression and medium evidence
+finding within the implementation scope. Rust formatting, focused tests,
+focused warnings-denied Clippy, exact scoped ESLint and Prettier, frontend
+TypeScript/build, built-CSS discrimination, and npm audit pass. Concurrent graph
+simulation and design-system work remains excluded and preserved. Acceptance
+still requires formal review of the correction commit.
