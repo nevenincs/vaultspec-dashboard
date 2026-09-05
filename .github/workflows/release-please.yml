@@ -29,12 +29,65 @@ concurrency:
 jobs:
   release-please:
     runs-on: [self-hosted, Linux, X64]
+    outputs:
+      prs_created: ${{ steps.release.outputs.prs_created }}
+      release_branch: ${{ steps.release.outputs.pr && fromJSON(steps.release.outputs.pr).headBranchName }}
     steps:
       - uses: googleapis/release-please-action@v4
+        id: release
         with:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+      - name: Reclaim runner disk (always)
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          df -h . 2>/dev/null | tail -1
+          rm -rf "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
+          df -h . 2>/dev/null | tail -1
+
+  # release-please rewrites `[workspace.package] version` in engine/Cargo.toml
+  # through its `extra-files` handling. It has no notion of a Cargo lock, so
+  # engine/Cargo.lock still records every workspace crate at the PREVIOUS
+  # version, and the two disagree from the moment the release PR is opened.
+  #
+  # That went unseen across several releases because nothing passed `--locked`:
+  # cargo refreshed the lock in memory and every build succeeded over a tree
+  # that was not reproducible. quality-gates now runs `cargo metadata --locked`,
+  # which turns the drift into a hard red on the release PR. This job closes the
+  # other half — the job that causes the drift also repairs it — so the red is a
+  # regression signal rather than a chore the next release rediscovers.
+  sync-lock:
+    name: Carry engine/Cargo.lock with the version bump
+    needs: release-please
+    if: ${{ needs.release-please.outputs.prs_created == 'true' }}
+    runs-on: [self-hosted, Linux, X64]
+    steps:
+      # Before checkout, because checkout is the step the EACCES lands on.
+      - name: Reclaim the workspace from a job that may not have finished
+        shell: bash
+        run: bash .github/scripts/reclaim-workspace.sh || true
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release-please.outputs.release_branch }}
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+      - name: Read pinned toolchain
+        id: toolchain
+        shell: bash
+        run: echo "channel=$(grep -m1 '^channel' engine/rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+      - name: Warm the pinned toolchain, retrying a dropped connection
+        shell: bash
+        run: bash .github/scripts/warm-toolchain.sh "${{ steps.toolchain.outputs.channel }}" || true
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
+      - name: Regenerate and push engine/Cargo.lock
+        shell: bash
+        env:
+          RELEASE_BRANCH: ${{ needs.release-please.outputs.release_branch }}
+        run: bash .github/scripts/sync-release-lock.sh
       - name: Reclaim runner disk (always)
         if: always()
         shell: bash
