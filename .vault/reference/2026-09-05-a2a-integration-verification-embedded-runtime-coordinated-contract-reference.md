@@ -5,7 +5,7 @@ tags:
 date: '2026-09-05'
 modified: '2026-09-05'
 body_schema: 'body-v2'
-body_hash: 'sha256:e7306c97b0de5e3dee64752085678f22f4beb4ea573be7c6c9d392aceaafffc5'
+body_hash: 'sha256:7efed9e6b454e46f29622ce5e1ff1c9a890e336a65508a60832941387f4ce17e'
 related:
   - "[[2026-07-14-a2a-orchestration-edge-adr]]"
   - "[[2026-07-24-a2a-product-provisioning-adr]]"
@@ -50,25 +50,47 @@ The embedded record is `gateway-discovery.json` under the Dashboard product appl
 
 Dashboard validates every identity field against the active receipt before attach. Unknown protocol, migration range, release member, generation, installation identity, ownership, stale heartbeat, or PID mismatch fails closed. Additive fields require tolerant readers; changed meanings, removed fields, filename changes, or range encoding changes require a coordinated version change. The A2A legacy desktop record (`service.json`, integer schema version 1, package-derived generation, nested process/endpoint) is outside the embedded contract.
 
-### Broker operations, deadlines, and retries
+### Broker operations, envelopes, deadlines, and retries
 
-Dashboard's engine is the sole product wire client. The broker is a fixed whitelist and never an arbitrary proxy.
+The accepted orchestration-edge ADR's 2026-09-05 contract event is authoritative. Dashboard's engine is the sole product wire client. The exact whitelist has eleven verbs: the existing `run-start`, `run-status`, `run-cancel`, `presets-list`, `active-runs`, `provider-catalog`, and `clarification-respond`, plus `run-message`, `permission-respond`, `native-commands-list`, and `native-command-execute`. No verb is an arbitrary proxy, shell, provider RPC, or untyped prompt escape.
 
-| Operation | HTTP operation | Budget | Retry rule |
-| --- | --- | ---: | --- |
-| `presets-list` | `GET /v1/presets` | 15 s | caller may issue a new bounded read |
-| `provider-catalog` | `GET /v1/provider-catalog` | 45 s | caller may issue a new bounded discovery read |
-| `active-runs` | `GET /v1/runs?state=active` | 15 s | caller may issue a new bounded read |
-| `run-status` | `GET /v1/runs/{run_id}` | 15 s | caller may issue a new bounded read |
-| `run-cancel` | `POST /v1/runs/{run_id}/cancel` | 60 s | no blind retry; reconcile authoritative status |
-| `run-start` | `POST /v1/runs` | 60 s | prepare, actor-token mint, commit; one retry only after ambiguous connection/protocol failure with the same run, reservation, and payload, followed by authoritative status reconciliation |
-| `clarification-respond` | `POST /v1/runs/{run_id}/clarifications/{request_id}/respond` | 60 s | no blind retry; preserve request identity and reconcile the result |
+All browser requests use the Dashboard machine bearer, carry `expected_scope` (1..4096 characters), and accept no credential, endpoint, path, or actor token. Dashboard compares the fence to its current scope and injects that canonical root. It resolves only the receipt-joined product gateway and uses its server-held attach bearer. `run_id` matches `[A-Za-z0-9_][A-Za-z0-9_-]{0,127}`. `request_id`, `command_id`, and `idempotency_key` are 1..128 characters matching `[A-Za-z0-9_.:-]+`; command ids are percent-encoded as one segment. Unknown request fields fail before discovery.
 
-Later approved steps add fixed operations for durable follow-up messaging (`S43`), permission response (`S44`), and native command discovery/execution (`S45`). Each must preserve scope and request identity, return a durable result receipt or typed conflict, and obey the same bounded retry rule. Reads use 15 seconds, control writes 60 seconds, and catalog discovery 45 seconds. HTTP status and body pass through the typed tier envelope; timeout maps to 504 and connect/crash/protocol failure to 502. Known-down state remains a successful degraded agent tier rather than transport failure.
+| Engine verb | A2A method and path | Exact browser fields | Budget |
+| --- | --- | --- | ---: |
+| `presets-list` | `GET /v1/presets` | `expected_scope` | 15 s |
+| `provider-catalog` | `GET /v1/provider-catalog` | `expected_scope` | 45 s |
+| `active-runs` | `GET /v1/runs?state=active` | `expected_scope`, optional bounded `feature_tag`; Dashboard injects root and limit 2 | 15 s |
+| `run-status` | `GET /v1/runs/{run_id}` | `expected_scope`, `run_id` | 15 s |
+| `run-cancel` | `POST /v1/runs/{run_id}/cancel` | `expected_scope`, `run_id` | 60 s |
+| `run-start` | `POST /v1/runs` | existing prepare/commit contract | 60 s |
+| `clarification-respond` | `POST /v1/runs/{run_id}/clarifications/{request_id}/respond` | existing exactly-one-of answers/prompt/decline contract | 60 s |
+| `run-message` | `POST /v1/runs/{run_id}/messages` | `expected_scope`, `run_id`, `content`, optional `agent_id`, `idempotency_key` | 60 s |
+| `permission-respond` | `POST /v1/runs/{run_id}/permissions/{request_id}/respond` | `expected_scope`, `run_id`, `request_id`, `option_id`, optional `notes`, `idempotency_key` | 60 s |
+| `native-commands-list` | `GET /v1/runs/{run_id}/native-commands` | `expected_scope`, `run_id` | 45 s |
+| `native-command-execute` | `POST /v1/runs/{run_id}/native-commands/{command_id}/execute` | `expected_scope`, `run_id`, `command_id`, `session_revision`, optional `arguments`, `idempotency_key` | 60 s |
+
+`run-message` forwards `{"content", "agent_id"?}` and the idempotency header. Content is trim-nonblank, at most 65,536 Unicode scalar values and 262,144 UTF-8 bytes. Agent id uses the run-id grammar and must be in the current authoritative run roster; omission selects the supervisor. A2A HTTP 202 success is exactly `{api_version:"v1",run_id,accepted:true,applied,action_status,action_id,idempotency_key}`. Accepted status is `accepted_not_applied`, `applied`, or `duplicate`; action and idempotency ids are non-null and form the durable dispatch receipt. Completion remains run-status truth.
+
+`permission-respond` forwards `{"option_id","notes"?}` and the idempotency header. Option id is 1..64 characters; notes are at most 2,048 characters and 8,192 UTF-8 bytes. Dashboard first re-reads run-status and requires the exact pending request and option under that run; A2A repeats the check atomically. A2A HTTP 200 success is exactly `{api_version:"v1",run_id,request_id,accepted,applied,action_status,approval_status?,action_id,idempotency_key}`. Accepted statuses are `accepted_not_applied`, `applied`, or `duplicate`; a durably rejected attempt is `rejected_invalid_state`. The receipt retains run/request, option-bound idempotency, action, and application state.
+
+`native-commands-list` returns HTTP 200 `{api_version:"v1",run_id,session_revision,busy,commands}`. Revision is an opaque 1..128-character token. There are at most 32 commands, each exactly `{command_id,title,description?,disposition,argument}`. Title is 1..128 characters, description at most 512, disposition one of `supported|blocked|unsupported`, and argument either `{kind:"none"}` or `{kind:"text",required,max_chars,multiline}` with max_chars 1..4096. This is session-scoped dynamic truth; an empty list is valid.
+
+`native-command-execute` forwards `{"session_revision","arguments"?}` and the idempotency header. Arguments must satisfy the advertised descriptor and are capped at 4,096 characters and 16,384 UTF-8 bytes; Dashboard never interprets them as argv or shell text. A2A HTTP 200/202 success is exactly `{api_version:"v1",run_id,command_id,session_revision,accepted,applied,action_status,action_id,idempotency_key,effect}` with accepted status `accepted_not_applied|applied|duplicate`. Effect is `{kind:"ordinary"|"compact",status:"pending"|"completed"|"failed",before_context_tokens?,after_context_tokens?}` with nonnegative counts. Compact is completed only after an independently observed reduction.
+
+Each mutation requires a stable idempotency key for one user intent. A2A binds it durably to the normalized payload before dispatch. Same key and payload replay the receipt; changed payload returns `idempotency_conflict`. Dashboard never blindly retries. After an ambiguous transport result it may make exactly one reconciliation replay with the same identity, key, and payload. A receipt settles the outcome; a second ambiguity returns typed `outcome_unknown` and preserves the identity. Reads may be reissued as new bounded reads.
+
+Every A2A refusal/error is `{api_version:"v1",error:{code,message,retryable},identity:{run_id,request_id?,command_id?,idempotency_key?},receipt?}`; message is at most 512 characters. A2A codes are exactly `not_found|request_conflict|option_conflict|idempotency_conflict|busy|blocked|unsupported|invalid_arguments|invalid_state|at_capacity|provider_unavailable|internal_failure`. Bound/schema failures use 400/422; absent identity 404; stale-session/superseded-request/busy/idempotency conflicts 409; capacity/breaker 503. Every sibling success or refusal is verbatim under Dashboard `data.envelope`, with `data.sibling_status` for non-2xx and normal tiers. Dashboard-originated failures use its typed API-error envelope: `scope_conflict` at 409, `outcome_unknown` at 502 after the single reconciliation replay is inconclusive, `gateway_timeout` at 504, and `gateway_unavailable|protocol_error` at 502. Known-down is HTTP 200 with degraded agent tier. Output remains under 8 MiB.
+
+### Producer-first release provenance
+
+The accepted provisioning amendment governs S50. A2A first publishes deterministic, fixed-name, per-target versioned archives and a SHA-256 sidecar for each archive. Its release gate starts the packaged gateway, reaches health and readiness, stops it, and proves the process is gone before publication. Dashboard selects only the released version, fetches the matching target archive and sidecar, verifies the digest, and bundles the verified files into its release set. Dashboard does not check out A2A source, run A2A's freeze recipe, or pin an A2A source commit in the release flow. The Dashboard component lock becomes a version-only released-artifact reference.
+
+After composition, the version-only component lock, verified release-set member and digest, active receipt, launched executable version, process identity, and discovery release/generation fields must agree. The present source-commit lock is historical drift and cannot satisfy qualification. S50 implements fetch-verify-bundle and positive packaged lifecycle/API proof after the producer workflow exists; it does not build A2A from source.
 
 ### Coordinated change boundary
 
-`S43`-`S45` add the three missing broker capabilities in both repositories. `S47` aligns lifecycle ownership, authentication, compatibility gates, and foreign-process behavior. `S48` replaces the embedded discovery producer with the receipt-bound Dashboard schema and removes resident fallback from the product lane. `S49` hardens graceful drain and shutdown. `S50` builds the released artifact and updates the Dashboard lock/member/receipt chain. `W05.P13.S64`-`S65` supply paired runtime evidence. No runtime source is changed in this step.
+`S43`-`S45` add the three missing broker capabilities in both repositories. `S47` aligns lifecycle ownership, authentication, compatibility gates, and foreign-process behavior. `S48` replaces the embedded discovery producer with the receipt-bound Dashboard schema and removes resident fallback from the product lane. `S49` hardens graceful drain and shutdown. Under the accepted provisioning ADR, A2A first publishes fixed per-target versioned archives and SHA-256 sidecars; `S50` makes Dashboard fetch, verify, and bundle that released version, replaces the source-commit lock with a version-only artifact reference, and proves the packaged lifecycle/API path. `W05.P13.S64`-`S65` supply paired runtime evidence. No runtime source is changed in this step.
 
 ## Reproducible capture
 

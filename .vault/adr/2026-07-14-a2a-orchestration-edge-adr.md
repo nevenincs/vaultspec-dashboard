@@ -3,10 +3,10 @@ tags:
   - '#adr'
   - '#a2a-orchestration-edge'
 date: '2026-07-14'
-modified: '2026-09-03'
-body_hash: 'sha256:3ce3fbf312c1f4aa577bd23237abdfc07f03e16b6d34071d2f69b3f51e20a09a'
+modified: '2026-09-05'
+body_hash: 'sha256:1dfa2b7a2b65dd5cc15fbd0add7a83fbc7ecd71e783b1d1a062c761a1b10dc3d'
 related:
-  - "[[2026-07-14-a2a-orchestration-edge-research]]"
+  - '[[2026-07-14-a2a-orchestration-edge-research]]'
   - '[[2026-06-29-agentic-authoring-boundary-adr]]'
   - '[[2026-06-29-agentic-langgraph-integration-adr]]'
   - '[[2026-06-29-agentic-authoring-state-store-adr]]'
@@ -18,6 +18,7 @@ related:
   - '[[2026-06-26-rag-service-management-adr]]'
   - '[[2026-06-14-dashboard-rag-manager-adr]]'
   - '[[2026-06-12-vaultspec-engine-adr]]'
+  - '[[2026-09-05-a2a-integration-verification-embedded-runtime-coordinated-contract-reference]]'
 ---
 
 # `a2a-orchestration-edge` adr: `the stable cross-repo surface between the dashboard engine and the revived A2A orchestrator` | (**status:** `accepted`)
@@ -269,7 +270,110 @@ namespace — it is orchestration control only.
 > a2a vault); the reversal re-tightens `validate.rs` and moves the three
 > selection keys into the pinned admitted list together.
 
-**D2 — Actors and tokens are provisioned by the engine at run start.** The
+> **Amendment (2026-09-05, embedded control completion — reviewed
+> cross-repository contract event):** D1 grows from seven to exactly ELEVEN
+> verbs. The four additions are `run-message`, `permission-respond`,
+> `native-commands-list`, and `native-command-execute`. They are fixed
+> orchestration controls, never an arbitrary route, shell, provider RPC, or
+> untyped prompt escape. This event is the authority for S43-S45; the
+> coordinated embedded-runtime reference is its implementation table.
+>
+> Every browser request is authenticated by the Dashboard machine bearer and
+> contains `expected_scope` (1..4096 characters), which the engine compares to
+> its current `ScopeCell` before inserting that same canonical workspace root.
+> The scope value is never forwarded as authority. The engine accepts no attach
+> token, lifecycle capability, actor token, endpoint, filesystem path, or
+> provider credential from the browser. It resolves the receipt-joined product
+> gateway and supplies the server-held attach bearer. `run_id` uses
+> `[A-Za-z0-9_][A-Za-z0-9_-]{0,127}`. `request_id`, `command_id`, and
+> `idempotency_key` are 1..128 characters from `[A-Za-z0-9_.:-]`; command ids
+> are percent-encoded as one path segment. Request bodies reject unknown fields.
+>
+> `run-message` maps to `POST /v1/runs/{run_id}/messages`, uses the 60-second
+> control budget, and forwards body `{"content": string, "agent_id"?: string}`
+> plus `Idempotency-Key`. `content` is nonblank after trimming, at most 65,536
+> Unicode scalar values and 262,144 UTF-8 bytes. Optional `agent_id` uses the
+> run-id grammar and must name the authoritative `run-status` roster; omission
+> selects the supervisor. The browser body is exactly `{expected_scope, run_id,
+> content, agent_id?, idempotency_key}`. Success is HTTP 202 with
+> `{api_version:"v1",run_id,accepted:true,applied:boolean,action_status,
+> action_id,idempotency_key}`; `action_id` and `idempotency_key` are non-null on
+> acceptance. The action status is one of `accepted_not_applied`, `applied`, or
+> `duplicate`. That tuple is the durable receipt; acceptance never claims turn
+> completion.
+>
+> `permission-respond` maps to
+> `POST /v1/runs/{run_id}/permissions/{request_id}/respond`, uses 60 seconds,
+> and forwards `{"option_id": string, "notes"?: string}` plus
+> `Idempotency-Key`. `option_id` is 1..64 characters; `notes` is at most 2,048
+> characters and 8,192 UTF-8 bytes. The browser body is exactly
+> `{expected_scope,run_id,request_id,option_id,notes?,idempotency_key}`. Before
+> dispatch, Dashboard re-reads `run-status` and requires the request under that
+> run and the exact advertised option; A2A repeats that check atomically.
+> Success is HTTP 200 with `{api_version:"v1",run_id,request_id,accepted,
+> applied,action_status,approval_status?,action_id,idempotency_key}`. Accepted
+> statuses are `accepted_not_applied`, `applied`, or `duplicate`; a rejected
+> journal receipt uses `rejected_invalid_state`. The receipt retains run,
+> request, option-bound idempotency, action, and application state.
+>
+> `native-commands-list` maps to
+> `GET /v1/runs/{run_id}/native-commands`, uses the 45-second discovery budget,
+> and accepts only `{expected_scope,run_id}`. Success is HTTP 200 with
+> `{api_version:"v1",run_id,session_revision,busy,commands}`. `session_revision`
+> is a 1..128 character opaque token. `commands` has at most 32 items, each
+> exactly `{command_id,title,description?,disposition,argument}`: command id
+> obeys the command-id grammar, title is 1..128 characters, description is at
+> most 512, disposition is `supported`, `blocked`, or `unsupported`, and
+> argument is `{kind:"none"}` or `{kind:"text",required,max_chars,multiline}`
+> with `max_chars` in 1..4096. The list is session-scoped truth; an empty list is
+> valid, and Dashboard does not infer support from provider name.
+>
+> `native-command-execute` maps to
+> `POST /v1/runs/{run_id}/native-commands/{command_id}/execute`, uses 60 seconds,
+> and forwards `{"session_revision": string, "arguments"?: string}` plus
+> `Idempotency-Key`. The browser body is exactly `{expected_scope,run_id,
+> command_id,session_revision,arguments?,idempotency_key}`. Arguments must match
+> the advertised argument descriptor, are at most 4,096 characters and 16,384
+> UTF-8 bytes, and never become argv or shell text at the engine. Success is
+> HTTP 200 or 202 with `{api_version:"v1",run_id,command_id,session_revision,
+> accepted,applied,action_status,action_id,idempotency_key,effect}`. Status is
+> one of `accepted_not_applied`, `applied`, or `duplicate`; `effect` is exactly
+> `{kind:"ordinary"|"compact",status:"pending"|"completed"|"failed",
+> before_context_tokens?: nonnegative integer,after_context_tokens?:
+> nonnegative integer}`. A compact command is reported completed only after an
+> independently observed context reduction; echoing command text is not an
+> effect.
+>
+> For all three mutations, the idempotency key is mandatory and stable for one
+> user intent. A2A durably binds it to the complete normalized payload before
+> dispatch. Reuse with the same payload replays the same receipt; reuse with a
+> different payload is `idempotency_conflict`. Dashboard performs no blind
+> retry. After an ambiguous connect, protocol, or timeout failure it may make
+> exactly one reconciliation replay with the same identity, key, and payload.
+> A returned receipt is authoritative; a second ambiguous failure returns a
+> typed `outcome_unknown` proxy error and preserves the identity for a later
+> retry. Reads may be reissued as new bounded reads.
+>
+> Every A2A refusal or error is JSON
+> `{api_version:"v1",error:{code,message,retryable},identity:{run_id,
+> request_id?,command_id?,idempotency_key?},receipt?}` with `message` capped at
+> 512 characters. A2A codes are exactly `not_found`, `request_conflict`,
+> `option_conflict`, `idempotency_conflict`, `busy`, `blocked`, `unsupported`,
+> `invalid_arguments`, `invalid_state`, `at_capacity`, `provider_unavailable`,
+> or `internal_failure`. Schema and bound failures are 400/422; missing
+> identities 404; stale session, superseded request, busy, and idempotency
+> conflicts 409; capacity/breaker 503. Dashboard forwards every sibling success
+> or refusal at HTTP 200 under `data.envelope`, adds `data.sibling_status` for
+> non-2xx, and always supplies tiers. Dashboard-originated failures use its
+> normal typed API-error envelope with `error.code`: preflight scope drift is
+> `scope_conflict` at 409; a second ambiguous mutation result is
+> `outcome_unknown` at 502; timeout is `gateway_timeout` at 504; connect/crash
+> is `gateway_unavailable` at 502; malformed protocol is `protocol_error` at
+> 502. Known-down remains HTTP 200 with a degraded `agent` tier. Browser-bound
+> output remains under the existing 8 MiB cap. Any new verb, field meaning,
+> enum member, route, or bound is another reviewed cross-repository contract
+> event.
++**D2 — Actors and tokens are provisioned by the engine at run start.** The
 brokered `run-start` verb is the provisioning moment: the engine registers (or
 re-resolves) one agent actor per pipeline role in the run (researcher,
 analyst, planner, executor, reviewer — plus the supervisor as a distinct

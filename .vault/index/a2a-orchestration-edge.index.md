@@ -4,9 +4,9 @@ tags:
   - '#index'
   - '#a2a-orchestration-edge'
 date: '2026-08-02'
-modified: '2026-09-03'
-body_schema: 'body-v1'
-body_hash: 'sha256:e75b25997d33b18d4f8c03445efac14639220b779f74d3e834dcef496d50bebf'
+modified: '2026-09-05'
+body_schema: 'body-v2'
+body_hash: 'sha256:bdc78f6f3e7fd5ec49a38f4248f09d1aefed123a3a60341f9fc8ed9c7742dc90'
 related:
   - '[[2026-07-14-a2a-orchestration-edge-adr]]'
   - '[[2026-07-14-a2a-orchestration-edge-reference]]'
@@ -14,6 +14,7 @@ related:
   - '[[2026-07-17-a2a-orchestration-edge-P06-summary]]'
   - '[[2026-07-17-a2a-orchestration-edge-P07-summary]]'
   - '[[2026-07-17-a2a-orchestration-edge-audit]]'
+  - '[[2026-07-17-a2a-orchestration-edge-ledger]]'
   - '[[2026-07-17-a2a-orchestration-edge-plan]]'
   - '[[2026-07-19-a2a-orchestration-edge-active-run-recovery-audit]]'
   - '[[2026-07-19-a2a-orchestration-edge-adversarial-performance-security-audit]]'
@@ -41,29 +42,8 @@ Auto-generated index of all documents tagged with `#a2a-orchestration-edge`.
 
 ### exec
 
-- `2026-07-17-a2a-orchestration-edge-P01-S01` - Emit a run.completed lifecycle event and transition RunStatus to Completed at the run-settle seam
-- `2026-07-17-a2a-orchestration-edge-P01-S02` - Consume run.completed in the frontend lifecycle adapter with terminal-aware invalidation and render the Done turn status from the wire, with live-wire tests
-- `2026-07-17-a2a-orchestration-edge-P02-S03` - Build the ops a2a verb namespace on the rag ops template forwarding the five whitelisted verbs to the a2a v1 gateway with bounded arg validation, verbatim sibling envelope inside the tiers envelope, degraded-tier 200 on sibling-down, 502 on crash or timeout, and attach-never-own discovery
-- `2026-07-17-a2a-orchestration-edge-P02-S04` - Provision per-role actors and engine-minted tokens at run-start and inject the ActorTokenBundle into the forwarded payload, never logging token values
-- `2026-07-17-a2a-orchestration-edge-P02-S05` - Write guard tests mirroring the rag ops suite plus a live loopback test against a real a2a gateway covering whitelist miss, degraded sibling, crash, and verbatim envelope pass-through
-- `2026-07-17-a2a-orchestration-edge-P03-S06` - Add a versioned run stream verb under the v1 a2a gateway re-serving the bounded SSE progress frames on the public surface, with live tests, in the vaultspec-a2a repository
-- `2026-07-17-a2a-orchestration-edge-P03-S07` - Relay the a2a run stream as a new engine SSE channel feeding bounded versioned frames into the shared ring with seq and gap semantics and honest degradation to run-status polling
-- `2026-07-17-a2a-orchestration-edge-P03-S08` - Prove the relay live end to end including replay from since, gap emission on eviction and lag, and the oversized-frame drop sentinel passing through unaltered
-- `2026-07-17-a2a-orchestration-edge-P04-S09` - [SCHEMA NOTE from agent-wire-gaps lead: the feedback_batches table itself lands via agent-wire-gaps P01.S01 as part of ONE additive schema-version bump (queue state + provenance cols + batch table) — build the snapshot backend ON that table and do NOT author a second migration for it. Any shape change ships as a FRESH version bump.] Build the immutable feedback-batch snapshot backend per feedback-loop D3 with stable identifier, digest, ordered comment bodies, anchors, author identity, source revision, session identity, and creation time, plus its creation route
-- `2026-07-17-a2a-orchestration-edge-P04-S10` - Add the typed feedback_batch_id field to StartPromptTurnRequest and verify ownership, revision fences, limits, and idempotency when a turn consumes a batch
-- `2026-07-17-a2a-orchestration-edge-P04-S11` - Thread feedback_batch_id through a2a run-start and turn dispatch as an opaque identifier whose authoritative context is retrieved via the engine authoring client, in the vaultspec-a2a repository
-- `2026-07-17-a2a-orchestration-edge-P04-S12` - Switch the composer comment batch from serialized prompt prose to the structured feedback_batch_id continuation and delete the prose interim outright
-- `2026-07-17-a2a-orchestration-edge-P04-S14` - Ingest the retrieved feedback batch in the a2a worker flow: a feedback-aware step that reads the batch via the authoring client when feedback_batch_id is present in graph state and grounds the document revision on it, compiled into the worker graph, with live tests, in the vaultspec-a2a repository
-- `2026-07-17-a2a-orchestration-edge-P06-S15` - Add the engine-scoped active-run discovery verb with fixed two-result upstream bound, optional bounded feature filter, and real-loopback contract coverage
-- `2026-07-17-a2a-orchestration-edge-P06-S16` - Recover the team-run viewing binding only from one complete active workspace result, clear cross-scope bindings, and keep run-status plus relay authoritative
+- `2026-07-17-a2a-orchestration-edge-ledger` - `a2a-orchestration-edge` ledger
 - `2026-07-17-a2a-orchestration-edge-P06-summary` - `a2a-orchestration-edge` `P06` summary
-- `2026-07-17-a2a-orchestration-edge-P07-S17` - Secure the sibling gateway with loopback-default binding and constant-time service-token authentication on every /v1 route, with real HTTP negative and positive coverage
-- `2026-07-17-a2a-orchestration-edge-P07-S18` - Replace active-run metadata scans with persisted bounded indexed selectors and prove an index-backed, stable large-history query plan
-- `2026-07-17-a2a-orchestration-edge-P07-S19` - Enforce pre-allocation HTTP and SSE byte ceilings, byte-budget replay storage, and restartable relay lifecycle with adversarial socket and churn coverage
-- `2026-07-17-a2a-orchestration-edge-P07-S20` - Move A2A discovery and health off async workers and make actor-token issuance idempotent, failure-revoked, and retention-bounded
-- `2026-07-17-a2a-orchestration-edge-P07-S21` - Make frontend relay resume cursor-aware and byte-bounded, latch authoritative reconciliation, and derive terminal controls only from confirmed run status
-- `2026-07-17-a2a-orchestration-edge-P07-S22` - Reconcile six-member edge vocabulary and record the implemented hardening in the current reference and audit trail
-- `2026-07-17-a2a-orchestration-edge-P07-S23` - Run a cross-repository adversarial code review and close the rolling audit
 - `2026-07-17-a2a-orchestration-edge-P07-summary` - `a2a-orchestration-edge` `P07` summary
 
 ### plan
