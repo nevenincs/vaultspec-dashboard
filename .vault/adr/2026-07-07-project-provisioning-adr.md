@@ -3,8 +3,8 @@ tags:
   - '#adr'
   - '#project-provisioning'
 date: '2026-07-07'
-modified: '2026-07-12'
-body_hash: 'sha256:f851a72b644aff54f14a96c8c855b4546e52413c38ed29e71c562b24c7606e33'
+modified: '2026-09-05'
+body_hash: 'sha256:4c7080107a22e8983ce863fbc1a854983865b629d457410026e0bfe0d3ee6b9a'
 related:
   - "[[2026-07-07-project-provisioning-research]]"
   - "[[2026-07-04-dashboard-packaging-adr]]"
@@ -80,3 +80,62 @@ The research established that the unmanaged state is already detected honestly a
   **Rule:** Framework provisioning and tool acquisition forward to the sibling that OWNS the mutation — `uv` for machine-level tool install, `vaultspec-core` for project install / upgrade / migrate, `vaultspec-rag` for enrollment — through a typed, non-wire-addressable capability set (no `Deserialize`/`FromStr` from the wire, no free-form args), job-shaped with an output cap AND a bounded wall-clock and a bounded/TTL'd job registry, operator-invoked and never speculative, with targets resolved ONLY through the workspace registry / `/map` enumeration. The engine writes no `.vault/` or `.vaultspec/` content and mutates no git itself; it brokers the owning installer, exactly as the ops write broker forwards editor saves. *(Candidate; promote only after the fence has held across one full execution cycle, paired with `engine-read-and-infer` and `workspace-registry-is-config-not-content`.)*
 - **Rule slug:** `uv-tool-acquisition-is-machine-level-only`.
   **Rule:** Dashboard-driven tool acquisition installs/upgrades only machine-level `uv tool` entries (`vaultspec-core`, `vaultspec-rag`), gated on a uv presence probe; it NEVER installs uv itself and NEVER runs project-venv `uv add` dependency flows, so no acquisition can add a runtime dependency (e.g. torch) to a host project's `pyproject.toml` — preserving `published-wheel-purity`. A missing uv is an honest, instructed dead-end until bundled-uv lands. *(Candidate; pairs with the packaging ADR's detect-and-instruct posture.)*
+
+## Amendment - Dashboard owns current-provider setup aggregation (2026-09-06, owner auto-approved decision)
+
+**D8 - `setup` is one Dashboard-owned semantic operation.** The HTTP action
+`setup` has no provider operand, and the CLI command is exactly
+`vaultspec provision setup` with no provider argument. A request that combines
+`setup` with a provider value is refused as an invalid shape. Dashboard alone
+expands the operation, in the fixed deterministic order `core`, `claude`,
+`antigravity`, `codex`. That list is the complete current project-setup set
+for this Dashboard release; changing membership or order is a reviewed contract
+change.
+
+The expansion invokes four fixed provider-specific
+`vaultspec-core install <provider>` operations. It never forwards, translates
+to, or revives `vaultspec-core install all`, because Core's aggregate
+membership is outside Dashboard's release contract. It never invokes or reports
+Gemini. The retired Gemini provider has no setup alias, compatibility branch,
+fallback, dormant receipt, or future activation obligation.
+
+**D9 - the expansion is one bounded single-flight aggregate with preserved
+child identity.** One target may have at most one setup aggregate in flight,
+covering both recommended and force setup. An identical duplicate attaches to
+the existing aggregate. A request with a different force posture receives a
+typed conflict naming the active aggregate; it does not start a second writer
+and does not attach as if the operations were equivalent. Force setup retains
+the existing typed confirmation gate and applies `--force` to each of the four
+provider-specific operations.
+
+The aggregate owns one wall-clock deadline and one output budget across the
+ordered sequence, in addition to bounded child-process execution and the
+bounded, TTL-pruned job registry. It retains a receipt for each provider with
+the provider identity, ordinal operation identity, attempted/not-attempted
+state, owning Core receipt or bounded failure, and reconciliation result.
+Definitive failure of one provider does not erase receipts for the others.
+
+The aggregate terminal vocabulary is closed to:
+
+- `complete`: all four authoritative provider receipts prove success.
+- `partial`: at least one provider has a definitive failure and no provider
+  remains ambiguous; successful and failed receipts stay individually visible.
+- `timeout_cancelled`: the aggregate deadline expired, the active child was
+  cancelled and reaped with a definitive cancellation result, and every
+  unattempted provider is identified as such.
+- `indeterminate`: termination, output, read/wait, or post-operation evidence
+  cannot prove whether one or more provider mutations completed.
+
+A timeout or ambiguous child result is never blindly replayed. The broker
+reconciles each affected provider from its authoritative Core receipt and the
+fresh served project/provisioning status. It reports the reconciled aggregate
+when those facts decide the result and otherwise remains `indeterminate` with
+the unresolved provider identities. A later operator retry begins only after
+that reconciliation and normal single-flight settlement.
+
+**D10 - every project-wide setup affordance uses D8/D9.** The backend-served
+recommended setup action and the explicit force setup action both dispatch the
+provider-less `setup` operation. Neither substitutes a core-only install,
+constructs four unrelated frontend requests, accepts `all`, or selects a
+provider client-side. Stores remain the sole wire client and render the served
+aggregate and per-provider receipts without inventing completion semantics.

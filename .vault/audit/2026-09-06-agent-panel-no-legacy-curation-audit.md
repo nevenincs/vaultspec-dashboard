@@ -5,12 +5,13 @@ tags:
 date: '2026-09-06'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:b4476330629a876c86f5df147fdd748477836dbd057fc6ca4d3802b45dfa48ea'
+body_hash: 'sha256:4a89192dc77896124b73472ad0123c3e61825f694c110dc09445e4673b604b29'
 related:
   - "[[2026-08-01-a2a-agent-flow-adr]]"
   - "[[2026-08-01-agent-panel-shell-integration-adr]]"
   - "[[2026-07-14-a2a-orchestration-edge-adr]]"
   - "[[2026-08-01-agent-panel-plan]]"
+  - '[[2026-07-07-project-provisioning-adr]]'
 ---
 # `agent-panel` audit: `provider and model authority reconciliation`
 
@@ -265,3 +266,55 @@ runtime commit, so `6ccaba44` is not review-passed and must not be accepted as
 the completed no-legacy Dashboard implementation. The medium evidence
 overclaim must also be corrected in the rolling record. No runtime source was
 changed by this review.
+
+## 2026-09-06 current-provider setup aggregate curation
+
+### accepted-project-provisioning-aggregate-gap | high | resolved by dated ADR amendment
+
+Type: accepted-decision and product-capability conflict. The accepted
+project-provisioning ADR governed only individual provider installer forwarding,
+while the product's recommended and force setup affordances require one
+project-wide operation. After Gemini retirement, forwarding Core's `install all`
+would revive a retired provider, while substituting `core` would silently
+remove current Claude, Antigravity, and Codex projections. The dated D8-D10
+amendment now gives the Dashboard a provider-less semantic `setup` action and
+CLI command, fixed internal expansion in the order `core`, `claude`,
+`antigravity`, `codex`, and an explicit prohibition on `install all` and
+Gemini.
+
+### current-provider-aggregate-result-contract | high | resolved in accepted decision; runtime re-review pending
+
+Type: operation-state and retry contract. One target now has one bounded setup
+aggregate across recommended and force setup, with identical duplicates
+attaching and a conflicting force posture receiving typed conflict rather than
+starting a second writer. The aggregate preserves per-provider and ordinal
+operation receipts and exposes only `complete`, `partial`,
+`timeout_cancelled`, or `indeterminate`. Ambiguous results reconcile from
+authoritative Core receipts and fresh served provider/provisioning status;
+blind replay is forbidden. The existing runtime finding
+`current-provider-aggregate-regression` remains open until implementation and
+formal review prove this exact contract.
+
+### provisioning-lifecycle-document-reconciliation | low | no further active conflict
+
+Type: lifecycle boundary review. The completed project-provisioning plan records
+the original individual-provider implementation and is preserved as historical
+execution scope; no checked row is rewritten. The current A2A product
+provisioning reference describes bundled-runtime and component ownership rather
+than project setup aggregation and creates no provider command authority.
+Active agent-panel rows govern A2A provider/model selection, not Core projection
+setup, and already exclude retired Gemini. No plan, reference, shell, flow, or
+agent-panel amendment is required, and no row closes in this curation pass.
+
+### current-provider-aggregate-curation-disposition | low | decision reconciled; formal review pending
+
+Type: architecture curation disposition. The accepted project-provisioning
+decision now owns the missing aggregate semantics without changing registration,
+target resolution, typed force confirmation, bounded execution, stores-only
+wire access, or the no-speculative-action boundary. Historical captures and the
+previous failed runtime review remain intact. Concurrent runtime work is outside
+this documentation commit. Formal review must verify the amendment and keep the
+HIGH runtime finding open until the implementation demonstrates the fixed
+provider order, shared single-flight identity, exact terminal vocabulary,
+per-provider receipts, authoritative reconciliation, and absence of
+`install all` and Gemini.
