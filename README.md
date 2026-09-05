@@ -202,52 +202,24 @@ and Git history remain available.
 
 ## Capabilities
 
-See [Visual tour](#visual-tour) for the corresponding workspace, document, search, and
-status views.
-
-| User goal                         | Mounted view                                                                               | Boundary                                                                                                                                       |
-| --------------------------------- | ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| Browse project content            | Project and worktree selector; **Vault** and **Files** browser                             | Shows registered projects and worktrees, the vault tree, and the code tree.                                                                    |
-| Explore relationships and history | Desktop graph with timeline, filters, and minimap                                          | Switches between vault and code corpora. It doesn't mix them. The graph isn't available in compact or mobile layouts.                          |
-| Inspect a document or source file | Docked Markdown viewer or read-only code viewer                                            | Code inspection includes syntax highlighting, line numbers, and copy. Code editing isn't supported.                                            |
-| Edit vault content                | Markdown authoring view with **View/Edit**, toolbar, properties, rename, and save controls | Supports approved vault Markdown writes when authoring is available. Core materializes approved changes.                                       |
-| Search documents and code         | Search dialog with **All**, **Docs**, and **Code** scopes                                  | Combines semantic and literal search, returns a bounded result set, and opens selections in the viewer.                                        |
-| Monitor and review work           | Activity and status rail                                                                   | Covers changes, open plans, pull requests, issues, commits, search service status, approvals, and reviews. Sections can degrade independently. |
+- Browse registered projects and worktrees, then open a project's `.vault/` feature records or code.
+- Explore separate vault and code graph views in desktop layouts. Compact and mobile layouts omit the graph.
+- Read source files in read-only views. Edit vault Markdown through Core.
+- Search documents and code, with optional semantic search through RAG.
+- Track plans, commits, issues, and pull requests.
 
 ### When a capability is unavailable
 
-The dashboard keeps unaffected features available when a data source or browser capability
-fails. Each affected view reports its own limitation.
-
-| Unavailable capability   | What the interface says                                                                                                                                                                   | What remains usable                                                                                                 |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| vaultspec-core           | The server warns and continues. The graph may say `Links unavailable — the rest of the graph is live`.                                                                                    | Structural graph nodes, independent data, and supported reads remain. Declared links and authoring are unavailable. |
-| Semantic search          | Search may say `Full search is unavailable — showing name matches only.` **Search service** says `Search service not running`.                                                            | Document-metadata and code-name matches, graph, browsing, timeline, reading, and GitHub data remain.                |
-| GitHub data              | Pull-request and issue sections report that the `gh` command-line interface (CLI) isn't available or that GitHub is unavailable.                                                          | Local Git history, vault content, graph, plans, and search remain.                                                  |
-| Browser graphics         | The canvas says `Graphics unavailable`. After context loss, it says `Restoring graphics…`.                                                                                                | Non-canvas views remain while the canvas recovers or graphics stay unavailable.                                     |
-| Some graph relationships | The graph reports `Links unavailable — the rest of the graph is live`, `Mentions unavailable — the rest of the graph is live`, or `Timeline unavailable — the rest of the graph is live`. | The available graph stays visible without the missing relationship type.                                            |
-| The entire graph         | The view says `Graph is not available`.                                                                                                                                                   | Non-graph views and any other available capabilities remain.                                                        |
-
-### Glossary
-
-| Term                               | Meaning                                                                                                                                                                                 |
-| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Vaultspec                          | A four-project family: vaultspec-core, vaultspec-rag, vaultspec-dashboard, and vaultspec-a2a.                                                                                           |
-| vault or `.vault/`                 | A project directory containing structured Markdown research, decisions, plans, execution records, and audits.                                                                           |
-| vault document                     | One structured Markdown artifact stored in a vault.                                                                                                                                     |
-| Vaultspec pipeline                 | An approval-gated flow through Research, Decide, Plan, Execute, and Verify. See the [Vaultspec framework](https://github.com/nevenincs/vaultspec-core/blob/main/docs/framework.md).     |
-| Architecture Decision Record (ADR) | A record of a binding project decision and its reasoning.                                                                                                                               |
-| semantic search                    | Search that ranks indexed text by meaning, not only by exact words. See the [search and indexing guide](https://github.com/nevenincs/vaultspec-rag/blob/main/docs/search-and-index.md). |
-| vaultspec-core                     | The governed workflow, command-line interface, validators, and vault-document tooling.                                                                                                  |
-| vaultspec-rag                      | The optional retrieval service that indexes vault documents and code.                                                                                                                   |
-| workspace                          | A registered Git project root.                                                                                                                                                          |
-| worktree                           | One checked-out working copy used for the current operation.                                                                                                                            |
+Views report unavailable data sources. If Core is missing, [prepare a project](#prepare-a-project).
+For missing RAG, follow [optional semantic search](#optional-semantic-search).
 
 ## Vaultspec family
 
 - [vaultspec-core](https://github.com/nevenincs/vaultspec-core): Decision-driven harness for coding agents, and humans.
 - [vaultspec-rag](https://github.com/nevenincs/vaultspec-rag): The semantic search component for vault and code.
 - [vaultspec-a2a](https://github.com/nevenincs/vaultspec-a2a): Headless agent-to-agent orchestration for Vaultspec.
+
+<p id="glossary"></p>
 
 ## Documentation
 
