@@ -65,7 +65,7 @@ disagree about what is installed or missing.
   `--no-seat` dev/test serves, the workspace-local `service.json`
   (unchanged from previous releases).
 
-To remove Dashboard, follow the [uninstall instructions](../README.md#removing-it-and-what-stays).
+To remove Dashboard, follow the [uninstall instructions](../README.md#uninstall).
 
 ## Windows notes
 

@@ -97,7 +97,7 @@ Release binaries are unsigned. Your operating system may warn before running the
 
 Agent-to-agent orchestration isn't available in v0.1.12.
 
-#### Updating
+### Updating
 
 In v0.1.12, `vaultspec update` doesn't download a newer release. The installers
 also refuse to overwrite an existing installation. These commands don't provide
@@ -105,7 +105,9 @@ an in-place upgrade. Consult the target version's
 [release notes](https://github.com/nevenincs/vaultspec-dashboard/releases)
 for upgrade instructions.
 
-#### Removing it, and what stays
+<p id="removing-it-and-what-stays"></p>
+
+### Uninstall
 
 The installation commands don't save the scripts. Download
 [install.sh](https://github.com/nevenincs/vaultspec-dashboard/releases/latest/download/install.sh)
