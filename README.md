@@ -95,164 +95,90 @@ against this worktree. Its lifecycle fields may be newer than the latest release
 
 ### Prerequisites and installation
 
-vaultspec-dashboard supports four platforms:
+Supported platforms:
 
 - macOS on Apple silicon
 - Linux on arm64, glibc 2.28 or newer
 - Linux on x64, glibc 2.28 or newer
 - Windows on x64
 
-Intel macOS isn't supported.
+Intel Macs aren't supported. Use Bash on macOS and Linux, or PowerShell 5.1 or
+newer on Windows.
 
-Both Linux binaries are built inside a digest-pinned `manylinux_2_28` image, so that
-floor is enforced by the build environment rather than inherited from whichever machine
-happened to run the build. It covers the current enterprise LTS releases — RHEL 8 and 9
-and their rebuilds, Debian 12 and 13, Ubuntu 22.04 and newer, Amazon Linux 2023 — and a
-repository guard fails the build if this sentence and the pinned image ever disagree.
+The installers download the [latest release](https://github.com/nevenincs/vaultspec-dashboard/releases/latest),
+check the archive's SHA-256 checksum, and run `vaultspec verify-release` on the
+installed files.
 
-The routes below target the latest published GitHub Release. Development on `main` may
-contain lifecycle changes that haven't been released yet.
+On macOS or Linux:
 
-Every channel installs the same complete tree described under
-[Installed runtime](#installed-runtime), and verifies it before the install counts as
-done.
-
-| Channel                           | Platforms    | Who installs and updates it                    | Status           |
-| --------------------------------- | ------------ | ---------------------------------------------- | ---------------- |
-| Shell script                      | macOS, Linux | This project's installer and updater           | Awaiting release |
-| PowerShell script                 | Windows      | This project's installer and updater           | Awaiting release |
-| MSI                               | Windows      | Windows Installer, with this project's updater | Not built        |
-| Scoop                             | Windows      | Scoop                                          | Pending proof    |
-| WinGet                            | Windows      | WinGet                                         | Pending proof    |
-| `cargo install`, `cargo binstall` | —            | —                                              | Not supported    |
-
-*Awaiting release* means the artifact is produced and attached by the release
-pipeline, but no release has yet completed to carry it. *Not built* means the
-release does not currently carry that artifact at all.
-`dist-workspace.toml` sets `installers = []`, disabling dist's generated shell
-and PowerShell installers in favour of the product-owned `packaging/install.sh`
-and `packaging/install.ps1`, which install the complete tree rather than a bare
-binary. Those two are now published as release assets by the same job that
-attaches the product archives, so an installer can never appear on a release
-whose archives are missing — but that job has not yet completed successfully for
-any release, so no published release carries either script today. No MSI has
-ever been built.
-
-A channel marked *pending proof* must still prove install, upgrade, downgrade, repair,
-and uninstall on a clean machine before it counts as supported. Until it does, prefer a
-supported channel.
-
-**Shell script and PowerShell script** are *awaiting their first release*. Once a
-release carries them, these are the commands — with no argument, each installs
-the newest published release:
-
-```console
+```bash
 curl -fsSL https://github.com/nevenincs/vaultspec-dashboard/releases/latest/download/install.sh | bash
 ```
 
-```console
+On Windows:
+
+```powershell
 & ([scriptblock]::Create((irm https://github.com/nevenincs/vaultspec-dashboard/releases/latest/download/install.ps1)))
 ```
 
-`bash`, not `sh`: the script uses `set -o pipefail`, which dash — `/bin/sh` on
-Debian and Ubuntu — does not accept. Pass `--version <ver>` (`-Version` in
-PowerShell) to pin a release instead of taking the newest. Both verify the
-downloaded archive against its published `.sha256` before placing anything, and
-run `vaultspec verify-release` over the installed tree afterwards; a tree that
-fails either check is a failed install.
+The scripts don't change `PATH`. To run `vaultspec` by name in the current
+terminal, add its binary directory.
 
-Until that first release lands, download the platform archive from
-[Releases](https://github.com/nevenincs/vaultspec-dashboard/releases) and run
-the binary directly.
+On macOS or Linux:
 
-**Scoop** (Windows):
-
-```console
-scoop bucket add nevenincs https://github.com/nevenincs/homebrew-tap
-scoop install nevenincs/vaultspec-dashboard
+```bash
+export PATH="$HOME/.local/share/vaultspec/bin:$PATH"
 ```
 
-The bucket is the ORGANISATION tap `nevenincs/homebrew-tap`, which serves
-`bucket/` for Scoop and `Formula/` for Homebrew across every nevenincs product -
-a package manager resolves one bucket per organisation, not one per repository.
-The `bucket/` directory that used to live in this repository is no longer the
-published source. This channel stays *pending proof* until a release actually
-publishes a manifest there; `vaultspec-core` and `vaultspec-rag` are present
-today and this product is not.
+On Windows:
 
-**WinGet** (Windows): `winget install vaultspec.vaultspec` installs the same MSI.
-
-**Homebrew** (macOS on Apple Silicon; Linux on x86-64 and arm64):
-
-```console
-brew tap nevenincs/tap
-brew install nevenincs/tap/vaultspec
+```powershell
+Set-Item Env:Path "$env:LOCALAPPDATA\Programs\vaultspec\bin;$env:Path"
 ```
 
-`brew tap nevenincs/tap` resolves to the same organisation tap by convention, so
-unlike Scoop it needs no explicit URL. The product ships as a **formula**, not a
-cask: cask-on-Linux is restricted to portable artifact types, and brew's
-`quarantine` opt-out has been removed, so a cask would hand macOS users a
-quarantined un-notarized binary. The formula places the whole release tree under
-the Cellar's `libexec` and puts only the `vaultspec` command on PATH, so the
-updater, licences, `release.json` and the SBOM stay beside the binary where
-`vaultspec verify-release` can find them. Intel Mac is not served - there is no
-`x86_64-apple-darwin` build. Like Scoop, this channel stays *pending proof*
-until a release actually publishes a formula to the tap.
-
-#### Updating
-
-How you update depends on how you installed.
-
-- **Shell or PowerShell:** run `vaultspec update`. The dashboard stops, hands the
-  replacement to `vaultspec-updater`, and starts again. No file is swapped underneath the
-  running application, and the previous release stays on disk to return to.
-- **MSI:** run `vaultspec update`. The updater applies the new package through Windows
-  Installer rather than editing installed files. To return to an earlier release, install
-  its package.
-- **Scoop or WinGet:** update through the manager — `scoop update vaultspec` or
-  `winget upgrade vaultspec.vaultspec`.
-- **Homebrew:** `brew upgrade vaultspec`, and `brew uninstall vaultspec` to
-  remove it.
-
-On any manager-installed copy, `vaultspec update` refuses and names that
-manager's own command. It recognises the copy from the layout the manager put it
-in — Scoop's `apps` directory beside its `shims`, Homebrew's `Cellar`, WinGet's
-packages directory — because no manager records which one installed a copy, so
-the layout is the only evidence there is. A copy the product installed itself is
-recognised by none of those rules and updates normally.
-
-#### Removing it, and what stays
-
-Uninstalling removes the installed tree and the records the product keeps about its own
-releases. It leaves your work alone.
-
-- Shell: `install.sh --uninstall`
-- PowerShell: `install.ps1 -Uninstall`
-- MSI: uninstall **vaultspec** from **Apps & features**
-- Scoop: `scoop uninstall vaultspec`
-- WinGet: `winget uninstall vaultspec.vaultspec`
-
-Your data survives because it never lives in the install directory. Vault documents stay
-in your project's Git repository, and per-user application state stays in `.vaultspec` in
-your home directory.
-
-> **Not supported: `cargo install` and `cargo binstall`.** Either would place only the
-> `vaultspec` binary, without the updater, the release manifest, or the
-> verification, update, and removal guarantees that depend on them. `vaultspec-cli` stays
-> off crates.io until a Cargo channel can carry the complete product. Use a channel from
-> the table instead.
->
-> **Note on code signing:** the installers, MSI, and binary archives are currently
-> unsigned. macOS Gatekeeper will quarantine the binary on first run - right-click the
-> binary, choose **Open**, and confirm the override prompt. Windows SmartScreen may show
-> an "Unknown publisher" warning - click **More info** then **Run anyway** to proceed.
-
-Confirm the installation:
+Repeat this step in each new terminal. Confirm the installation:
 
 ```console
 vaultspec --version
 ```
+
+`cargo install` and `cargo binstall` aren't supported: they don't install the
+complete [runtime](#installed-runtime).
+
+Release binaries are unsigned. Your operating system may warn before running them.
+
+#### Updating
+
+In v0.1.12, `vaultspec update` doesn't download a newer release. The installers
+also refuse to overwrite an existing installation. These commands don't provide
+an in-place upgrade. Consult the target version's
+[release notes](https://github.com/nevenincs/vaultspec-dashboard/releases)
+for upgrade instructions.
+
+#### Removing it, and what stays
+
+The installation commands don't save the scripts. Download
+[install.sh](https://github.com/nevenincs/vaultspec-dashboard/releases/latest/download/install.sh)
+or [install.ps1](https://github.com/nevenincs/vaultspec-dashboard/releases/latest/download/install.ps1),
+then run the saved script from its directory.
+
+On macOS or Linux:
+
+```bash
+bash ./install.sh --uninstall
+```
+
+On Windows:
+
+```powershell
+.\install.ps1 -Uninstall
+```
+
+For a custom installation, pass its directory with `--install-dir` or
+`-InstallDir`. If removal is refused, the script leaves the installation in place.
+The script doesn't delete your project files or per-user application data.
+
+### Prepare a project
 
 Use a Git repository. Vault validation and authoring require vaultspec-core 0.1.34
 or later, installed separately:
