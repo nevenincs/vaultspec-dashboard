@@ -5,7 +5,7 @@ tags:
 date: '2026-09-06'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:4a89192dc77896124b73472ad0123c3e61825f694c110dc09445e4673b604b29'
+body_hash: 'sha256:c5a25b5a7537a4f47959495e7c92fef6e337a0b4199d7217e8cbade26cab935f'
 related:
   - "[[2026-08-01-a2a-agent-flow-adr]]"
   - "[[2026-08-01-agent-panel-shell-integration-adr]]"
@@ -318,3 +318,78 @@ HIGH runtime finding open until the implementation demonstrates the fixed
 provider order, shared single-flight identity, exact terminal vocabulary,
 per-provider receipts, authoritative reconciliation, and absence of
 `install all` and Gemini.
+
+## 2026-09-06 formal review of current-provider setup ADR amendment
+
+Review target: `b118ccbc068c253c548dddfb7d2fc650e7c3f9cb`, parent
+`02b4bfe4c4a0a858841b5cf1dfdb0ea0d3d2ac29`. The two-path documentation
+commit was reviewed against the accepted project-provisioning lifecycle, the
+completed historical plan, the no-legacy provider decisions, the coordinated
+A2A boundary, and current Dashboard API, CLI, and store seams. Concurrent
+runtime and graph/design changes were excluded as acceptance evidence and
+preserved.
+
+### providerless-current-setup-shape | low | verified
+
+Type: wire and command contract. D8 fixes one HTTP `setup` action with no
+provider operand and the exact `vaultspec provision setup` CLI shape. Supplying
+a provider, tool, or upgrade operand is an invalid request shape. Dashboard
+expands the intent internally and only in the ordered set `core`, `claude`,
+`antigravity`, `codex`; both membership and order are reviewed contract facts.
+The amendment explicitly forbids forwarding or translating to Core's `install
+all`, and Gemini has no command, alias, receipt, fallback, or dormant setup
+path. This is compatible with the coordinated A2A contract because these four
+values are project-scaffold projections owned by Core, not A2A's independent
+seven-mode runtime catalog.
+
+### aggregate-identity-bounds-and-receipts | low | verified
+
+Type: concurrency and resource contract. D9 defines one target-scoped aggregate
+single-flight identity shared by recommended and force setup. An identical
+request attaches; a differing force posture receives a typed conflict naming
+the active aggregate. Force confirmation remains a pre-spawn gate and applies
+to all four children. One aggregate deadline and output budget cover the whole
+ordered sequence in addition to the child-process and bounded-registry limits.
+Each provider retains its identity, ordinal operation identity,
+attempted/not-attempted state, owning Core receipt or bounded failure, and
+reconciliation result. This is sufficient to prevent four unrelated jobs from
+being presented as one setup action.
+
+### aggregate-terminal-and-retry-contract | low | verified
+
+Type: state-machine and replay safety. The terminal vocabulary is closed to
+`complete`, `partial`, `timeout_cancelled`, and `indeterminate`. Complete
+requires four authoritative successes; partial requires a definitive failure
+with no ambiguous provider; timeout-cancelled requires deadline expiry,
+definitive child cancellation/reaping, and named unattempted providers;
+indeterminate covers any mutation whose completion cannot be proven. Timeout or
+ambiguous evidence receives no blind replay. Core receipts and fresh served
+project/provisioning status reconcile each affected provider; a result remains
+indeterminate with named unresolved providers when those authorities cannot
+decide it. A new operator attempt is permitted only after reconciliation and
+single-flight settlement.
+
+### lifecycle-and-single-home-reconciliation | low | verified
+
+Type: architecture-corpus consistency. D10 routes both project-wide setup
+affordances through the one backend operation and preserves stores as the sole
+wire client. The original project-provisioning plan remains a checked historical
+record of individual-provider delivery and was not rewritten or falsely
+reopened/closed. The A2A product-provisioning decision and coordinated reference
+own the embedded companion release and broker boundary, not Core project
+projection setup, so they require no amendment. The no-legacy flow, edge, and
+agent-panel records retain the A2A catalog as their provider/model authority and
+do not conflict with this separate setup set. No plan row changed state.
+
+### current-provider-setup-adr-review-disposition | low | PASS
+
+Type: formal architecture review disposition. The amendment supplies the exact
+contract required to correct the open aggregate regression without reviving
+Gemini or delegating membership to Core's `all`. It preserves ownership,
+target resolution, typed confirmation, bounded execution, authoritative served
+state, and no-blind-replay rules. Current source inspection confirms the
+contract fits the existing API/CLI/stores seams; any concurrent uncommitted
+implementation remains subject to a separate runtime review. No critical,
+high, or medium architecture defect remains in `b118ccbc`; the existing high
+runtime finding remains open until committed implementation and tests prove
+D8-D10.
