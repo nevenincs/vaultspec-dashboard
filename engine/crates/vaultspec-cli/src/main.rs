@@ -9,7 +9,7 @@
 mod cmd;
 mod envelope;
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use serde_json::Value;
 
 use cmd::Ctx;
@@ -176,9 +176,9 @@ enum ProvisionCommand {
     Status,
     /// Install the framework into the project.
     Install {
-        /// Provider scaffolding to install: all|core|claude|gemini|antigravity|codex.
+        /// Supported provider scaffolding to install.
         #[arg(long)]
-        provider: String,
+        provider: ProvisionProvider,
         /// Overwrite existing provider output (requires --confirm).
         #[arg(long)]
         force: bool,
@@ -188,9 +188,9 @@ enum ProvisionCommand {
     },
     /// Upgrade the framework's provider scaffolding.
     Upgrade {
-        /// Provider scaffolding to upgrade: all|core|claude|gemini|antigravity|codex.
+        /// Supported provider scaffolding to upgrade.
         #[arg(long)]
-        provider: String,
+        provider: ProvisionProvider,
     },
     /// Run the project's pending schema migrations.
     Migrate,
@@ -203,6 +203,28 @@ enum ProvisionCommand {
         #[arg(long)]
         upgrade: bool,
     },
+}
+
+/// Provider scaffolds this Dashboard release can request. Keeping the CLI on
+/// the same closed set as the HTTP provisioning DTO makes a retired provider a
+/// parse-time refusal instead of an opaque request that fails later.
+#[derive(Clone, Copy, ValueEnum)]
+enum ProvisionProvider {
+    Core,
+    Claude,
+    Antigravity,
+    Codex,
+}
+
+impl ProvisionProvider {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Core => "core",
+            Self::Claude => "claude",
+            Self::Antigravity => "antigravity",
+            Self::Codex => "codex",
+        }
+    }
 }
 
 fn render(ctx: &Ctx, command_name: &str, result: Result<Value, cmd::CliError>) -> u8 {
@@ -266,7 +288,7 @@ fn run_provision(action: Option<ProvisionCommand>) -> Result<Value, String> {
             confirm,
         }) => Some(cmd::provision::ProvisionInvocation {
             action: "install",
-            provider: Some(provider),
+            provider: Some(provider.as_str().to_string()),
             tool: None,
             upgrade: false,
             force,
@@ -274,7 +296,7 @@ fn run_provision(action: Option<ProvisionCommand>) -> Result<Value, String> {
         }),
         Some(ProvisionCommand::Upgrade { provider }) => Some(cmd::provision::ProvisionInvocation {
             action: "upgrade",
-            provider: Some(provider),
+            provider: Some(provider.as_str().to_string()),
             tool: None,
             upgrade: false,
             force: false,
@@ -450,4 +472,34 @@ fn main() -> std::process::ExitCode {
         }
     };
     std::process::ExitCode::from(code)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn provision_cli_rejects_retired_provider_paths() {
+        for action in ["install", "upgrade"] {
+            for provider in ["gemini", "all"] {
+                let parsed =
+                    Cli::try_parse_from(["vaultspec", "provision", action, "--provider", provider]);
+                assert!(
+                    parsed.is_err(),
+                    "{action} must reject {provider}; `all` also installs Gemini"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn provision_cli_accepts_only_the_current_provider_set() {
+        for provider in ["core", "claude", "antigravity", "codex"] {
+            assert!(
+                Cli::try_parse_from(["vaultspec", "provision", "install", "--provider", provider,])
+                    .is_ok(),
+                "current provider {provider} must remain accepted"
+            );
+        }
+    }
 }

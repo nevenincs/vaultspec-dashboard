@@ -36,7 +36,7 @@ afterEach(() => {
   document.documentElement.dir = "";
 });
 
-describe.sequential("React localization and document language", () => {
+describe("React localization and document language", () => {
   it("renders source copy on the provider's first render", () => {
     render(
       <LocalizationProvider>

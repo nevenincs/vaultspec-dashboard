@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 
 // Extensionless imports: the test runs under Vite (vitest), which resolves the .ts files;
 // the runtime scripts keep explicit .ts extensions for Node's type stripping.
-import { generateFoundation, generateRegions } from "../../style-dictionary.config";
+import {
+  generateFoundation,
+  generateRegions,
+  STYLES_FILE,
+} from "../../style-dictionary.config";
 import { compareDecls, parseScopedDecls } from "./token-css-diff";
 
 describe("token drift check", () => {
@@ -67,6 +72,43 @@ describe("token drift check", () => {
     expect(a).toContain("--shadow-fg-popover:");
     // Spacing brought under the pipeline, values unchanged.
     expect(a).toContain("--spacing-fg-4: 1rem;");
+  });
+
+  it("ships no retired foundation compatibility properties or source claims", () => {
+    const css = readFileSync(STYLES_FILE, "utf8");
+    for (const property of [
+      "--font-sans:",
+      "--font-mono:",
+      "--font-serif:",
+      "--text-display:",
+      "--text-body:",
+      "--text-body-strong:",
+      "--text-label:",
+      "--text-meta:",
+      "--text-caption:",
+      "--text-mono:",
+      "--text-title:",
+      "--radius-vs-",
+      "--spacing-vs-",
+      "--shadow-flat:",
+      "--shadow-card:",
+      "--shadow-panel:",
+      "--shadow-float:",
+      "--shadow-dialog:",
+      "--shadow-deep:",
+    ]) {
+      expect(css, property).not.toContain(property);
+    }
+    expect(css).toContain("@utility text-title");
+    expect(css).toContain("font-size: var(--text-fg-title);");
+
+    for (const source of ["type", "radius", "elevation", "spacing"]) {
+      const content = readFileSync(
+        new URL(`../../tokens/${source}.tokens.json`, import.meta.url),
+        "utf8",
+      );
+      expect(content, source).not.toMatch(/\b(?:legacy|deprecated)\b/i);
+    }
   });
 
   it("coalesces wrapped multi-line declarations (font/shadow stacks)", () => {

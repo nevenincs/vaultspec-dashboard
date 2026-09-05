@@ -5,14 +5,20 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
-import { DEV_ALLOWED_HOSTS, DEV_PORTS } from "./dev/dev-ports";
-import { engineDevPlugin } from "./vite-plugins/engine-dev";
+import { DEV_ALLOWED_HOSTS, DEV_PORTS } from "./dev/dev-ports.ts";
+import { engineDevPlugin } from "./vite-plugins/engine-dev.ts";
 
 // The dev orchestrator (engineDevPlugin) may serve the engine on a non-default
 // port; the proxy target tracks the same canonical value so the two never
 // disagree. All dev/test ports live in ./dev/dev-ports.ts (exact, non-default,
 // fail-fast).
 const enginePort = DEV_PORTS.engine;
+const disableNodeWebStorageArg = "--no-experimental-webstorage";
+const testWorkerExecArgv = process.allowedNodeEnvironmentFlags.has(
+  disableNodeWebStorageArg,
+)
+  ? [disableNodeWebStorageArg]
+  : [];
 
 // Dev-mode token bootstrap (DF-6 amendment): the browser cannot read
 // service.json, so the dev proxy injects the Authorization header from
@@ -115,6 +121,12 @@ export default defineConfig(({ command }) => ({
     },
   },
   test: {
+    // Node 22+ exposes an experimental global localStorage accessor that warns
+    // when no persistence file is configured. Browser tests receive happy-dom's
+    // isolated storage, while node tests require no browser storage at all, so
+    // disable Node's experimental global in workers through its supported flag.
+    // The capability check keeps the declared supported Node range portable.
+    execArgv: testWorkerExecArgv,
     // The dev domain resolves production code through the `@app` alias. That alias
     // is declared in tsconfig (for the type-checker) and in vite.dev.config.ts (for
     // the dev server); vitest reads THIS file, so it needs its own copy or every

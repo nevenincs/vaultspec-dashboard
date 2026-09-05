@@ -132,6 +132,6 @@ export function provisionForceInstallAction(
       confirmLabel: { key: "projects:destructiveActions.replaceSetup" },
       cancelLabel: { key: "common:actions.cancel" },
     } as const,
-    dispatch: { type: PROVISION_RUN_ACTION, payload: forceInstallBody("all") },
+    dispatch: { type: PROVISION_RUN_ACTION, payload: forceInstallBody("core") },
   };
 }

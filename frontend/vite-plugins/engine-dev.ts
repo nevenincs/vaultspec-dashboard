@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 
 import type { Plugin, ViteDevServer } from "vite";
 
-import { DEV_PORTS } from "../dev/dev-ports";
+import { DEV_PORTS } from "../dev/dev-ports.ts";
 
 // Robust local dev orchestrator for the live UX survey.
 //

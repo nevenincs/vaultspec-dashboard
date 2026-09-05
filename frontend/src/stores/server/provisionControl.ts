@@ -115,7 +115,7 @@ export function recommendedRunBody(
     case "acquire-core":
       return { action: "acquire", tool: "core" };
     case "install-framework":
-      return { action: "install", provider: "all", workspace: undefined };
+      return { action: "install", provider: "core", workspace: undefined };
     case "run-migrations":
       return { action: "migrate" };
     case "upgrade-core":

@@ -53,7 +53,7 @@ function status(overrides: Partial<ProvisionStatus> = {}): ProvisionStatus {
     uv: { present: true, version: "0.4.0" },
     core: { version: "0.1.30", floor: "0.1.30", meets_floor: true },
     rag: { tool_version: null, floor: "0.2.20", enrolled: null },
-    framework: { vaultspec_present: true, vault_present: false, providers: ["all"] },
+    framework: { vaultspec_present: true, vault_present: false, providers: ["core"] },
     pending_migrations: null,
     ...overrides,
   };
@@ -163,7 +163,7 @@ describe("dispatchPayload", () => {
     const action = provisionForceInstallAction(status());
     expect(dispatchPayload(action)).toEqual({
       action: "install",
-      provider: "all",
+      provider: "core",
       force: true,
       confirm: PROVISION_FORCE_CONFIRM,
       workspace: undefined,

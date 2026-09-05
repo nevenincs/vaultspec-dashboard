@@ -671,7 +671,7 @@ fn validate_frontmatter_lines(
         return;
     }
     let yaml = lines.join("\n");
-    if let Err(err) = serde_yaml::from_str::<serde_yaml::Value>(&yaml) {
+    if let Err(err) = yaml_serde::from_str::<yaml_serde::Value>(&yaml) {
         findings.push(finding(
             operation,
             ValidationFindingCode::InvalidFrontmatter,

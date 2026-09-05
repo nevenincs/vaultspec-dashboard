@@ -261,41 +261,6 @@
      token, so it has no DTCG source and is out of the token-drift scope. */
   --file-mark-chroma: 0.45;
 
-  /* == TAILWIND FONT/TEXT NAMESPACE BINDING (figma-parity-reconciliation S07/S10)
-     Tailwind v4 reads --font-* / --text-* to generate the font-/text-utilities.
-     Bind the Tailwind namespace to the generated Figma-binding foundation so
-     `font-sans` / `font-mono` adopt Inter + JetBrains Mono and the role-named
-     utilities resolve to the canonical --text-fg-* tokens.
-
-     Every utility name binds straight to its canonical Figma role
-     (e.g. text-title -> --text-fg-title). There are no bridge, compatibility,
-     or alias tokens: the type foundation is exactly the Figma roles. */
-  --font-sans: var(--font-fg-sans);
-  --font-mono: var(--font-fg-mono);
-  --font-serif: var(--font-fg-serif);
-
-  /* Non-colliding Figma roles map straight to their utility name. */
-  --text-display: var(--text-fg-display);
-  --text-display--line-height: var(--text-fg-display--line-height);
-  --text-display--font-weight: var(--text-fg-display--weight);
-  --text-body: var(--text-fg-body);
-  --text-body--line-height: var(--text-fg-body--line-height);
-  --text-body-strong: var(--text-fg-body-strong);
-  --text-body-strong--line-height: var(--text-fg-body-strong--line-height);
-  --text-body-strong--font-weight: var(--text-fg-body-strong--weight);
-  --text-label: var(--text-fg-label);
-  --text-label--line-height: var(--text-fg-label--line-height);
-  --text-label--font-weight: var(--text-fg-label--weight);
-  --text-meta: var(--text-fg-meta);
-  --text-meta--line-height: var(--text-fg-meta--line-height);
-  --text-caption: var(--text-fg-caption);
-  --text-caption--line-height: var(--text-fg-caption--line-height);
-  --text-mono: var(--text-fg-mono);
-  --text-mono--line-height: var(--text-fg-mono--line-height);
-  --text-title: var(--text-fg-title);
-  --text-title--line-height: var(--text-fg-title--line-height);
-  --text-title--font-weight: var(--text-fg-title--weight);
-
   /* == MOTION (S15) - fast, subtle, state-communicating ================== */
   --ease-settle: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-snap: cubic-bezier(0.4, 0, 0.2, 1);
@@ -311,6 +276,64 @@
   --animate-slide-in-up: slide-in-up var(--duration-ui) var(--ease-settle);
   --animate-slide-in-down: slide-in-down var(--duration-ui) var(--ease-settle);
   --animate-pulse-live: pulse-live 1.6s var(--ease-snap) infinite;
+}
+
+/* Tailwind utilities read the canonical Figma foundation directly. Keeping
+   utility names as selectors avoids a second runtime custom-property surface. */
+@utility font-sans {
+  font-family: var(--font-fg-sans);
+}
+
+@utility font-mono {
+  font-family: var(--font-fg-mono);
+}
+
+@utility font-serif {
+  font-family: var(--font-fg-serif);
+}
+
+@utility text-display {
+  font-size: var(--text-fg-display);
+  line-height: var(--text-fg-display--line-height);
+  font-weight: var(--text-fg-display--weight);
+}
+
+@utility text-body {
+  font-size: var(--text-fg-body);
+  line-height: var(--text-fg-body--line-height);
+}
+
+@utility text-body-strong {
+  font-size: var(--text-fg-body-strong);
+  line-height: var(--text-fg-body-strong--line-height);
+  font-weight: var(--text-fg-body-strong--weight);
+}
+
+@utility text-label {
+  font-size: var(--text-fg-label);
+  line-height: var(--text-fg-label--line-height);
+  font-weight: var(--text-fg-label--weight);
+}
+
+@utility text-meta {
+  font-size: var(--text-fg-meta);
+  line-height: var(--text-fg-meta--line-height);
+}
+
+@utility text-caption {
+  font-size: var(--text-fg-caption);
+  line-height: var(--text-fg-caption--line-height);
+}
+
+@utility text-mono {
+  font-size: var(--text-fg-mono);
+  line-height: var(--text-fg-mono--line-height);
+}
+
+@utility text-title {
+  font-size: var(--text-fg-title);
+  line-height: var(--text-fg-title--line-height);
+  font-weight: var(--text-fg-title--weight);
 }
 
 /* ---------------------------------------------------------------------------
@@ -545,7 +568,7 @@
   body {
     background-color: var(--color-paper);
     color: var(--color-ink);
-    font-family: var(--font-sans);
+    font-family: var(--font-fg-sans);
   }
 
   /* Data-bearing numerics use tabular figures (S14, ADR layer 5). Apply the
@@ -588,8 +611,8 @@
    Reader boards 245:738 / 269:941, MarkdownReader 100:2, Reader states 271:1121).
 
    The editorial reader type ramp is the HEADLINE use of the bound Fraunces serif
-   face: Fraunces (--font-serif) carries Title / Dek / H2 / H3 / Quote, and Inter
-   (--font-sans) carries Eyebrow / Meta / Lead / Body. Sizes, weights, line-heights
+   face: Fraunces (--font-fg-serif) carries Title / Dek / H2 / H3 / Quote, and Inter
+   (--font-fg-sans) carries Eyebrow / Meta / Lead / Body. Sizes, weights, line-heights
    and tracking are transcribed from the binding Reader type system:
      Eyebrow Inter Medium 11/1.3 +0.6 · Title Fraunces SemiBold 34/1.12 -0.3 ·
      Dek Fraunces Light-Italic 18/1.38 · Meta Inter 12.5/1.4 · Lead Inter 17/1.56 ·
@@ -604,7 +627,7 @@
 
 @layer components {
   .reader-eyebrow {
-    font-family: var(--font-sans);
+    font-family: var(--font-fg-sans);
     font-size: 0.6875rem; /* 11 */
     line-height: 1.3;
     font-weight: 500;
@@ -612,55 +635,55 @@
   }
   .reader-title,
   .vs-markdown h1 {
-    font-family: var(--font-serif);
+    font-family: var(--font-fg-serif);
     font-size: 2.125rem; /* 34 */
     line-height: 1.12;
     font-weight: 600;
     letter-spacing: -0.01875rem;
   }
   .reader-dek {
-    font-family: var(--font-serif);
+    font-family: var(--font-fg-serif);
     font-size: 1.125rem; /* 18 */
     line-height: 1.38;
     font-weight: 300;
     font-style: italic;
   }
   .reader-meta {
-    font-family: var(--font-sans);
+    font-family: var(--font-fg-sans);
     font-size: 0.78125rem; /* 12.5 */
     line-height: 1.4;
     font-weight: 400;
   }
   .reader-lead {
-    font-family: var(--font-sans);
+    font-family: var(--font-fg-sans);
     font-size: 1.0625rem; /* 17 */
     line-height: 1.56;
     font-weight: 400;
   }
   .reader-body,
   .vs-markdown p {
-    font-family: var(--font-sans);
+    font-family: var(--font-fg-sans);
     font-size: 0.96875rem; /* 15.5 */
     line-height: 1.56;
     font-weight: 400;
   }
   .reader-h2,
   .vs-markdown h2 {
-    font-family: var(--font-serif);
+    font-family: var(--font-fg-serif);
     font-size: 1.5rem; /* 24 */
     line-height: 1.18;
     font-weight: 600;
   }
   .reader-h3,
   .vs-markdown h3 {
-    font-family: var(--font-serif);
+    font-family: var(--font-fg-serif);
     font-size: 1.0625rem; /* 17 */
     line-height: 1.28;
     font-weight: 600;
   }
   .reader-quote,
   .vs-markdown blockquote {
-    font-family: var(--font-serif);
+    font-family: var(--font-fg-serif);
     font-size: 1.0625rem; /* 17 */
     line-height: 1.5;
     font-weight: 400;
@@ -702,7 +725,7 @@
   .vs-markdown h4,
   .vs-markdown h5,
   .vs-markdown h6 {
-    font-family: var(--font-sans);
+    font-family: var(--font-fg-sans);
     font-size: var(--text-fg-body-strong);
     line-height: 1.4;
     font-weight: 600;
@@ -721,7 +744,7 @@
     /* Reader list: custom accent marker, muted body, bold ink lead-in (board
        265:894). list-style is dropped for a hand-placed accent bullet/number so
        the marker color is the accent, not the ink default. */
-    font-family: var(--font-sans);
+    font-family: var(--font-fg-sans);
     font-size: 0.96875rem;
     line-height: 1.56;
     margin-block: var(--spacing-fg-4);
@@ -815,7 +838,7 @@
      row separators only (no vertical cell rules), first column semibold ink, body
      cells muted. */
   .vs-markdown table {
-    font-family: var(--font-sans);
+    font-family: var(--font-fg-sans);
     font-size: 0.8125rem;
     border-collapse: separate;
     border-spacing: 0;
@@ -869,7 +892,7 @@
     border-bottom: 0.0625rem solid var(--color-rule);
   }
   .vs-markdown .vs-code-fence__lang {
-    font-family: var(--font-mono);
+    font-family: var(--font-fg-mono);
     font-size: 0.78125rem;
     color: var(--color-ink);
   }
@@ -877,7 +900,7 @@
     display: flex;
     align-items: center;
     gap: 0.625rem;
-    font-family: var(--font-sans);
+    font-family: var(--font-fg-sans);
   }
   .vs-markdown .vs-code-fence__readonly {
     font-size: 0.71875rem;
@@ -896,7 +919,7 @@
   }
   .vs-markdown .vs-code-fence__body {
     overflow-x: auto;
-    font-family: var(--font-mono);
+    font-family: var(--font-fg-mono);
     padding: 0.875rem 1rem;
   }
   .vs-markdown .vs-code-fence__body pre {

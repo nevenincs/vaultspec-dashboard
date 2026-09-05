@@ -81,7 +81,7 @@ async fn provision_run_force_without_confirm_is_refused_before_any_spawn() {
     let (status, body) = post_json_with_token(
         router,
         "/provision/run",
-        json!({ "action": "install", "provider": "all", "force": true }),
+        json!({ "action": "install", "provider": "core", "force": true }),
         Some(&token),
     )
     .await;
@@ -119,6 +119,30 @@ async fn provision_run_install_without_provider_is_a_typed_error() {
         body["error_kind"], "provider_required",
         "typed error kind: {body}"
     );
+}
+
+#[tokio::test]
+async fn provision_run_rejects_retired_provider_paths_before_spawning() {
+    let (_dir, state) = fixture_state();
+    let token = state.bearer.clone();
+    let router = build_router(state);
+
+    for provider in ["gemini", "all"] {
+        let (status, body) = post_json_with_token(
+            router.clone(),
+            "/provision/run",
+            json!({ "action": "install", "provider": provider }),
+            Some(&token),
+        )
+        .await;
+
+        assert_eq!(
+            status,
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "retired provider path {provider}: {body}"
+        );
+        assert!(body["tiers"].is_object(), "rejection carries tiers: {body}");
+    }
 }
 
 #[tokio::test]

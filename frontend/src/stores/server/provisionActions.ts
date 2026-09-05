@@ -14,14 +14,7 @@ import { engineClient, type ProvisionJob, type ProvisionRunBody } from "./engine
 export const PROVISION_RUN_ACTION = "provision:run";
 
 const PROVISION_ACTIONS = new Set(["install", "upgrade", "migrate", "acquire"]);
-const PROVISION_PROVIDERS = new Set([
-  "all",
-  "core",
-  "claude",
-  "gemini",
-  "antigravity",
-  "codex",
-]);
+const PROVISION_PROVIDERS = new Set(["core", "claude", "antigravity", "codex"]);
 const PROVISION_TOOLS = new Set(["core", "rag"]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {

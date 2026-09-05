@@ -50,7 +50,7 @@ describe("provisionRecommendedAction", () => {
     expect(action.disabled).toBeUndefined();
     expect(action.dispatch).toEqual({
       type: PROVISION_RUN_ACTION,
-      payload: { action: "install", provider: "all", workspace: undefined },
+      payload: { action: "install", provider: "core", workspace: undefined },
     });
     expect(action.label).toEqual({ key: "projects:actions.setUpProject" });
   });
@@ -146,7 +146,11 @@ describe("provisionForceInstallAction", () => {
   it("carries typed confirmation copy and the engine-required confirmation token", () => {
     const action = provisionForceInstallAction(
       status("run-migrations", {
-        framework: { vaultspec_present: true, vault_present: true, providers: ["all"] },
+        framework: {
+          vaultspec_present: true,
+          vault_present: true,
+          providers: ["core"],
+        },
       }),
     );
     expect(action.confirm).toBeUndefined();
@@ -161,7 +165,7 @@ describe("provisionForceInstallAction", () => {
       type: PROVISION_RUN_ACTION,
       payload: {
         action: "install",
-        provider: "all",
+        provider: "core",
         force: true,
         confirm: PROVISION_FORCE_CONFIRM,
         workspace: undefined,

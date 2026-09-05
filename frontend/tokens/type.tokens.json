@@ -1,6 +1,6 @@
 {
   "$schema": "https://design-tokens.github.io/community-group/format/",
-  "$description": "Figma-binding type scale (figma-parity-reconciliation ADR; research F1). The Figma Foundations/Type & Metrics layer is the binding source: role-named scale display/title/body/body-strong/label/meta/caption/mono replaces the prior px-purpose text-* scale. Each role carries fontSize and lineHeight (rem; the rem-px basis is 16px). fontWeight is the role's bound weight; fontFamily binds Inter for text roles and JetBrains Mono for the mono role. These emit as --text-fg-* CSS custom properties via the non-color token pipeline (style-dictionary.config.ts); the legacy --text-* names remain as deprecated aliases until the W02/W03 view rewrite cuts usages over (W04 removes them).",
+  "$description": "Figma-binding type scale (figma-parity-reconciliation ADR; research F1). The Figma Foundations/Type & Metrics layer is the binding source: role-named scale display/title/body/body-strong/label/meta/caption/mono replaces the prior px-purpose text-* scale. Each role carries fontSize and lineHeight (rem; the rem-px basis is 16px). fontWeight is the role's bound weight; fontFamily binds Inter for text roles and JetBrains Mono for the mono role. These emit only the canonical --text-fg-* CSS custom properties through the non-color token pipeline (style-dictionary.config.ts).",
   "type": {
     "family": {
       "$description": "Bound font families (figma-parity-reconciliation ADR): Inter for UI/text roles, JetBrains Mono for the code/identity mono role, replacing the prior system stack.",
@@ -26,7 +26,7 @@
         "weight": { "$type": "fontWeight", "$value": 600 }
       },
       "title": {
-        "$description": "Panel/rail heading role; binding Figma title 16/24 (legibility bump). Maps to the legacy text-heading (NOT the legacy 13px text-title) - see the text-title vs text-heading collision guard, research F1.",
+        "$description": "Panel/rail heading role; binding Figma title 16/24 (legibility bump). It is the sole panel and rail heading metric.",
         "size": { "$type": "dimension", "$value": "1rem" },
         "line-height": { "$type": "dimension", "$value": "1.5rem" },
         "weight": { "$type": "fontWeight", "$value": 600 }
@@ -38,7 +38,7 @@
         "weight": { "$type": "fontWeight", "$value": 400 }
       },
       "body-strong": {
-        "$description": "Emphasis variant of body at the bound medium weight; shares body's metrics (14/22). Covers the prior text-title section-label use (medium weight).",
+        "$description": "Emphasis variant of body at the bound medium weight; shares body's metrics (14/22). It is the sole emphasized body metric.",
         "size": { "$type": "dimension", "$value": "0.875rem" },
         "line-height": { "$type": "dimension", "$value": "1.375rem" },
         "weight": { "$type": "fontWeight", "$value": 500 }

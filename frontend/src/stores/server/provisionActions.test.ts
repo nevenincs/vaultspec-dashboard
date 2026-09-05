@@ -26,14 +26,14 @@ describe("provisioning dispatch seam", () => {
 
   it("validates the run body's typed/bounded shape before it reaches transport", () => {
     expect(isProvisionRunPayload({ action: "migrate" })).toBe(true);
-    expect(isProvisionRunPayload({ action: "install", provider: "all" })).toBe(true);
+    expect(isProvisionRunPayload({ action: "install", provider: "core" })).toBe(true);
     expect(
       isProvisionRunPayload({ action: "acquire", tool: "core", upgrade: true }),
     ).toBe(true);
     expect(
       isProvisionRunPayload({
         action: "install",
-        provider: "all",
+        provider: "core",
         force: true,
         confirm: "confirm-force",
       }),
@@ -42,6 +42,10 @@ describe("provisioning dispatch seam", () => {
     expect(isProvisionRunPayload({})).toBe(false);
     expect(isProvisionRunPayload({ action: "delete-everything" })).toBe(false);
     expect(isProvisionRunPayload({ action: "install", provider: "bogus" })).toBe(false);
+    expect(isProvisionRunPayload({ action: "install", provider: "gemini" })).toBe(
+      false,
+    );
+    expect(isProvisionRunPayload({ action: "install", provider: "all" })).toBe(false);
     expect(isProvisionRunPayload({ action: "acquire", tool: "bogus" })).toBe(false);
     expect(isProvisionRunPayload({ action: "migrate", upgrade: "yes" })).toBe(false);
     expect(isProvisionRunPayload({ action: "migrate", force: "yes" })).toBe(false);

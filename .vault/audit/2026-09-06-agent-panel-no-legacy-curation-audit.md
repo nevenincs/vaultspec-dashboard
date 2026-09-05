@@ -5,7 +5,7 @@ tags:
 date: '2026-09-06'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:32c7b3cd7a995cc716f7668bf4e3b762db4fc724f9916143fc2797e75ac68b4f'
+body_hash: 'sha256:80a627f82a071db0f56e9b8131774fec1bdc84f28e424c1542e63d9e9a6e0422'
 related:
   - "[[2026-08-01-a2a-agent-flow-adr]]"
   - "[[2026-08-01-agent-panel-shell-integration-adr]]"
@@ -100,3 +100,79 @@ Accepted generic A2A product-provisioning and integration-verification decisions
   compatibility finding under this same authority.
 - Keep provider-issued Gemini-branded model labels opaque under their serving
   provider; never infer a retired provider identity from display text.
+## 2026-09-06 Dashboard no-legacy implementation review
+
+This implementation pass reviewed the Dashboard provisioning boundary, parser
+dependencies, frontend test/build harness, dependency advisory state, and
+generated design-token output. The review preserved earlier findings and
+classified every newly discovered condition below. Runtime evidence is limited
+to the owned change set; concurrent graph-simulation work remains outside this
+review.
+
+### gemini-and-transitive-all-provisioning | high | resolved
+
+Type: retired provider compatibility. Dashboard still accepted gemini as an
+API provisioning enum, a CLI string, a frontend request value, and a .gemini
+filesystem detection claim. The generic all input also delegated to the Core
+installer's current all-provider set, which includes Gemini. The API, CLI, and
+frontend now expose only core, claude, antigravity, and codex; both gemini and
+all receive typed rejection, and .gemini no longer creates a served provider
+claim. Focused Rust API tests pass 2/2, CLI parsing tests pass 2/2, and the three
+frontend provisioning suites pass 38/38. The retained profile_id occurrences
+are negative contract tests only: no live request model, translation, alias,
+fallback, or provisioning path carries that retired field.
+
+### deprecated-yaml-parser | medium | resolved
+
+Type: maintained dependency. The API authoring validator depended on
+serde_yaml 0.9.34+deprecated. It now uses the maintained yaml_serde 0.10.7 API
+directly, with no package alias back to serde_yaml; the workspace lock no longer
+contains the deprecated crate. The authoring YAML validation suite passes 16/16,
+and workspace Clippy passes with warnings denied.
+
+### node-test-and-build-harness | medium | resolved
+
+Type: deprecated runtime API and supported toolchain. Tailwind 4.3.0 reached
+Node's deprecated module.register() API, test workers exposed Node's
+experimental localStorage implementation, and local Vite config imports relied
+on extensionless resolution. Tailwind 4.3.3 uses the supported hook API; the
+Vitest 5 harness capability-gates Node's stable
+--no-experimental-webstorage worker flag while happy-dom supplies browser
+storage; local TypeScript config imports include their extensions. Vite is
+8.2.2, Vitest is 5.0.0, Style Dictionary is 5.5.2, and the supported Node range
+is ^22.12.0 || ^24.0.0 || >=26.0.0. Focused migration tests pass 10/10,
+production build succeeds, and the focused runs emit none of the deprecated
+module, experimental localStorage, or extension-resolution warnings.
+
+### frontend-dependency-advisories | high | resolved
+
+Type: supply-chain security. The implementation review found three high and one
+moderate npm advisories through Style Dictionary, brace-expansion/minimatch,
+and qs. Maintained direct versions and bounded overrides now resolve the graph.
+npm audit --json reports zero vulnerabilities across all severities.
+
+### deprecated-token-compatibility-properties | high | resolved
+
+Type: design-system runtime compatibility. The generated style entry point
+still defined retired --font-*, --text-*, radius, spacing, and shadow
+compatibility property families, while token metadata described their continued
+legacy purpose. Consumers now read canonical --*-fg-* properties through
+explicit utilities, compatibility bindings are removed, and the token source
+descriptions no longer promise legacy output. Style Dictionary regeneration
+and the production build succeed. The token drift suite passes 7/7 and
+discriminates the retired properties in both source and built CSS: exact retired
+source hits are zero, built compatibility bindings are absent, legacy wording is
+zero, and canonical title utility output is present.
+
+### implementation-pass-validation | low | pass with concurrent-work limitation
+
+Type: formal implementation review disposition. Rust formatting, workspace
+Clippy for all targets with warnings denied, module-size checks, scoped
+frontend ESLint and Prettier, TypeScript production build, token generation,
+focused Rust and frontend tests, and npm audit all pass. The repository-wide
+frontend lint command reaches only two Prettier failures in concurrently edited
+graph-simulation files (d3ForceMass.ts and symmetricManyBody.ts); neither file
+is part of this implementation and neither was modified by this pass. Those
+concurrent files remain owned by their graph-simulation workstream. No critical,
+high, or medium finding remains open in the Dashboard no-legacy implementation
+scope.

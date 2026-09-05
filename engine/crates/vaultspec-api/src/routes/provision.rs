@@ -97,10 +97,8 @@ const FORCE_CONFIRM_TOKEN: &str = "confirm-force";
 /// bounded wire enum; never a free-form string reaching argv.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Provider {
-    All,
     Core,
     Claude,
-    Gemini,
     Antigravity,
     Codex,
 }
@@ -108,10 +106,8 @@ enum Provider {
 impl Provider {
     fn as_arg(self) -> &'static str {
         match self {
-            Provider::All => "all",
             Provider::Core => "core",
             Provider::Claude => "claude",
-            Provider::Gemini => "gemini",
             Provider::Antigravity => "antigravity",
             Provider::Codex => "codex",
         }
@@ -269,10 +265,8 @@ pub(crate) enum Action {
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum ProviderArg {
-    All,
     Core,
     Claude,
-    Gemini,
     Antigravity,
     Codex,
 }
@@ -280,10 +274,8 @@ pub(crate) enum ProviderArg {
 impl From<ProviderArg> for Provider {
     fn from(p: ProviderArg) -> Self {
         match p {
-            ProviderArg::All => Provider::All,
             ProviderArg::Core => Provider::Core,
             ProviderArg::Claude => Provider::Claude,
-            ProviderArg::Gemini => Provider::Gemini,
             ProviderArg::Antigravity => Provider::Antigravity,
             ProviderArg::Codex => Provider::Codex,
         }
@@ -458,7 +450,6 @@ fn detect_providers(target: &FsPath) -> Vec<&'static str> {
     for (dir, name) in [
         (".vaultspec", "core"),
         (".claude", "claude"),
-        (".gemini", "gemini"),
         (".antigravity", "antigravity"),
         (".codex", "codex"),
     ] {
@@ -1072,7 +1063,7 @@ mod tests {
         // exercises the one construction path.
         let req = RunRequest {
             action: Action::Install,
-            provider: Some(ProviderArg::All),
+            provider: Some(ProviderArg::Core),
             tool: None,
             upgrade: false,
             force: false,
@@ -1082,9 +1073,30 @@ mod tests {
         assert_eq!(
             req.to_capability().unwrap(),
             Capability::InstallFramework {
-                provider: Provider::All,
+                provider: Provider::Core,
                 force: false
             }
+        );
+    }
+
+    #[test]
+    fn retired_provider_paths_are_not_in_the_wire_enum_or_filesystem_projection() {
+        for provider in ["gemini", "all"] {
+            let request = serde_json::from_value::<RunRequest>(json!({
+                "action": "install",
+                "provider": provider
+            }));
+            assert!(
+                request.is_err(),
+                "{provider} must fail wire decoding because `all` also installs Gemini"
+            );
+        }
+
+        let dir = tempfile::tempdir().expect("temporary project");
+        std::fs::create_dir(dir.path().join(".gemini")).expect("retired marker fixture");
+        assert!(
+            !detect_providers(dir.path()).contains(&"gemini"),
+            "retired provider files must not become served capability truth"
         );
     }
 
@@ -1112,7 +1124,7 @@ mod tests {
     #[test]
     fn upgrade_argv_omits_force_carries_upgrade() {
         let cap = Capability::UpgradeFramework {
-            provider: Provider::All,
+            provider: Provider::Core,
         };
         let argv = cap.argv(FsPath::new("/p"));
         assert!(argv.contains(&"--upgrade".to_string()));

@@ -223,7 +223,7 @@ export interface ProvisionStatus {
  *  The engine maps this to a fixed installer argv; no wire string reaches argv. */
 export interface ProvisionRunBody {
   action: "install" | "upgrade" | "migrate" | "acquire";
-  provider?: "all" | "core" | "claude" | "gemini" | "antigravity" | "codex";
+  provider?: "core" | "claude" | "antigravity" | "codex";
   tool?: "core" | "rag";
   upgrade?: boolean;
   force?: boolean;

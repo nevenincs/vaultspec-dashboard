@@ -66,7 +66,7 @@ function expectedPanelStatus(
   });
 }
 
-describe.sequential("StatusChip", () => {
+describe("StatusChip", () => {
   it("updates one chip through English, French, and Arabic", async () => {
     const rendered = renderChip(PENDING_LABEL, { tone: "attention", count: 3 });
     const englishName = expectedPanelStatus(

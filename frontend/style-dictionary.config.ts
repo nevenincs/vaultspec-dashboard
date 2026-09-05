@@ -166,9 +166,8 @@ export async function generateRegions(): Promise<{ colors: string; themes: strin
      --radius-fg-<step>
      --shadow-fg-<level>
      --spacing-fg-<step>
-   The legacy --text-* / --radius-vs-* / --shadow-* / --spacing-vs-* names remain
-   hand-authored as deprecated aliases onto these until the rewrite
-   cuts usages over and removes the aliases.
+   No secondary compatibility property family is emitted. Tailwind utilities
+   read these canonical properties directly in styles.css.
    --------------------------------------------------------------------------- */
 
 type NonColorLeaf = { path: string[]; value: string | number };

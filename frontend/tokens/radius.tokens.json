@@ -1,6 +1,6 @@
 {
   "$schema": "https://design-tokens.github.io/community-group/format/",
-  "$description": "Figma-binding radius scale (figma-parity-reconciliation ADR; research F1). The binding Figma scale is xs4/sm5/md7/lg10/pill18, replacing the prior sm4/md6/lg10/xl14 scale; pill18 is new (the prior code used native rounded-full, which the W02/W03 rewrite re-keys to pill18). Emits as --radius-fg-* CSS custom properties via the non-color token pipeline; the legacy --radius-vs-* names remain as deprecated aliases until the view rewrite cuts usages over (W04 removes them).",
+  "$description": "Figma-binding radius scale (figma-parity-reconciliation ADR; research F1). The binding Figma scale is xs4/sm5/md7/lg10/pill18, replacing the prior sm4/md6/lg10/xl14 scale; pill18 is new (the prior code used native rounded-full, which the W02/W03 rewrite re-keys to pill18). Emits only the canonical --radius-fg-* CSS custom properties through the non-color token pipeline.",
   "radius": {
     "xs": {
       "$description": "Tightest corner; binding Figma 4px (chips, small controls).",
