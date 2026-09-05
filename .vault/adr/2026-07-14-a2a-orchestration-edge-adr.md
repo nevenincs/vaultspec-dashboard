@@ -4,7 +4,7 @@ tags:
   - '#a2a-orchestration-edge'
 date: '2026-07-14'
 modified: '2026-09-05'
-body_hash: 'sha256:8f69732829066e88c4870b7e140c30857607a8d67d8c96b45f604698ef87d0dd'
+body_hash: 'sha256:2eeb6fd94eb9197242e6131848c11feb5337e3cf7d31581ed109f20baff21d48'
 related:
   - '[[2026-07-14-a2a-orchestration-edge-research]]'
   - '[[2026-06-29-agentic-authoring-boundary-adr]]'
@@ -546,3 +546,24 @@ division across the repo boundary rather than inventing a new channel class.
   queue) and stores Vaultspec ids as references; the engine persists document
   state (changesets, approvals, preimages, audit) and stores LangGraph ids as
   provenance; neither system duplicates the other's record.
+
+## Amendment (2026-09-06): catalog-only provider authority
+
+The A2A provider-model-catalog contract now supersedes the historical
+`presets-list` profile-summary fact and the optional-until-served run-start
+relaxation above. Provider catalog production and schema-v1 selection are the
+only current provider/model authority across this edge.
+
+`presets-list` serves topology and role requirements without profile or provider
+assignments. New `run-start` requires one complete current A2A-served selection;
+optional bounded overrides and fallbacks are meaningful only as current served
+selection references. The engine bounds and forwards their opaque structure;
+A2A owns current membership, admission, freeze, replay, and current-schema
+restart. `profile_id`, profile DTOs, legacy assignment disclosures, and retired
+stored state are neither forwarded nor translated; they receive a typed
+unsupported/incompatible outcome.
+
+The retired `gemini/gemini-cli-acp` provider and execution mode have no broker,
+provisioning, catalog, or wire compatibility posture. An obsolete identifier is
+rejected, while a Gemini-branded model label served by another active provider
+remains opaque within that provider's catalog entry.

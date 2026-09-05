@@ -3,8 +3,8 @@ tags:
   - '#adr'
   - '#agent-panel'
 date: '2026-08-01'
-modified: '2026-08-02'
-body_hash: 'sha256:92ee486f0beeea1dc6eef03ef94693b8d4f59b3cbe1726760d44ce4be140caee'
+modified: '2026-09-05'
+body_hash: 'sha256:c524f3d633bbb912cdfa14b4a09704557b5016c4d7350fa0360a577ab6258053'
 related:
   - '[[2026-07-31-agent-panel-ux-research]]'
   - '[[2026-08-01-a2a-agent-flow-adr]]'
@@ -379,3 +379,19 @@ codification of the left/right row law before it drifts.
   the sole answer surface while parked, recovers from authoritative
   status (never relay memory), and collapses into a durable recap card
   once answered.
+
+## Amendment (2026-09-06): composer consumes current catalog selection only
+
+The composer model surface consumes the current A2A provider catalog and emits
+only schema-v1 catalog selections. Earlier D3/D8/profile-pill clauses and the
+Gemini label example are historical UI evidence, not current data authority.
+The preset selector continues to choose topology; it supplies no provider,
+model, control, fallback, profile, eligibility, or admission policy.
+
+No `profile_id`, profile summary, profile assignment, implicit default, or
+legacy restart value is adapted, rendered, cached, or submitted. A retained
+catalog choice clears when its provider, exact execution mode, revision, entry,
+or native controls cease to match current served truth. The retired
+`gemini/gemini-cli-acp` lane is absent from provisioning and selection UI rather
+than displayed disabled. Provider-issued model labels containing the word
+Gemini remain ordinary opaque labels under the provider that served them.

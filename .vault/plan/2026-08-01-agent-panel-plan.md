@@ -3,8 +3,8 @@ tags:
   - '#plan'
   - '#agent-panel'
 date: '2026-08-01'
-modified: '2026-08-02'
-body_hash: 'sha256:9e4da426efd8e356fbc93dc6f46d124d838b02351c2080fe73fd55362a6798d1'
+modified: '2026-09-05'
+body_hash: 'sha256:b8d99d5e171b26c2ea722214c68cc93ad2e33c3e0fe8c8cb73bfee551890febd'
 tier: L2
 related:
   - '[[2026-08-01-agent-panel-shell-integration-adr]]'
@@ -109,22 +109,22 @@ Live-drive both archetypes end-to-end in the assembled app, run every gate, reco
 - [ ] `P10.S37` - Live-drive Archetype B: team run through research, clarification questionnaire answer, ADR proposal acceptance with one request_changes loop, plan proposal, with screenshots persisted; `frontend/src/testing/`.
 - [x] `P10.S39` - Repair the dev-tooling scanner roots (localization, px, tokens, figma-names, module-size) and the justfile invocation path so every frontend gate command actually runs, grandfathering pre-existing module-size violators explicitly; `frontend/dev/tooling/`.
 - [ ] `P10.S38` - Run full lint and live-wire gates in both repos and record Figma frame debt plus the compact read-only run-status affordance as named follow-ons; `frontend/package.json`.
-- [ ] `P10.S43` - Amend the agent-flow ADR D3 with the serving-versus-eligibility reconciliation and the provider set actually witnessed completing turns in the live-drives; `.vault/adr/2026-08-01-a2a-agent-flow-adr.md`.
+- [ ] `P10.S43` - Formally re-review the agent-flow ADR amendment against the live A2A catalog and Dashboard edge: presets contain topology only, schema-v1 catalog selection is the sole provider/model authority, `profile_id` is absent and refused, and the retired Gemini lane appears in no supported or blocked inventory; `.vault/adr/2026-08-01-a2a-agent-flow-adr.md`.
 - [x] `P10.S44` - Amend the shell-integration ADR composer decision with the owner's feature-first mandate: document-authoring runs bind a first-class feature context chip on the composer, defaulted from the open document, required before run-start for tag-requiring presets; `.vault/adr/2026-08-01-agent-panel-shell-integration-adr.md`.
 - [x] `P10.S45` - Collapse the autonomy control into a composer pill consistent with the row-of-pills grammar and the reference-verified C6 anatomy, fixing the row-2 overlap at split width; `frontend/src/app/agent/Composer.tsx`.
 - [x] `P10.S50` - House main's unhoused degraded-intent in the begin idiom: the begin state must not invite a prompt when the data plane is degraded and starting would fail, using the parked common:agent.transcript.unavailable vocabulary; `frontend/src/app/agent/AgentBeginView.tsx`.
 
 ### Phase `P11` - Owner mandate: user-chosen providers
 
-Cross-repository ripple from the owner's cornerstone ruling: presets carry role shape and personality only - never a provider; the user picks provider and model at team start; all providers must function through the harness. Supersedes the provider-baked preset lanes of the shipped v1.
+Cross-repository ripple from the owner's cornerstone ruling: presets carry role shape and personality only; the user picks a current A2A-served provider, model, and native controls at team start. Every supported lane must function through the harness and satisfy exact-mode admission. Retired providers, including the old-config-only Gemini lane, are absent rather than retained blocked. This supersedes the provider-baked preset lanes of the shipped v1.
 
 - [x] `P11.S46` - Amend the agent-flow ADR: teams are provider-free (shape and personality only), the user chooses provider and model at team start, the free-form selection contract event is un-deferred and specified, test-variant presets stay pinned to the deterministic provider as harness infrastructure; `.vault/adr/2026-08-01-a2a-agent-flow-adr.md`.
-- [ ] `P11.S47` - Implement and verify the provider-owned catalog, truthful health, required served run selection, frozen assignment, provider-free product presets, and legacy-run restart contract; `Y:/code/vaultspec-a2a-worktrees/main/.vault/plan/2026-08-02-provider-model-catalog-plan.md`.
-- [ ] `P11.S48` - Carry opaque provider catalog and selection references through the engine boundary, validate only bounded structure and caps, and forbid hard-coded provider or model enums; `engine/crates/vaultspec-api/src/routes/ops/a2a.rs`.
-- [ ] `P11.S49` - Replace the profile pill with the required served whole-team provider, model, and native-control chooser and preserve honest health and unselectable reasons; `frontend/src/app/agent/ComposerModelPicker.tsx, frontend/src/app/agent/Composer.tsx`.
-- [ ] `P11.S51` - Adapt provider catalog, structured health, explicit selection, bounded overrides, fallbacks, and frozen assignment wire state without inventing identifiers or tiers; `frontend/src/stores/server/agent/a2aTeam.ts`.
+- [ ] `P11.S47` - Implement and verify the provider-owned catalog, truthful health, required current schema-v1 run selection, frozen assignment, provider-free product presets, current-schema restart, and typed refusal of legacy profile/provider/model state; require configOptions-only ACP discovery and complete retirement of `gemini/gemini-cli-acp` without compatibility translation; `Y:/code/vaultspec-a2a-worktrees/main/.vault/plan/2026-08-02-provider-model-catalog-plan.md`.
+- [ ] `P11.S48` - Carry only current opaque provider-catalog and schema-v1 selection references through the engine boundary, validate bounded structure and caps, forbid hard-coded provider/model enums, and typed-refuse `profile_id`, profile DTOs, Gemini provider/mode values, and every retired shape without translation; `engine/crates/vaultspec-api/src/routes/ops/a2a.rs`.
+- [ ] `P11.S49` - Remove the profile pill and every profile fallback; render the required whole-team provider, model, and native-control chooser solely from the current served catalog, preserve honest health and unselectable reasons for current lanes, and omit the retired Gemini lane entirely; `frontend/src/app/agent/ComposerModelPicker.tsx, frontend/src/app/agent/Composer.tsx`.
+- [ ] `P11.S51` - Adapt only current provider catalog, structured health, schema-v1 selection, bounded overrides, fallbacks, and frozen-assignment wire state without inventing identifiers or tiers; remove profile and Gemini compatibility readers, DTOs, cached state, and disclosure rather than migrating them; `frontend/src/stores/server/agent/a2aTeam.ts`.
 - [ ] `P11.S52` - Add bounded per-role overrides and explicit served fallbacks and render the exact frozen assignment after run start; `frontend/src/app/agent/`.
-- [ ] `P11.S53` - Prove one real provider catalog and selected model-control pair across frontend, engine, A2A prompt setup, run status, and restart and reconcile findings; `frontend/src/stores/server/agent/, engine/crates/vaultspec-api/, Y:/code/vaultspec-a2a-worktrees/main/src/vaultspec_a2a/service_tests/`.
+- [ ] `P11.S53` - Prove one real current provider catalog and selected model-control pair across frontend, engine, A2A prompt setup, run status, replay, and current-schema restart; prove profile/Gemini requests, responses, cached values, and durable state are typed refused with no translation or redispatch, then reconcile all findings; `frontend/src/stores/server/agent/, engine/crates/vaultspec-api/, Y:/code/vaultspec-a2a-worktrees/main/src/vaultspec_a2a/service_tests/`.
 
 ## Parallelization
 

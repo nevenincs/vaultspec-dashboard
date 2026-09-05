@@ -3,8 +3,8 @@ tags:
   - '#adr'
   - '#agent-panel'
 date: '2026-08-01'
-modified: '2026-08-01'
-body_hash: 'sha256:f224986796776a13a07f59ce786a59747c1baf1df8596ec64ac706b7cd5e8015'
+modified: '2026-09-05'
+body_hash: 'sha256:f935ec8cf1ee1562b369e82eded252588f4804eed28ef10e489503ba310f6108'
 related:
   - '[[2026-07-31-agent-panel-ux-research]]'
   - '[[2026-07-14-a2a-orchestration-edge-adr]]'
@@ -310,3 +310,37 @@ point of the pipeline.
   `interrupt()` with a bounded typed payload, is disclosed authoritatively
   on `run-status`, and resumes only through the typed respond verb — never
   through follow-up message turns.
+
+## Amendment (2026-09-06): current catalog selection and no Gemini compatibility
+
+The accepted A2A `2026-08-02-provider-model-catalog-adr`, including its
+2026-09-05 and 2026-09-06 amendments, exclusively governs provider and model
+selection for the Dashboard edge. It supersedes this record's named-profile,
+`profile_id`, profile-assignment, preset-provider, implicit-default, and
+legacy-restart clauses.
+
+- Product presets own topology, personas, tools, and bounded role requirements
+  only. They carry no provider, model, control, fallback, profile, or admission
+  authority. Test fixtures remain internal implementation substrates and never
+  become product preset policy.
+- Every new product run requires a current schema-v1 selection minted from the
+  A2A-served provider catalog. The Dashboard may retain a choice only while the
+  same provider, execution mode, revision, entry, and controls remain current;
+  A2A performs final membership and admission validation and freezes the exact
+  assignment. Omission and retired fields fail closed.
+- `profile_id`, profile summaries, profile assignments, and equivalent legacy
+  request, response, or stored shapes are absent from the product contract. The
+  Dashboard does not read, translate, display, migrate, or submit them. Current
+  catalog-backed restart is the only restart contract; retired state receives a
+  typed unsupported/incompatible outcome before construction or dispatch.
+- `gemini/gemini-cli-acp` is retired rather than kept as an unserved or blocked
+  lane. Dashboard provisioning, provider inventories, catalog UI, run-start,
+  status, and persisted client state carry no Gemini provider or mode value.
+  A Gemini-branded model name advertised by another active provider remains
+  opaque data owned by that provider and does not recreate Gemini support.
+- Completed-turn admission applies to exact current provider/execution modes.
+  A future Gemini mechanism requires a new accepted decision and its own proof;
+  existing configuration supplies no fallback authority.
+
+The earlier D3, D8, Consequences, and codification text remains historical
+context for the profile-based implementation that this amendment retires.
