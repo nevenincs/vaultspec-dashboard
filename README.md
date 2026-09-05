@@ -254,39 +254,30 @@ Confirm the installation:
 vaultspec --version
 ```
 
-Your project must use Git. Governed capabilities also require vaultspec-core 0.1.34 or
-later. Install it separately with `uv`:
+Use a Git repository. Vault validation and authoring require vaultspec-core 0.1.34
+or later, installed separately:
 
 ```console
 uv tool install 'vaultspec-core>=0.1.34'
 ```
 
-From the project directory, verify that the project is ready:
+From the repository root, create the vault structure if the project does not already
+use Vaultspec:
 
 ```console
-git rev-parse --is-inside-work-tree
-vaultspec-core --version
-vaultspec-core status --json -t .
+vaultspec-core install core
 ```
 
-The Git command must print `true`. The core version must be 0.1.34 or later. The status
-command must exit successfully, proving that core can read the managed vault.
-
-If the project isn't managed yet, create only the core scaffolding:
+This writes the vault structure and project policy. For coding-agent setup too, follow
+the [core installation guide](https://github.com/nevenincs/vaultspec-core#install).
+Inspect the project's records with:
 
 ```console
-vaultspec-core install core -t .
+vaultspec-core status
 ```
 
-This command modifies the project by installing the core vault structure and configuration.
-Review the
-[vaultspec-core getting-started guide](https://github.com/nevenincs/vaultspec-core#getting-started)
-before applying it to an existing project.
-
-The walkthrough that follows uses an existing managed project with at least one decision
-record. A freshly scaffolded project contains no records yet. Follow the
-[Vaultspec framework](https://github.com/nevenincs/vaultspec-core/blob/main/docs/framework.md)
-to create meaningful project records before continuing.
+A new vault has no records. [Start a feature](https://github.com/nevenincs/vaultspec-core#start-a-feature)
+to create some, or open an existing project's vault for the walkthrough below.
 
 ### Start the dashboard
 
@@ -320,39 +311,16 @@ and Git history remain available.
 
 ### Follow one record from vault to search
 
-1. Check the **current location: _project_ / _worktree_** selector.
-
-   **Expected result:** The selector names the project and worktree whose vault you're
-   viewing. When it names the intended workspace, leave it unchanged.
-
-1. In **Vault** mode, expand **Documents**, then expand **Decisions**.
-
-   **Expected result:** Decision records appear beneath **Decisions**.
-
-1. Select a decision record with a single click.
-
-   **Expected result:** The record becomes the current selection. The graph uses the same
-   selection.
-
-1. Double-click the record, or press **Enter**, to open it in the docked reader.
-
-   **Expected result:** The reader shows a breadcrumb, type, title, date, and body. It also
-   shows **View** and **Edit** when editing is available.
-
-1. Move focus to the graph canvas, then use the arrow keys to walk through connected nodes.
-
-   **Expected result:** The shared selection moves through the graph. Press **Enter** to open
-   the selected record, `E` to expand it, or **Escape** to clear the selection.
-
-1. Press **Command+P** on macOS or **Ctrl+P** on Windows and Linux.
-
-   **Expected result:** **Search documents and code** opens with **All**, **Docs**, and
-   **Code** scopes.
-
-1. Choose **Docs**, enter part of the decision title, and press **Enter** on the selected
-   result.
-
-   **Expected result:** The matching decision opens in the docked reader.
+1. Select your project and worktree in the location selector.
+1. Expand **Vault > Documents > Decisions** and select a record. The graph highlights
+   the same selection.
+1. Double-click the record, or press **Enter**, to open its title, properties, and
+   Markdown body in the reader. **Edit** appears when authoring is available.
+1. Open **Search documents and code** with **Command+Option+S** on macOS or
+   **Ctrl+Alt+S** on Windows and Linux. These are the default bindings; use your
+   configured shortcut if you changed them.
+1. Choose **Docs**, enter part of the record's title, and press **Enter** on a result
+   to open it.
 
 ## Capabilities
 
@@ -365,7 +333,7 @@ status views.
 | Explore relationships and history | Desktop graph with timeline, filters, and minimap                                          | Switches between vault and code corpora. It doesn't mix them. The graph isn't available in compact or mobile layouts.                          |
 | Inspect a document or source file | Docked Markdown viewer or read-only code viewer                                            | Code inspection includes syntax highlighting, line numbers, and copy. Code editing isn't supported.                                            |
 | Edit vault content                | Markdown authoring view with **View/Edit**, toolbar, properties, rename, and save controls | Supports approved vault Markdown writes when authoring is available. Core materializes approved changes.                                       |
-| Search documents and code         | `Mod+P` command palette with **All**, **Docs**, and **Code** scopes                        | Combines semantic and literal search, returns a bounded result set, and opens selections in the viewer.                                        |
+| Search documents and code         | Search dialog with **All**, **Docs**, and **Code** scopes                                  | Combines semantic and literal search, returns a bounded result set, and opens selections in the viewer.                                        |
 | Monitor and review work           | Activity and status rail                                                                   | Covers changes, open plans, pull requests, issues, commits, search service status, approvals, and reviews. Sections can degrade independently. |
 
 ### When a capability is unavailable
