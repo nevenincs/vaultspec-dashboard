@@ -62,7 +62,14 @@ jobs:
   sync-lock:
     name: Carry engine/Cargo.lock with the version bump
     needs: release-please
-    if: ${{ needs.release-please.outputs.prs_created == 'true' }}
+    # Gate on the branch NAME, not on `prs_created`. release-please reports that
+    # output for a newly OPENED pull request, and the standing release PR is
+    # usually updated rather than opened — the drift this repairs arrives on
+    # both paths. Gating on the flag would have made the job silently never run
+    # in the common case, which is the failure mode #94 was filed about: a fix
+    # that nothing verifies. An empty branch name means there is no release PR
+    # to repair, which is the only case worth skipping.
+    if: ${{ needs.release-please.outputs.release_branch != '' }}
     runs-on: [self-hosted, Linux, X64]
     steps:
       # Before checkout, because checkout is the step the EACCES lands on.
