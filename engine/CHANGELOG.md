@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.13](https://github.com/nevenincs/vaultspec-dashboard/compare/v0.1.12...v0.1.13) (2026-09-05)
+
+
+### Bug Fixes
+
+* **graph:** stop self-propelled simulation drift ([4ece5c1](https://github.com/nevenincs/vaultspec-dashboard/commit/4ece5c1a8464c0dafc89d82a0a4a092cef13e6e3))
+* **release:** gate the lock sync on the branch, not on prs_created ([2207d59](https://github.com/nevenincs/vaultspec-dashboard/commit/2207d597cd9f60348d03ee95dee46f394a0178e3))
+* **release:** regenerate engine/Cargo.lock with the version bump ([47c4f66](https://github.com/nevenincs/vaultspec-dashboard/commit/47c4f6610b8059b352c58a97efabc661dd3c2cb8))
+* **release:** restore pr-run-mode=plan, which the workflow already assumes ([1a42558](https://github.com/nevenincs/vaultspec-dashboard/commit/1a4255892e26a6ac9af66e6c94e1dce74ae6b2fe))
+* **update:** refuse on a package-manager copy, which the docs already claimed ([#98](https://github.com/nevenincs/vaultspec-dashboard/issues/98)) ([27a1237](https://github.com/nevenincs/vaultspec-dashboard/commit/27a12379c1d20edf4647e1f154cfcb4cefdaaf7a))
+
 ## [0.1.12](https://github.com/nevenincs/vaultspec-dashboard/compare/v0.1.11...v0.1.12) (2026-08-31)
 
 
