@@ -1,7 +1,7 @@
 [project]
 authors = [{ name = "Neve Nincs", email = "hello@neve.md" }]
 dependencies = ["vaultspec-core>=0.1.36"]
-description = "Unified dashboard UI for the vaultspec ecosystem"
+description = "A local web interface for browsing Vaultspec records, source files, and Git history."
 keywords = ["dashboard", "mcp", "observability", "rag", "ui", "vaultspec"]
 license = { file = "LICENSE" }
 name = "vaultspec-dashboard"

@@ -4,34 +4,23 @@
 
 The human-facing visual workspace for a Vaultspec project.
 
+Browse feature records, source files, and Git history in a local web interface.
+Choose a project and worktree, follow relationships in the graph, and read or edit
+vault Markdown alongside your code.
+
 [![quality](https://img.shields.io/github/actions/workflow/status/nevenincs/vaultspec-dashboard/quality-gates.yml?branch=main&style=flat&label=quality&logo=githubactions&logoColor=white&labelColor=24292f)](https://github.com/nevenincs/vaultspec-dashboard/actions/workflows/quality-gates.yml)
 [![release](https://img.shields.io/github/v/release/nevenincs/vaultspec-dashboard?style=flat&label=release&logo=github&logoColor=white&labelColor=24292f&color=8A72B5)](https://github.com/nevenincs/vaultspec-dashboard/releases/latest)
 [![targets](https://img.shields.io/badge/targets-macOS%20arm64%20%7C%20Linux%20arm64%2Fx64%20%7C%20Windows%20x64-3F9AA6?style=flat&labelColor=24292f)](https://github.com/nevenincs/vaultspec-dashboard/releases/latest)
 [![license](https://img.shields.io/github/license/nevenincs/vaultspec-dashboard?style=flat&label=license&logo=opensourceinitiative&logoColor=white&labelColor=24292f&color=B3823C)](LICENSE)
 
-[What it does](#what-it-does) · [Project layout](#project-layout) ·
+[Visual tour](#visual-tour) · [Project layout](#project-layout) ·
 [Getting started](#getting-started) · [Capabilities](#capabilities) ·
 [Vaultspec family](#vaultspec-family) · [Documentation](#documentation) ·
 [Status](#status-and-license)
 
 ![Complete Vaultspec workspace showing the project and worktree selector, Vault and Files navigation, populated graph, timeline, and activity](docs/assets/workspace.png)
 
-*The complete workspace keeps repository context, vault content, relationships, history,
-and current activity in one view.*
-
-## What it does
-
-Project knowledge often spans source files, Git history, worktrees, current activity, and
-`.vault/`. This Git-tracked directory stores research, decisions, plans, execution records,
-and audits. File browsers show each item but hide the relationships between them.
-
-vaultspec-dashboard brings this work into one visual workspace. Choose a project and
-worktree, then browse documents or source files beside focused, switchable vault and code
-graphs. Inspect changes, open work, and history without turning the entire project into an
-unreadable graph. Search by file or title, with optional semantic search for meaning-based
-discovery. Author and review Markdown without leaving the workspace.
-
-### Visual tour
+## Visual tour
 
 ![Markdown decision document open within its vault and repository context beside the populated graph](docs/assets/document-workspace.png)
 
@@ -315,44 +304,19 @@ vaultspec serve: listening on http://127.0.0.1:8767 (bearer token in service.jso
 
 Open `http://127.0.0.1:8767` in your browser. A successful dashboard shows the current
 worktree selector, **Vault/Files** browser, populated graph, timeline, and activity rail.
-The [complete workspace capture](#what-it-does) shows this result.
+The [complete workspace capture](#vaultspec-dashboard) shows this result.
 
 ### Optional semantic search
 
-[vaultspec-rag](https://github.com/nevenincs/vaultspec-rag) adds optional semantic search.
-Name matching remains available without it.
+Install [vaultspec-rag](https://github.com/nevenincs/vaultspec-rag#install), then
+[start its service and index your repository](https://github.com/nevenincs/vaultspec-rag#use-it).
+The RAG guide lists the supported GPUs, Python versions, and installation routes.
 
-The current vaultspec-rag service runtime requires:
+The dashboard connects to the machine-wide RAG service. Wait for indexing to finish
+before searching by meaning. Stopping that service also affects its other clients.
 
-- CPython 3.13.x
-- An NVIDIA CUDA-capable graphics processor (GPU) with about 3 GB of free video memory
-- Linux or Windows
-
-macOS, AMD GPUs, and Apple silicon aren't supported. The service has no central processing
-unit (CPU) fallback. The
-dashboard requires vaultspec-rag 0.2.28 or later, but it doesn't verify the resident version.
-
-Install vaultspec-rag in the project's Python environment. A global `uv` tool installation
-isn't suitable for launching its GPU service.
-
-```console
-uv add vaultspec-rag
-uv run vaultspec-rag install
-uv sync
-uv run vaultspec-rag server start
-uv run vaultspec-rag index
-uv run vaultspec-rag server jobs
-```
-
-Wait for the vault and code jobs to finish before using semantic search. Follow the
-[installation guide](https://github.com/nevenincs/vaultspec-rag/blob/main/docs/installation.md)
-and [getting-started guide](https://github.com/nevenincs/vaultspec-rag/blob/main/docs/getting-started.md)
-for the complete setup.
-
-When the service is offline, **Search service** reports that it isn't running. Search falls
-back to literal document and code-name matching and may report:
-
-> Full search is unavailable — showing name matches only.
+Without RAG, search still matches document titles and file names. Browsing, the graph,
+and Git history remain available.
 
 ### Follow one record from vault to search
 
@@ -435,12 +399,12 @@ fails. Each affected view reports its own limitation.
 
 ## Vaultspec family
 
-| Project                                                       | Role                                                                      | Status |
-| ------------------------------------------------------------- | ------------------------------------------------------------------------- | ------ |
-| [vaultspec-core](https://github.com/nevenincs/vaultspec-core) | The agent harness: the pipeline, the vault, and the CLI that drives them. | Beta   |
-| [vaultspec-rag](https://github.com/nevenincs/vaultspec-rag)   | The semantic search component for vault and code.                         | Beta   |
-| vaultspec-dashboard                                           | The application that runs it all as a UI.                                 | Beta   |
-| [vaultspec-a2a](https://github.com/nevenincs/vaultspec-a2a)   | Headless agent-to-agent orchestration.                                    | Beta   |
+| Project                                                       | Role                                                       | Status |
+| ------------------------------------------------------------- | ---------------------------------------------------------- | ------ |
+| [vaultspec-core](https://github.com/nevenincs/vaultspec-core) | Decision-driven harness for coding agents, and humans.     | Beta   |
+| [vaultspec-rag](https://github.com/nevenincs/vaultspec-rag)   | The semantic search component for vault and code.          | Beta   |
+| vaultspec-dashboard                                           | The human-facing visual workspace for a Vaultspec project. | Beta   |
+| [vaultspec-a2a](https://github.com/nevenincs/vaultspec-a2a)   | Headless agent-to-agent orchestration.                     | Beta   |
 
 ## Documentation
 
