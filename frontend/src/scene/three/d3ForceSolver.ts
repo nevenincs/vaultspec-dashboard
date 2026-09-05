@@ -3,36 +3,30 @@
 // Why d3-force and not a GPGPU/FA2 solver: d3-force (Bostock, v3) is the most
 // battle-tested force-directed engine on the web. Its damped symplectic-Euler
 // integrator (which d3's docs loosely call "velocity Verlet") with alpha-annealing
-// converges deterministically, its quadtree/Barnes–Hut
-// many-body is O(N log N), and — critically for THIS field — every stability and
+// runs deterministically, and — critically for THIS field — every stability and
 // flicker control we need is first-class: deterministic phyllotaxis seeding (no
 // RNG divergence between reloads), a manually-drivable tick (`stop()` + `tick()`),
 // and `fx`/`fy` node pinning. The renderer owns the loop (render-on-demand); this
 // solver never runs d3's internal timer — we `stop()` it at construction and step
-// it ourselves, so the GPU idles to zero on settle.
+// it ourselves, so the GPU idles to zero on settle. Repulsion and contacts use
+// spatially accelerated kernels with mass consistent with d3's link force.
 //
-// FRONTIER FORCE COMBINATION (the recipe leading knowledge-graph viz converge on):
+// FORCE COMPOSITION:
 //   • forceLink     — Hooke spring at `linkDistance`, strength DEGREE-NORMALIZED
 //                     (1/min(deg) × a global multiplier) so hubs aren't yanked
 //                     around by their many edges — the single most important
 //                     stability lever for graphs with high-degree feature nodes.
-//   • forceManyBody — Barnes–Hut repulsion, bounded by `distanceMax` so repulsion
+//   • symmetricManyBody — spatial repulsion divided by the same degree-based mass
+//                     used by the links, bounded by `distanceMax` so repulsion
 //                     stays LOCAL and the quadtree is cheaper (it is the forceX/Y
 //                     gravity below — NOT distanceMax — that keeps disconnected
 //                     components from drifting apart; finite distanceMax alone would
 //                     let far components feel no repulsion and collapse together).
-//   • forceCollide  — circle non-overlap at the real node radius (+pad), the clean
-//                     "no two nodes touching" look; a soft constraint (strength<1,
-//                     1 iteration). collide is NOT alpha-scaled BY DESIGN: the layout
-//                     reaches rest by the loop FREEZING it at alphaMin (see tick()),
-//                     with sleeping nodes PINNED (not merely low-energy), rather than by
-//                     the force field relaxing to a true fixed point. This
-//                     freeze-at-alphaMin + pin-authoritative model is the accepted
-//                     stability design: the frozen layout IS authoritative. Alpha-annealing collide to
-//                     a true fixed point (Option A) is held in reserve behind one
-//                     recorded re-open trigger — if at-rest displacement or contact
-//                     micro-buzz recurs AFTER the energy valves are closed and the
-//                     guards are green.
+//   • massCollide   — soft circle non-overlap at the real node radius (+pad).
+//                     Contact uses degree-based mass too; radius controls geometry
+//                     only. Incompatible force masses can turn internal tension into
+//                     cluster propulsion. Contact is not alpha-scaled; pins enforce
+//                     rest when cooling stops, without claiming force equilibrium.
 //   • forceX/forceY(0) — gentle positional gravity toward the origin. Chosen over
 //                     forceCenter: forceX/Y is a per-node spring that both centres
 //                     AND keeps the layout compact, and it never fights the other
@@ -68,9 +62,7 @@
 // only awake nodes are free to integrate.
 
 import {
-  forceCollide,
   forceLink,
-  forceManyBody,
   forceSimulation,
   forceX,
   forceY,
@@ -81,6 +73,8 @@ import {
 } from "d3-force";
 
 import { controlNumber, simulationDefaults } from "./graphControlSchema";
+import { massCollide, withNodeMass } from "./d3ForceMass";
+import { symmetricManyBody } from "./symmetricManyBody";
 
 /** A simulation node: d3's earmarked fields plus the collision radius. */
 export interface D3Node extends SimulationNodeDatum {
@@ -108,7 +102,7 @@ export interface D3ForceParams {
   /** Max distance the charge is considered over; 0 = auto (scaled to graph size).
    *  A finite bound keeps the layout compact + stable and speeds the quadtree. */
   chargeDistanceMax: number;
-  /** Barnes–Hut accuracy criterion (lower = more accurate + slower). */
+  /** Symmetric spatial approximation criterion (lower = more accurate + slower). */
   chargeTheta: number;
   /** forceX/forceY(0) strength — gravity toward the origin (compactness + centre). */
   centerStrength: number;
@@ -211,6 +205,7 @@ export class D3ForceSolver {
   private readonly nodes: D3Node[];
   private readonly link: ForceLink<D3Node, D3Link>;
   private readonly degree: number[];
+  private readonly masses: number[];
   private readonly adjacency: number[][];
   private params: D3ForceParams;
 
@@ -282,6 +277,9 @@ export class D3ForceSolver {
       links.push({ source: e.source, target: e.target });
     }
 
+    // d3's link bias already uses endpoint degree as inertial mass. Charge and
+    // contact must share it, or internal forces can propel a whole cluster.
+    this.masses = this.degree.map((degree) => Math.max(1, degree));
     this.link = forceLink<D3Node, D3Link>(links)
       .id((n) => n.index ?? 0)
       .distance(params.linkDistance)
@@ -311,23 +309,22 @@ export class D3ForceSolver {
   private manyBody() {
     const p = this.params;
     const max = p.chargeDistanceMax > 0 ? p.chargeDistanceMax : this.autoDistanceMax();
-    return (
-      forceManyBody<D3Node>()
-        .strength(p.charge)
-        .theta(p.chargeTheta)
-        // Soften the close-range spike (collide already prevents overlap) so a near
-        // pair can't fling apart and start an oscillation.
-        .distanceMin(p.linkDistance * 0.25)
-        .distanceMax(max)
+    return withNodeMass(
+      // Evaluate distant cells mutually: one-sided tree estimates can impart
+      // net momentum even when every exact pair uses consistent mass.
+      symmetricManyBody(p.charge, p.linkDistance * 0.25, max, p.chargeTheta),
+      this.masses,
     );
   }
 
   private collide() {
     const p = this.params;
-    return forceCollide<D3Node>()
-      .radius((n) => n.radius + p.collidePadding)
-      .strength(p.collideStrength)
-      .iterations(p.collideIterations);
+    return massCollide(
+      this.masses,
+      p.collidePadding,
+      p.collideStrength,
+      p.collideIterations,
+    );
   }
 
   /** Bound repulsion to ~10× the link distance (the frontier guidance): big enough
@@ -445,11 +442,11 @@ export class D3ForceSolver {
    * Run the violent early ticks SYNCHRONOUSLY and off-screen so the first visible
    * frame is already near-equilibrium — the core of flicker-free init. The global
    * settle runs pure d3 (everything awake + unpinned) and sleeps the whole graph
-   * when it cools. Bounded by a tick cap AND a wall-clock budget so a large graph
-   * never janks the main thread (it reveals slightly less settled and finishes
-   * gently in the live loop). `startAlpha` defaults to a full cold start; a warm
-   * start (most nodes seeded from the prior layout) passes a lower value so the
-   * carried layout barely moves while new nodes settle in.
+   * when it cools. A tick cap and per-tick wall-clock checks bound synchronous work
+   * to the budget plus one tick; one dense force tick can exceed that budget.
+   * Remaining settling continues in the live loop. `startAlpha` defaults to a full
+   * cold start; a warm start (most nodes seeded from the prior layout) passes a
+   * lower value so carried nodes barely move while new nodes settle in.
    */
   prewarm(
     maxTicks = PREWARM_MAX_TICKS,
@@ -466,7 +463,7 @@ export class D3ForceSolver {
       this.tick();
       ticks++;
       if (this.awakeCount === 0) break; // fully settled → whole graph asleep
-      if (ticks % 16 === 0 && now() - start > budgetMs) break;
+      if (now() - start >= budgetMs) break;
     }
     return ticks;
   }
@@ -525,7 +522,7 @@ export class D3ForceSolver {
       this.tick(); // global mode: pinned survivors stay fixed, new nodes integrate
       ticks++;
       if (this.awakeCount === 0) break; // sleepAll fired at alphaMin → settled
-      if (ticks % 16 === 0 && now() - start > budgetMs) break;
+      if (now() - start >= budgetMs) break;
     }
     return ticks;
   }
@@ -535,13 +532,8 @@ export class D3ForceSolver {
   tick(): TickMetrics {
     const dragging = this.dragIndex >= 0;
 
-    // Global cool-down guarantee: once cooled and not interacting, the whole graph
-    // sleeps — a definite stop even if a soft collide would otherwise micro-buzz. This
-    // freeze-at-alphaMin stop is the accepted stability design, not a workaround: the
-    // frozen layout is authoritative,
-    // held still by pinning. Annealing collide so rest is a true fixed point (Option A)
-    // is reserved for the recorded re-open trigger — micro-buzz recurring here after the
-    // energy valves close.
+    // Cooling is a bounded stopping policy, not proof of force equilibrium.
+    // Pin the result so contacts and subsequent local drags cannot move sleepers.
     if (!dragging && this.sim.alpha() < this.params.alphaMin && this.awakeCount > 0) {
       // The cooling ramp can cross alphaMin before the explicit release near
       // the budget's end — the freeze then also retires the anneal bookkeeping
@@ -568,7 +560,7 @@ export class D3ForceSolver {
       // measured improvement STALL (the temperature-normalized displacement
       // trend stopped getting better — the layout was already converged), or
       // the hard cap. Only after release does alpha decay to the alphaMin
-      // freeze, so the frozen layout is always a MEASURED equilibrium.
+      // freeze. Calm, stall and the hard cap bound work without proving equilibrium.
       if (this.annealRemaining > 0 && !dragging) {
         this.annealRemaining--;
         this.sim.alphaTarget(ANNEAL_ALPHA * (this.annealRemaining / ANNEAL_MAX_TICKS));
@@ -624,29 +616,31 @@ export class D3ForceSolver {
     // within `wakeRadius` of the dragged node. A distant settled cluster is never
     // woken, however the drag connects to it — it stays pinned. (Post-release the
     // woken region just relaxes and sleeps; no new wakes are needed.)
-    if (dragging) {
-      const dn = this.nodes[this.dragIndex];
-      const cx = dn.x ?? 0;
-      const cy = dn.y ?? 0;
-      const r =
-        this.params.wakeRadius > 0
-          ? this.params.wakeRadius
-          : this.params.linkDistance * 7;
-      const r2 = r * r;
-      const wakeMove = this.params.wakeMove;
-      this.propagateWake(this.dragIndex, cx, cy, r2, wakeMove);
-      for (let i = 0; i < this.count; i++) {
-        if (this.awake[i] && i !== this.dragIndex) {
-          this.propagateWake(i, cx, cy, r2, wakeMove);
-        }
-      }
-    }
+    if (dragging) this.wakeDraggedNeighborhood();
 
     return {
       alpha: this.sim.alpha(),
       meanDisplacement: movers ? disp / movers : 0,
       awake: this.awakeCount,
     };
+  }
+
+  private wakeDraggedNeighborhood(): void {
+    const dn = this.nodes[this.dragIndex];
+    const cx = dn.x ?? 0;
+    const cy = dn.y ?? 0;
+    const r =
+      this.params.wakeRadius > 0
+        ? this.params.wakeRadius
+        : this.params.linkDistance * 7;
+    const r2 = r * r;
+    const wakeMove = this.params.wakeMove;
+    this.propagateWake(this.dragIndex, cx, cy, r2, wakeMove);
+    for (let i = 0; i < this.count; i++) {
+      if (this.awake[i] && i !== this.dragIndex) {
+        this.propagateWake(i, cx, cy, r2, wakeMove);
+      }
+    }
   }
 
   private propagateWake(
@@ -789,6 +783,15 @@ export class D3ForceSolver {
     if (this.dragIndex < 0) return;
     const i = this.dragIndex;
     const n = this.nodes[i];
+    // Pointer release can precede the next fixed step. Commit the accepted cursor
+    // target without integrating forces or retaining a pre-drag velocity.
+    n.x = n.fx ?? n.x;
+    n.y = n.fy ?? n.y;
+    n.vx = 0;
+    n.vy = 0;
+    // A sub-tick drag must wake the same nearby stretched links as a sampled drag.
+    // Use the original grab rest before resetting it to the release position.
+    this.wakeDraggedNeighborhood();
     n.fx = null;
     n.fy = null;
     this.restX[i] = n.x ?? 0; // measure further propagation from the release point

@@ -548,6 +548,9 @@ export abstract class ThreeFieldGpuResources extends ThreeFieldState {
   }
 
   protected disposeGraph(): void {
+    this.setRunning(false);
+    this.cancelInteraction();
+    this.simulationClock.reset();
     if (this.nodeMesh) {
       this.scene.remove(this.nodeMesh);
       this.nodeMesh.geometry.dispose();
@@ -584,6 +587,11 @@ export abstract class ThreeFieldGpuResources extends ThreeFieldState {
     this.cpuPositions = new Float32Array(0);
     this.simPositions = new Float32Array(0);
     this.displayEasing = false;
+    this.emphasisAnim = false;
+    this.dimTarget = new Float32Array(0);
+    this.fenceAlpha = 0;
+    this.fenceTargetAlpha = 0;
+    this.fenceTag = null;
     // SGR-005: the node set + positions just changed, so any cached pick is stale
     // — invalidate synchronously (a pick can run before the next frame clears it).
     this.pickCacheValid = false;

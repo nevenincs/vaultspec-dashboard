@@ -3,13 +3,14 @@ tags:
   - '#adr'
   - '#graph-simulation-stability'
 date: '2026-07-03'
-modified: '2026-07-12'
-body_hash: 'sha256:24c0d803f65fe93fcd7cccb2d4afc7b500ed6361f607dddf001e29594dfa6871'
+modified: '2026-09-05'
+body_hash: 'sha256:a707f9a496ac3e1fc9a9ea69e6b4055424c29338572df86a1ae6125e5c0cff55'
 related:
   - "[[2026-07-02-graph-implementation-review-adr]]"
   - "[[2026-07-02-graph-simulation-stability-audit]]"
   - '[[2026-06-29-graph-simulation-stability-research]]'
 ---
+
 # `graph-simulation-stability` adr: `convergence-gated anneal and persisted layout base` | (**status:** `accepted`)
 
 ## Problem Statement
@@ -200,3 +201,17 @@ render LOD is independent). A permanent settle-probe guard pins the
 edgeless-node held-phase jitter so the field can never regress to a coarse,
 non-smooth force estimate unnoticed (deterministic seeding makes the
 measurement exact).
+
+## Amendment (2026-09-05): consistent inertial mass and elapsed-time integration
+
+The owner requested a root-cause correction of active cluster drift. Force-isolation evidence is recorded in `2026-09-05-graph-simulation-stability-force-balance-reference`.
+
+Retain d3 integration and the existing degree-biased link force. Define each node's inertial mass as max(1, degree), the mass already implicit in that link force. Divide only each repulsion force's incremental velocity contribution by that mass. Replace radius-squared collision weighting with inverse-mass mobility; radius determines contact geometry only. Free pairs exchange equal-and-opposite mass-weighted impulses. Pinned coordinates have zero mobility and the free counterpart resolves contact. Use deterministic coincidence separation and a spatial grid with cell width equal to maximum contact diameter and storage bounded by node count. Contacts retain the strength, iteration and radius controls and remain independent of alpha.
+
+Replace one-sided Barnes-Hut evaluation with symmetric cell-cell repulsion. Approximate well-separated cell pairs together, applying equal-and-opposite total impulses and propagating accumulated per-cell impulses once to descendants. A bounded binary spatial tree needs no new dependency. Retain existing theta, distance softening and distance limit controls; cells crossing the finite-distance boundary descend rather than applying an inconsistent aggregate cutoff. Exact pair evaluation remains the diagnostic theta-zero path. Approximation can still change local force accuracy, but must preserve total impulse. No centroid correction, velocity drain, or stronger damping is a drift remedy.
+
+Reject equal-mass maximum-degree-normalized springs for this correction because they substantially weaken leaves attached to large hubs. Consistent degree mass preserves existing spring behavior while correcting the other forces; regular high-degree graphs may compact because repulsion acceleration is reduced. Reject keeping stock one-sided repulsion because measured residual net impulse remains after mass consistency is restored. Exact all-pairs production repulsion is rejected for quadratic cost; symmetric spatial approximation keeps the conservation property with bounded storage and typical spatial acceleration.
+
+Correct frame scheduling with an elapsed-time accumulator that consumes whole fixed steps, preserves fractions, permits zero ticks, bounds catch-up work, and resets on inactivity. Close independently observed lifecycle defects: clicks below the existing drag threshold are energy-neutral, frozen state prevents ticking and dragging, graph replacement cancels stale gestures, and empty data stops running.
+
+Rest-state authority, survivor-pinning, bounded anneal and prewarm, gentle retuning, and local wake contracts remain. No wire or scene command change is needed. Existing damping and cooling defaults remain unchanged. Earlier language describing a guaranteed measured equilibrium is narrowed: calm/stall/cap termination is a bounded stopping policy, not proof of force equilibrium. Explicit restart may rearrange a layout. Verify mass-weighted momentum without cooling, contacts and pins, approximation accuracy, sparse and dense graph cost, frame-rate independence, and existing lifecycle guards.

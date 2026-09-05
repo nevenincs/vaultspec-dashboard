@@ -1,6 +1,11 @@
 import { nodeWorldRadius } from "../appearance";
 import { uiScale } from "../uiScale";
-import { PICK_RADIUS_PX, PINCH_ZOOM_SENSITIVITY, ZOOM_STEP_WHEEL } from "./config";
+import {
+  NODE_DRAG_THRESHOLD_PX,
+  PICK_RADIUS_PX,
+  PINCH_ZOOM_SENSITIVITY,
+  ZOOM_STEP_WHEEL,
+} from "./config";
 import { ThreeFieldViewport } from "./viewport";
 export class ThreeFieldInteraction extends ThreeFieldViewport {
   // --- picking + interaction ----------------------------------------------
@@ -77,7 +82,8 @@ export class ThreeFieldInteraction extends ThreeFieldViewport {
   }
 
   protected startNodeDrag(index: number, sx: number, sy: number): void {
-    if (!this.solver) return;
+    if (this.frozen || !this.solver) return;
+    this.pendingDragIndex = -1;
     this.dragNodeIndex = index;
     this.dragActive = true;
     // No global re-energise: the solver pins the grabbed node and wakes only its
@@ -85,18 +91,50 @@ export class ThreeFieldInteraction extends ThreeFieldViewport {
     // settled node stays pinned, so distant clusters do not move.
     this.setRunning(true);
     const w = this.screenToWorld(sx, sy);
-    this.solver.setDrag(index, w.x, w.y);
+    this.solver.setDrag(index, w.x + this.dragOffset.x, w.y + this.dragOffset.y);
     this.wake();
   }
 
   protected endNodeDrag(): void {
-    if (this.dragNodeIndex < 0) return;
-    this.solver?.clearDrag();
-    this.dragNodeIndex = -1;
-    this.dragActive = false;
+    if (!this.releaseNodeDrag()) return;
     // Keep ticking; the released neighbourhood re-settles via the solver, then sleeps.
     this.setRunning(true);
     this.wake();
+  }
+
+  private releaseNodeDrag(): boolean {
+    this.pendingDragIndex = -1;
+    this.dragOffset = { x: 0, y: 0 };
+    if (this.dragNodeIndex < 0) return false;
+    this.solver?.clearDrag();
+    const position = this.solver?.position(this.dragNodeIndex);
+    if (position) {
+      const b = this.dragNodeIndex * 4;
+      this.simPositions[b] = this.cpuPositions[b] = position.x;
+      this.simPositions[b + 1] = this.cpuPositions[b + 1] = position.y;
+      this.pickCacheValid = false;
+      this.needsRender = true;
+      this.uploadPositions();
+    }
+    this.dragNodeIndex = -1;
+    this.dragActive = false;
+    return true;
+  }
+
+  /** Cancel without starting a settle: disposal and freeze own the running state. */
+  protected cancelInteraction(): void {
+    this.releaseNodeDrag();
+    this.dragging = false;
+    this.dragMoved = false;
+    this.touchGesture = false;
+    this.lastTouchCentroid = null;
+    this.lastTouchDist = 0;
+    const gesture = this.pointerGesture;
+    this.pointerGesture = null;
+    if (gesture?.element.hasPointerCapture(gesture.id)) {
+      gesture.element.releasePointerCapture(gesture.id);
+    }
+    this.setCursor("default");
   }
 
   protected setCursor(c: string): void {
@@ -140,18 +178,32 @@ export class ThreeFieldInteraction extends ThreeFieldViewport {
     );
     el.addEventListener("pointerdown", (ev: PointerEvent) => {
       // A two-finger touch gesture owns pan/zoom; ignore the per-finger pointer stream.
-      if (this.touchGesture) return;
+      if (this.touchGesture || this.pointerGesture) return;
       this.dragMoved = false;
       this.lastX = ev.clientX;
       this.lastY = ev.clientY;
+      this.pointerGesture = {
+        id: ev.pointerId,
+        element: el,
+        startX: ev.clientX,
+        startY: ev.clientY,
+      };
       el.setPointerCapture(ev.pointerId);
       const [sx, sy] = this.eventToScreen(ev);
       const id = ev.button === 0 ? this.pickNodeAtScreen(sx, sy) : null;
       const i = id ? this.idToIndex.get(id) : undefined;
       if (i !== undefined) {
-        // Grab a node — direct manipulation; the camera does not pan.
-        this.startNodeDrag(i, sx, sy);
-        this.setCursor("grabbing");
+        // A press remains energy-neutral until it travels beyond click tolerance.
+        // Keep the grabbed point relative to the drawn node, avoiding a center snap.
+        if (!this.frozen) {
+          const w = this.screenToWorld(sx, sy);
+          this.pendingDragIndex = i;
+          this.dragOffset = {
+            x: this.cpuPositions[i * 4] - w.x,
+            y: this.cpuPositions[i * 4 + 1] - w.y,
+          };
+          this.setCursor("grab");
+        }
       } else {
         this.dragging = true; // camera pan on empty canvas
         this.setCursor("grabbing");
@@ -159,18 +211,37 @@ export class ThreeFieldInteraction extends ThreeFieldViewport {
     });
     el.addEventListener("pointermove", (ev: PointerEvent) => {
       if (this.touchGesture) return; // two-finger gesture owns the camera
+      const gesture = this.pointerGesture;
+      if (gesture && gesture.id !== ev.pointerId) return;
       const [sx, sy] = this.eventToScreen(ev);
+      if (gesture) {
+        const dx = ev.clientX - gesture.startX;
+        const dy = ev.clientY - gesture.startY;
+        if (dx * dx + dy * dy >= (NODE_DRAG_THRESHOLD_PX * uiScale()) ** 2) {
+          this.dragMoved = true;
+        }
+      }
+      if (this.pendingDragIndex >= 0) {
+        if (this.dragMoved) {
+          this.startNodeDrag(this.pendingDragIndex, sx, sy);
+          this.setCursor("grabbing");
+        }
+        return;
+      }
       if (this.dragNodeIndex >= 0) {
-        this.dragMoved = true;
+        if (this.frozen) return;
         const w = this.screenToWorld(sx, sy);
-        this.solver?.setDrag(this.dragNodeIndex, w.x, w.y);
+        this.solver?.setDrag(
+          this.dragNodeIndex,
+          w.x + this.dragOffset.x,
+          w.y + this.dragOffset.y,
+        );
         this.wake();
         return;
       }
       if (this.dragging) {
         const dx = ev.clientX - this.lastX;
         const dy = ev.clientY - this.lastY;
-        if (Math.abs(dx) + Math.abs(dy) > 2) this.dragMoved = true;
         this.lastX = ev.clientX;
         this.lastY = ev.clientY;
         // A camera pan is manual navigation: disengage autoframe so it does not yank the
@@ -189,24 +260,47 @@ export class ThreeFieldInteraction extends ThreeFieldViewport {
     });
     const end = (ev: PointerEvent) => {
       this.dragging = false;
+      this.pointerGesture = null;
       if (el.hasPointerCapture(ev.pointerId)) el.releasePointerCapture(ev.pointerId);
     };
     el.addEventListener("pointerup", (ev: PointerEvent) => {
-      const draggedNode = this.dragNodeIndex >= 0;
+      if (this.pointerGesture?.id !== ev.pointerId) return;
+      if (this.dragNodeIndex >= 0 && !this.frozen) {
+        // The release event can carry a newer endpoint than the last pointermove.
+        const [sx, sy] = this.eventToScreen(ev);
+        const w = this.screenToWorld(sx, sy);
+        this.solver?.setDrag(
+          this.dragNodeIndex,
+          w.x + this.dragOffset.x,
+          w.y + this.dragOffset.y,
+        );
+      }
+      const draggedId = this.nodes[this.dragNodeIndex]?.id;
       const wasDrag = this.dragMoved;
       this.endNodeDrag();
       end(ev);
       this.setCursor("default");
       if (ev.button !== 0) return;
       // A click (no movement) selects; a node drag also selects the grabbed node.
-      if (!wasDrag || draggedNode) {
+      if (!wasDrag || draggedId !== undefined) {
         const [sx, sy] = this.eventToScreen(ev);
-        this.controller?.emit({ kind: "select", id: this.pickNodeAtScreen(sx, sy) });
+        this.controller?.emit({
+          kind: "select",
+          id: draggedId ?? this.pickNodeAtScreen(sx, sy),
+        });
       }
     });
     el.addEventListener("pointercancel", (ev: PointerEvent) => {
+      if (this.pointerGesture?.id !== ev.pointerId) return;
       this.endNodeDrag();
       end(ev);
+      this.setCursor("default");
+    });
+    el.addEventListener("lostpointercapture", (ev: PointerEvent) => {
+      if (this.pointerGesture?.id !== ev.pointerId) return;
+      this.endNodeDrag();
+      end(ev);
+      this.setCursor("default");
     });
     el.addEventListener("dblclick", (ev: MouseEvent) => {
       const [sx, sy] = this.eventToScreen(ev);
@@ -239,9 +333,9 @@ export class ThreeFieldInteraction extends ThreeFieldViewport {
       (ev: TouchEvent) => {
         if (ev.touches.length !== 2) return;
         ev.preventDefault();
-        this.touchGesture = true;
-        this.dragging = false; // cancel any single-finger pan already begun
         this.endNodeDrag();
+        this.cancelInteraction();
+        this.touchGesture = true;
         this.lastTouchCentroid = this.touchCentroid(ev.touches);
         this.lastTouchDist = this.touchDistance(ev.touches);
       },

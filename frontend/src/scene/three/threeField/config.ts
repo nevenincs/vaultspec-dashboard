@@ -8,6 +8,8 @@ import { controlNumber } from "../graphControlSchema";
 // a duplicate local const (the exact drift the registry exists to kill). Same values,
 // single source of truth.
 export const PICK_RADIUS_PX = controlNumber("pickRadiusPx");
+// Pointer travel before a click becomes a node drag; screen px, UI-scaled at use.
+export const NODE_DRAG_THRESHOLD_PX = controlNumber("dragThresholdPx");
 /** Gentle restart alpha for a warm-started (mostly-carried-over) layout — low so
  *  persistent nodes barely move while new nodes settle in (object constancy). */
 export const WARM_START_ALPHA = controlNumber("warmStartAlpha");

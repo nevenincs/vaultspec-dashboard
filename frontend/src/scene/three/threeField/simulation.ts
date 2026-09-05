@@ -16,8 +16,6 @@ import {
   NODE_RECEDE_SELECT,
   PERF_DEGRADE_MS,
   PERF_RESTORE_MS,
-  SIM_MAX_CATCHUP_TICKS,
-  SIM_TICK_MS,
 } from "./config";
 import { forceChangeFraction, prefersReducedMotion } from "./geometry";
 import { ThreeFieldData } from "./data";
@@ -347,10 +345,11 @@ export abstract class ThreeFieldSimulation extends ThreeFieldData {
    *  per frame) so the chrome's play/pause control mirrors the sim's own truth —
    *  including the auto-flip back to "play" when the cooling schedule settles. */
   protected setRunning(next: boolean): void {
+    next = next && !this.frozen && this.solver !== null;
     if (this.running === next) return;
     this.running = next;
-    // Fresh run → fresh accumulator epoch, so idle time never counts as catch-up.
-    if (next) this.lastSimTs = 0;
+    // Neither idle time nor a partial step crosses a pause or graph replacement.
+    this.simulationClock.reset();
     this.controller?.emit({ kind: "sim-state", running: next });
   }
 
@@ -360,7 +359,7 @@ export abstract class ThreeFieldSimulation extends ThreeFieldData {
     this.raf = requestAnimationFrame(this.frame);
   }
 
-  protected frame = (): void => {
+  protected frame = (now: number): void => {
     this.scheduled = false;
     let dirty = this.needsRender;
     this.needsRender = false;
@@ -377,13 +376,7 @@ export abstract class ThreeFieldSimulation extends ThreeFieldData {
       // bounded catch-up ticks so the anneal/stall budgets and the felt settle
       // duration stop depending on the frame rate; the catch-up cap keeps a
       // pathological stall from spiraling the CPU.
-      const now = performance.now();
-      const elapsed = this.lastSimTs > 0 ? now - this.lastSimTs : SIM_TICK_MS;
-      this.lastSimTs = now;
-      const ticks = Math.max(
-        1,
-        Math.min(SIM_MAX_CATCHUP_TICKS, Math.round(elapsed / SIM_TICK_MS)),
-      );
+      const ticks = this.simulationClock.consume(now);
       for (let t = 0; t < ticks; t++) {
         this.solver.tick();
         if (!this.dragActive && this.solver.isSettled()) break;

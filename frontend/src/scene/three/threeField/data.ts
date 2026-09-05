@@ -120,6 +120,7 @@ export abstract class ThreeFieldData extends ThreeFieldGpuResources {
         // WARM_ALPHA + woke every node, re-exploding a settled layout on every toggle.
         this.frozen = cmd.frozen;
         if (cmd.frozen) {
+          this.cancelInteraction();
           this.setRunning(false);
         } else if (this.solver && !this.solver.isSettled()) {
           this.setRunning(true);

@@ -218,7 +218,11 @@ export abstract class ThreeFieldViewport extends ThreeFieldOverlay {
   /** True while the user is directly driving the camera/a node — autoframe never fights it. */
   protected isUserInteracting(): boolean {
     return (
-      this.dragging || this.dragNodeIndex >= 0 || this.touchGesture || this.dragActive
+      this.pointerGesture !== null ||
+      this.dragging ||
+      this.dragNodeIndex >= 0 ||
+      this.touchGesture ||
+      this.dragActive
     );
   }
 

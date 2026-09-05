@@ -18,6 +18,7 @@ import { D3ForceSolver, D3_FORCE_DEFAULTS, type D3ForceParams } from "../d3Force
 import { defaultPositionCache } from "../../positionCache";
 import { labelTextStyle } from "../labelStyle";
 import { type GlyphAtlas } from "../glyphAtlas";
+import { SimulationClock } from "./simulationClock";
 // ThreeField — a parallel three.js implementation of the SceneFieldRenderer seam,
 // an alternative to CosmosField. 2D orthographic. Node positions are computed on
 // the CPU by D3ForceSolver (d3-force) and mirrored into a small RGBA-float texture
@@ -139,7 +140,7 @@ export abstract class ThreeFieldState {
 
   protected displayEasing = false;
 
-  protected lastSimTs = 0;
+  protected readonly simulationClock = new SimulationClock();
 
   // interaction state
   protected hoveredId: string | null = null;
@@ -242,6 +243,17 @@ export abstract class ThreeFieldState {
   protected dragNodeIndex = -1;
 
   protected dragActive = false;
+
+  protected pendingDragIndex = -1;
+
+  protected dragOffset = { x: 0, y: 0 };
+
+  protected pointerGesture: {
+    id: number;
+    element: HTMLElement;
+    startX: number;
+    startY: number;
+  } | null = null;
 
   // Two-finger touch gesture (trackpad/touch QoL): while two fingers are down the
   // pointer-event pan is suppressed and the centroid drives pan + the spread drives
@@ -433,6 +445,7 @@ export abstract class ThreeFieldState {
   protected abstract eventToScreen(ev: MouseEvent): [number, number];
   protected abstract startNodeDrag(index: number, sx: number, sy: number): void;
   protected abstract endNodeDrag(): void;
+  protected abstract cancelInteraction(): void;
   protected abstract setCursor(c: string): void;
   protected abstract attachInteraction(el: HTMLElement): void;
 }
