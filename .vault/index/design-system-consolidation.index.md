@@ -6,7 +6,7 @@ tags:
 date: '2026-09-05'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:fa25cc7e1abc6345ed5d3af1aa450567b43b07b6466bd26630ca9d8e971dfc17'
+body_hash: 'sha256:6d120fce0cd25d68ae87d2083cfeae1b9b798d0a35cb71ad869fc46e2fff0c86'
 related:
   - '[[2026-09-05-design-system-consolidation-W01-P01-S01]]'
   - '[[2026-09-05-design-system-consolidation-W01-P01-S04]]'
@@ -29,6 +29,7 @@ related:
   - '[[2026-09-05-design-system-consolidation-W01-P01-S179]]'
   - '[[2026-09-05-design-system-consolidation-W01-P02-S06]]'
   - '[[2026-09-05-design-system-consolidation-W01-P02-S07]]'
+  - '[[2026-09-05-design-system-consolidation-W01-P02-S08]]'
   - '[[2026-09-05-design-system-consolidation-adr]]'
   - '[[2026-09-05-design-system-consolidation-horizontal-polish-research]]'
   - '[[2026-09-05-design-system-consolidation-plan]]'
@@ -38,6 +39,7 @@ related:
   - '[[2026-09-06-design-system-consolidation-s05-campaign-invariants-review-audit]]'
   - '[[2026-09-06-design-system-consolidation-s06-bounded-scanner-review-audit]]'
   - '[[2026-09-06-design-system-consolidation-s07-scanner-fixtures-review-audit]]'
+  - '[[2026-09-06-design-system-consolidation-s08-scanner-test-review-audit]]'
   - '[[2026-09-06-design-system-consolidation-s164-baseline-decision-audit]]'
   - '[[2026-09-06-design-system-consolidation-s165-classification-review-audit]]'
   - '[[2026-09-06-design-system-consolidation-s166-classification-review-audit]]'
@@ -73,6 +75,7 @@ Auto-generated index of all documents tagged with `#design-system-consolidation`
 - `2026-09-06-design-system-consolidation-s05-campaign-invariants-review-audit` - `design-system-consolidation` audit: `S05 campaign invariants review`
 - `2026-09-06-design-system-consolidation-s06-bounded-scanner-review-audit` - `design-system-consolidation` audit: `s06 bounded scanner review`
 - `2026-09-06-design-system-consolidation-s07-scanner-fixtures-review-audit` - `design-system-consolidation` audit: `s07 scanner fixtures review`
+- `2026-09-06-design-system-consolidation-s08-scanner-test-review-audit` - `design-system-consolidation` audit: `s08 scanner test review`
 - `2026-09-06-design-system-consolidation-s164-baseline-decision-audit` - `design-system-consolidation` audit: `S164 executable-control baseline decision`
 - `2026-09-06-design-system-consolidation-s165-classification-review-audit` - `design-system-consolidation` audit: `S165 ordinary field classification review`
 - `2026-09-06-design-system-consolidation-s166-classification-review-audit` - `design-system-consolidation` audit: `S166 option and menu classification review`
@@ -113,6 +116,7 @@ Auto-generated index of all documents tagged with `#design-system-consolidation`
 - `2026-09-05-design-system-consolidation-W01-P01-S179` - Capture immutable pre-execution hashes and preimages for all existing dirty and clean scene sources plus the SceneController contract
 - `2026-09-05-design-system-consolidation-W01-P02-S06` - Implement the bounded native-control, arbitrary-value, kit-import, layer-direction, facade, and ledger-consistency scanner
 - `2026-09-05-design-system-consolidation-W01-P02-S07` - Add valid and invalid scanner fixtures for classified seams, missing entries, stale entries, deep imports, store-to-kit imports, and compatibility facades
+- `2026-09-05-design-system-consolidation-W01-P02-S08` - Add focused scanner tests covering all ledger and ownership failure modes
 
 ### plan
 

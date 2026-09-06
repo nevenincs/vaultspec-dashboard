@@ -36,6 +36,7 @@ export interface DesignSystemScanOptions {
   readonly frontendRoot?: string;
   readonly ledgerModule?: object;
   readonly checkSceneFingerprint?: boolean;
+  readonly sceneBaseline?: object;
   readonly duplicateSiteBindings?: readonly (readonly [
     path: string,
     owner: string,

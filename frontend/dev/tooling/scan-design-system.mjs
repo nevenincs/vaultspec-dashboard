@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { Buffer } from "node:buffer";
+import { createHash } from "node:crypto";
 import {
   readFileSync,
   readdirSync,
@@ -10,7 +11,6 @@ import {
 } from "node:fs";
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import process from "node:process";
-import { spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import ts from "typescript";
@@ -22,8 +22,6 @@ const LIMITS = Object.freeze({
   files: 5_000,
   fileBytes: 2 * 1024 * 1024,
   findings: 50_000,
-  gitBytes: 16 * 1024 * 1024,
-  gitTimeoutMs: 15_000,
   snippetChars: 180,
 });
 
@@ -1256,44 +1254,99 @@ function validateLedger(
   };
 }
 
-function verifySceneFingerprint(frontendRoot, add) {
+function verifySceneFingerprint(frontendRoot, add, suppliedBaseline) {
   const baselinePath = resolve(
     frontendRoot,
     "dev/design-system/scene-freeze-baseline.json",
   );
-  const baseline = JSON.parse(readFileSync(baselinePath, "utf8"));
-  const repositoryRoot = dirname(frontendRoot);
-  const sceneDiff = spawnSync("git", ["diff", "--", "frontend/src/scene"], {
-    cwd: repositoryRoot,
-    encoding: "buffer",
-    maxBuffer: LIMITS.gitBytes,
-    timeout: LIMITS.gitTimeoutMs,
-  });
-  if (sceneDiff.error || sceneDiff.status !== 0)
-    throw new Error("Could not read the frozen scene diff.");
-  const fingerprint = spawnSync("git", ["hash-object", "--stdin"], {
-    cwd: repositoryRoot,
-    input: sceneDiff.stdout,
-    encoding: "utf8",
-    maxBuffer: LIMITS.gitBytes,
-    timeout: LIMITS.gitTimeoutMs,
-  });
-  if (fingerprint.error || fingerprint.status !== 0)
-    throw new Error("Could not fingerprint the frozen scene diff.");
-  const actual = fingerprint.stdout.trim();
-  if (
-    baseline.sceneDiffFingerprint?.algorithm !== "git-blob-sha1" ||
-    actual !== baseline.sceneDiffFingerprint?.value
-  ) {
+  const baseline =
+    suppliedBaseline ?? JSON.parse(readFileSync(baselinePath, "utf8"));
+  const provenance = baseline?.sceneDiffFingerprint?.value;
+  const validHeader =
+    baseline?.schema === "vaultspec.design-system.scene-freeze-baseline.v1" &&
+    baseline?.hashAlgorithm === "sha256" &&
+    baseline?.preimageEncoding === "base64" &&
+    baseline?.sourceScope?.root === "frontend/src/scene" &&
+    JSON.stringify(baseline?.sourceScope?.extensions) ===
+      JSON.stringify([".ts", ".tsx"]) &&
+    baseline?.sourceScope?.includesTests === true &&
+    baseline?.sceneDiffFingerprint?.algorithm === "git-blob-sha1" &&
+    typeof provenance === "string" &&
+    Array.isArray(baseline?.files);
+  if (!validHeader) {
     add(
       "scene-freeze-drift",
-      "frontend/src/scene",
+      "frontend/dev/design-system/scene-freeze-baseline.json",
       1,
       1,
-      `expected ${baseline.sceneDiffFingerprint?.value ?? "missing"}, found ${actual}`,
+      "scene freeze baseline has an invalid or unsupported schema",
     );
+    return typeof provenance === "string" ? provenance : null;
   }
-  return actual;
+
+  const sceneRoot = resolve(frontendRoot, "src/scene");
+  const currentFiles = collectFiles(
+    sceneRoot,
+    (file) => baseline.sourceScope.extensions.includes(extname(file)),
+    frontendRoot,
+  ).sort(compareText);
+  const currentByPath = new Map(
+    currentFiles.map((file) => [repositoryPath(frontendRoot, file), file]),
+  );
+  const expectedByPath = new Map();
+  for (const entry of baseline.files) {
+    const path = entry?.path;
+    const worktree = entry?.worktree;
+    if (
+      typeof path !== "string" ||
+      expectedByPath.has(path) ||
+      !path.startsWith("frontend/src/scene/") ||
+      worktree === null ||
+      typeof worktree?.byteLength !== "number" ||
+      typeof worktree?.sha256 !== "string" ||
+      typeof worktree?.preimageBase64 !== "string"
+    ) {
+      add(
+        "scene-freeze-drift",
+        "frontend/dev/design-system/scene-freeze-baseline.json",
+        1,
+        1,
+        `invalid worktree preimage entry for ${String(path ?? "missing path")}`,
+      );
+      continue;
+    }
+    expectedByPath.set(path, worktree);
+  }
+
+  for (const [path, worktree] of expectedByPath) {
+    const file = currentByPath.get(path);
+    if (file === undefined) {
+      add("scene-freeze-drift", path, 1, 1, "frozen scene file is missing");
+      continue;
+    }
+    const bytes = readFileSync(file);
+    const sha256 = createHash("sha256").update(bytes).digest("hex");
+    if (
+      bytes.length !== worktree.byteLength ||
+      sha256 !== worktree.sha256 ||
+      bytes.toString("base64") !== worktree.preimageBase64
+    ) {
+      add(
+        "scene-freeze-drift",
+        path,
+        1,
+        1,
+        `expected frozen worktree sha256 ${worktree.sha256}, found ${sha256}`,
+      );
+    }
+  }
+  for (const path of currentByPath.keys()) {
+    if (!expectedByPath.has(path)) {
+      add("scene-freeze-drift", path, 1, 1, "unexpected scene source file");
+    }
+  }
+
+  return provenance;
 }
 
 export async function scanDesignSystem(options = {}) {
@@ -1339,7 +1392,7 @@ export async function scanDesignSystem(options = {}) {
   const sceneFingerprint =
     options.checkSceneFingerprint === false
       ? null
-      : verifySceneFingerprint(frontendRoot, add);
+      : verifySceneFingerprint(frontendRoot, add, options.sceneBaseline);
   findings.sort(
     (a, b) =>
       compareText(a.path, b.path) ||
