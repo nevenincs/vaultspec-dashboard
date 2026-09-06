@@ -5,12 +5,12 @@ tags:
 date: '2026-09-04'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:98371584f2dee8867b2cf8b34358b6282ab48df595c9f4268ecb1ff51133f09c'
+body_hash: 'sha256:a402dfae9c4d115c8f16f79dfb26d407a45e07e0abe42bbc391ab62fe3c1dc0e'
 related:
   - "[[2026-09-04-test-isolation-cleanup-research]]"
 ---
 
-# `test-isolation-cleanup` adr: `an awaited global unmount and async-task barrier` | (**status:** `accepted`)
+# `test-isolation-cleanup` adr: `a global unmount barrier with runner-owned window teardown` | (**status:** `accepted`)
 
 ## Problem Statement
 
@@ -33,6 +33,12 @@ final microtasks to escape the owning test. The suite is already file-serial
 against one mutable engine, so the former parallel-sibling justification and the
 configured four-worker claim do not describe the runtime that actually executes.
 
+Implementation evidence in `2026-09-04-test-isolation-cleanup-research`
+disproved awaited window abort as a safe per-test settlement mechanism:
+window-wide abort is destructive environment teardown. The harness must therefore
+stop owning window destruction between tests rather than suppress, retry, or
+normalize the diagnostics it creates.
+
 ## Considerations
 
 - Teardown must be a property of the harness, not of author memory: a per-suite
@@ -41,9 +47,9 @@ configured four-worker claim do not describe the runtime that actually executes.
   here may introduce a stub, a mock, or a retry.
 - 271 of 499 files run in the node environment and never render. Whatever is
   installed globally has to be inert there.
-- `sequence.hooks` resolves to `"stack"`, so hook ordering against the awaited
-  happy-dom abort in the live-engine setup file is a real constraint, not a
-  detail.
+- `sequence.hooks` resolves to `"stack"`, so the global cleanup hook's ordering
+  against per-suite hooks is a real constraint, not a detail. No application
+  setup hook may compete with the runner for environment teardown.
 - Enabling teardown may unmask suites that pass today only because a previous
   test's component is still mounted. Those are pre-existing defects, and the
   cost of triaging them is part of the price of this decision.
@@ -77,14 +83,20 @@ For asynchronous happy-dom settlement:
 - **Keep `waitUntilComplete`, then await `abort`.** REJECTED. It repairs the
   dropped promise but preserves the one-second-per-test amplification and waits
   for work that the following abort is specifically responsible for cancelling.
-- **Remove the per-test barrier and rely only on Vitest's file teardown.**
-  REJECTED. Vitest correctly awaits abort at file end, but this permits async work
-  from one test to enter the next test in the same file.
+- **Remove the RTL per-test unmount barrier and rely only on Vitest's file
+  teardown.** REJECTED. File teardown cannot prevent a mounted component from
+  leaking state and subscriptions into the next test in the same file.
 - **Unmount, immediately abort pending happy-dom tasks, and await abort
-  completion.** CHOSEN. RTL cleanup runs first; the next hook calls and awaits
-  happy-dom's native asynchronous abort, which already cancels tasks and settles
-  their microtasks. This preserves the between-test barrier without the fixed
-  drain.
+  completion.** REJECTED AFTER EXECUTION. Awaiting makes the promise ordering
+  honest, but abort still destroys every active happy-dom request and response.
+  Full-suite timing evidence showed that repeated mid-file cancellation emits
+  synchronous AbortError stacks and socket resets even when tests, the worker, and
+  the engine remain healthy.
+- **Unmount between tests and reserve window abort for Vitest's file teardown.**
+  CHOSEN. RTL cleanup remains the global per-test barrier. Vitest retains sole
+  ownership of happy-dom environment destruction at file end, where it already
+  awaits native abort. Any async operation that must settle or cancel earlier is
+  repaired at the component, query, transport, or test that created it.
 - **Restore file parallelism to make `maxWorkers: 4` effective.** REJECTED. All
   files share one mutable live engine; file serialization remains the determinism
   boundary.
@@ -105,11 +117,10 @@ what report behavioral drift.
 A second setup file is added to the vitest `setupFiles` list, after the existing
 live-engine setup file. It registers one `afterEach` that calls RTL's `cleanup`.
 Because vitest runs `afterEach` hooks in reverse registration order, listing it
-second makes it run FIRST among the setup-file hooks — so components unmount
-before the live-engine file aborts the happy-dom window. Unmounting fires effect
-cleanup first; the adjacent barrier then owns cancellation and final settlement.
-The ordering constraint is recorded at both ends, in the setup file itself and
-beside the listing.
+second keeps the global component barrier after each suite's own teardown hooks.
+The live-engine setup file registers no competing afterEach lifecycle hook, and
+happy-dom environment teardown occurs only after file hooks complete under
+Vitest's ownership.
 
 The 93 suites that already call `cleanup()` keep their calls. Their per-suite
 hooks run before the global one, and `cleanup` is idempotent, so they are
@@ -123,15 +134,21 @@ is gone and the counter is back to zero. It is validated in both directions:
 removing the barrier makes it fail. Asserting only that a hook is registered
 would repeat the exact error the grounding investigation made once already.
 
-The live setup hook calls happy-dom's asynchronous `abort()` directly and awaits
-its returned promise. It does not call `waitUntilComplete`, race against a fixed
-timer, suppress abort rejection, or type the operation as returning `void`.
+The live setup file binds the shared clients and registers no happy-dom lifecycle
+hook. Per-test global teardown ends after RTL unmount. The helper and guard that
+encoded per-test window abort are removed with that ownership path; they are not
+retained as an unused compatibility surface.
 
-The abort operation is represented by a narrow typed helper whose contract is
-`abort(): Promise<void>`. A focused guard supplies a deferred abort promise and
-proves that the helper does not resolve before that promise; it also proves
-rejection propagation and proves that no timer-based wait is scheduled. The
-existing cross-test RTL cleanup guard remains unchanged.
+Vitest's happy-dom environment teardown is the sole owner of window-wide abort and
+awaits it at file end. A replacement behavioral guard spies on the live
+environment capability across two tests and proves no per-test hook calls it. The
+guard is demonstrated red by temporarily restoring the removed hook. The existing
+cross-test RTL cleanup guard continues to prove that component unmount still fires.
+
+If removal exposes work that survives component unmount and affects a later test,
+that work is traced to its actual component, query client, transport, or test
+owner, then awaited or cancelled there. A generic drain, window abort, diagnostic
+filter, retry, timeout increase, or exception swallow is not an admissible repair.
 
 Files remain serial against the one shared engine. Configuration states that
 truth directly: retain `fileParallelism: false` and set `maxWorkers: 1`, removing
@@ -151,10 +168,11 @@ The ordering constraint that is its only real cost is settled, not assumed: the
 reverse-order semantics are read from the installed runner, and the resulting
 sequence is the one teardown wants rather than merely a sequence that works.
 
-Awaiting native abort is the smallest complete settlement mechanism: it owns the
-same cancellation boundary Vitest uses at file teardown, keeps failures attached
-to the test that created the work, and removes the fixed pre-abort delay without
-introducing concurrency, retries, or a second lifecycle owner.
+One lifecycle owner per boundary is the smallest complete correction. RTL owns
+component unmount between tests; application and test code own the operations they
+start; Vitest owns environment destruction after the file. Reusing Vitest's
+file-destruction primitive inside every test collapses those boundaries and creates
+the very cross-test diagnostics the barrier is intended to prevent.
 
 ## Consequences
 
@@ -168,24 +186,34 @@ pre-existing defect surfaced, to be fixed on its merits or recorded with
 evidence — never by weakening an assertion, adding a retry, or exempting the
 file from the barrier without a stated reason.
 
-The residual risk is drift in the pinned dependencies: the barrier's correct
-placement depends on vitest's hook ordering staying `"stack"`. The guard suite
-covers the observable consequence (a component unmounted between cases) but not
-the ordering against the awaited happy-dom abort, which remains reasoned rather
-than asserted. A vitest major bump should re-read that default.
+The residual risk is drift in the pinned dependencies: the unmount barrier's
+placement depends on vitest's hook ordering staying `"stack"`, and file-end window
+destruction remains runner-owned. The guards cover both observable consequences:
+components are unmounted between cases and happy-dom abort is not called between
+them. A Vitest or happy-dom major bump should re-read both contracts.
 
 This record deliberately does not settle the act environment. The same missing
 global leaves `IS_REACT_ACT_ENVIRONMENT` unset repo-wide, which may be hiding
 un-acted state updates. That is a real second consequence of the same cause, with
 its own blast radius, and belongs in its own decision.
 
-Happy-dom teardown becomes deterministic and attributable: each test waits for
-cancellation completion, but no test pays a fixed one-second drain. Abort failures
-remain visible in the owning test instead of escaping as later `AbortError`,
-`ECONNRESET`, or unrelated-file noise.
+Per-test teardown becomes non-destructive: components unmount, but the harness does
+not tear down their entire window or sockets. File-end happy-dom teardown remains
+awaited by Vitest. The suite pays no fixed drain and no longer manufactures
+mid-file AbortError or ECONNRESET bursts.
 
 The suite remains deliberately serial. The performance gain comes from removing
-repeated dead time, not from introducing unsafe concurrency.
+repeated dead time and destructive cancellation, not from introducing unsafe
+concurrency.
+
+Completion requires both serialized full-suite runs to emit no synchronous
+`AbortError` stacks, no `socket hang up` or `ECONNRESET` diagnostics, no
+unhandled-error section, no worker exit, and no unexpected engine exit. A zero
+exit code does not waive these diagnostic conditions.
+
+Removing the global abort can reveal an operation whose owner failed to cancel or
+await it. That is an ownership defect to repair at its source, never evidence for
+restoring a window-wide per-test hook or suppressing its diagnostics.
 
 A deterministic pure-test failure is never classified as an engine-port failure
 merely because the engine also died during the run. Infrastructure classification

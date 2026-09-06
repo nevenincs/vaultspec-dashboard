@@ -5,7 +5,7 @@ tags:
 date: '2026-09-04'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:492473c52275ad61652864c74e86426e85086b5a24284e15c2cbf90402431103'
+body_hash: 'sha256:3f25d2023eee56532adfec0060c57173aef7500936d4806c89290c601ddb1060'
 related: []
 ---
 
@@ -133,9 +133,10 @@ during a later case or file.
 The fixed drain also scales with happy-dom test cases rather than files. The
 current frontend contains 234 happy-dom files and roughly 1,901 happy-dom cases,
 so the one-second race can add as much as 1,901 seconds of serial wait. Native
-abort already performs cancellation and microtask settlement, making the
-pre-abort timer redundant as both a correctness barrier and a performance
-mechanism.
+abort already performs cancellation and microtask settlement, so the pre-abort
+timer adds no settlement guarantee. This finding did not establish that
+window-wide abort itself was safe between tests; the timing run below disproved
+that hypothesis.
 
 ### The suite is file-serial despite its four-worker setting
 
@@ -153,6 +154,37 @@ state. The tolerant frontend adapter intentionally preserves the served optional
 identity: running carries port and process id, crashed may carry port only, and
 absent carries neither. A test that equates `available: false` with absent identity
 contradicts the wire contract.
+
+### Awaited window abort is destructive cancellation, not per-test settlement
+
+The first timing-enabled `S10` run disproved the awaited-abort hypothesis before
+the suite reached a verdict. It was stopped after 110.772 seconds with eight files
+and 84 tests passing, but its output already contained 111 `socket hang up` or
+`ECONNRESET` lines and 71 synchronous `AbortError` stacks. Every AbortError stack
+terminated at `abortHappyDOM` in the global `liveSetup` afterEach hook. The run
+reported no Vitest unhandled-error section, worker exit, or unexpected engine exit,
+so those process-level failure classes do not explain the observed burst.
+
+The installed happy-dom implementation establishes the mechanism. Its async-task
+manager invokes every registered task abort handler synchronously. The fetch abort
+handler marks the request and response aborted, destroys any live Node request and
+response with an `AbortError`, and cancels the response body. Awaiting the manager's
+promise waits for its cleanup microtasks; it does not make the socket destruction
+benign or convert the resulting network events into ordinary request completion.
+
+Vitest uses this same window-wide abort only while tearing down the happy-dom
+environment at file end. Calling it after every test therefore changes a file-end
+destruction primitive into repeated mid-file cancellation. The existing RTL cleanup
+hook already provides the per-test component-unmount boundary. Any asynchronous work
+that legitimately must finish or cancel after unmount has a narrower owner in the
+component, query client, transport, or test that created it; the timing run provides
+no evidence that a second window-wide lifecycle owner is safe between cases.
+
+Because the destructive diagnostics appeared without an unhandled-error section or
+process exit, exit status and process-level checks alone cannot prove the correction.
+Both serialized full-suite runs must also be free of synchronous `AbortError` stacks
+and `socket hang up` or `ECONNRESET` diagnostics, in addition to reporting no
+unhandled-error section, worker exit, or unexpected engine exit.
 
 ### Option space
 
@@ -207,8 +239,10 @@ with its own blast radius and belongs in its own record.
 - `frontend/vite.config.ts:117` — the vitest `test` block
 - `frontend/src/testing/liveSetup.ts:53` — the existing imported-`afterEach` teardown
 - `node_modules/happy-dom/lib/window/DetachedWindowAPI.js:50` — asynchronous window abort
-- `node_modules/happy-dom/lib/async-task-manager/AsyncTaskManager.js:269` — abort settlement
+- `node_modules/happy-dom/lib/async-task-manager/AsyncTaskManager.js:269` — synchronous task-abort dispatch and settlement
+- `node_modules/happy-dom/lib/fetch/Fetch.js:545` — request and response destruction during async-task abort
 - `node_modules/vitest/dist/chunks/index.1_nbEjJY.js:1164` — Vitest awaits happy-dom abort
+- `frontend/src/testing/happyDOMAbort.ts:10` — the per-test abort call reached by all 71 S10 AbortError stacks
 - `frontend/src/stores/server/systemPrograms.live.test.ts:82` — stale unavailable-identity assertion
 - `engine/crates/vaultspec-api/src/routes/stream.rs:52` — crashed-service identity contract
 - `frontend/src/app/chrome/useReducedMotion.test.tsx` — the single suite fixed in `55b5e7a41b`

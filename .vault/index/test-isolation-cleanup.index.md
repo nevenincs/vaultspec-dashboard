@@ -6,7 +6,7 @@ tags:
 date: '2026-09-04'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:0e6afa09c7f5805305a10678bc09178e0366adc51fcb4a754cd5d4b86a58ac4f'
+body_hash: 'sha256:1ae00b5585dc8a58f7230469e04a3efa41fb514efb1ae62556e48c9d28bf4d60'
 related:
   - '[[2026-09-04-test-isolation-cleanup-S01]]'
   - '[[2026-09-04-test-isolation-cleanup-S02]]'
@@ -36,7 +36,7 @@ Auto-generated index of all documents tagged with `#test-isolation-cleanup`.
 
 ### adr
 
-- `2026-09-04-test-isolation-cleanup-adr` - `test-isolation-cleanup` adr: `an awaited global unmount and async-task barrier` | (**status:** `accepted`)
+- `2026-09-04-test-isolation-cleanup-adr` - `test-isolation-cleanup` adr: `a global unmount barrier with runner-owned window teardown` | (**status:** `accepted`)
 
 ### audit
 
