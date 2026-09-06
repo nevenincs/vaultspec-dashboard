@@ -5,7 +5,7 @@ tags:
 date: '2026-09-06'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:a40e4b62909e46afdeeae0ab1ef22000dfd3919730e1439f4945c47f460f0ce2'
+body_hash: 'sha256:f4966365b5d2c3687146bdddc39ff255bb402683a629aa05e16dd13f2c08ea67'
 related:
   - "[[2026-08-01-a2a-agent-flow-adr]]"
   - "[[2026-08-01-agent-panel-shell-integration-adr]]"
@@ -1149,3 +1149,133 @@ Type: rolling review disposition. All eight HIGH and three MEDIUM findings from
 requirements are implemented without legacy or deprecated behavior. Per the
 rolling audit mandate, closure remains pending formal code re-review of the
 correction commit.
+## 2026-09-06 formal re-review of setup lifecycle correction
+
+Review target: `bdc0b45ce6ec7628058c91a340afc5707740eb7c`, exact parent
+`4c6883770d23ddad6b9b0652eddb79f72ab4b587`. Review covered the ten committed
+paths against the eight HIGH and three MEDIUM findings in `e2e70765`, the
+approved D4a/b and D9d-f correction in `86470e6c`, the current-only provider
+boundary, the production process runner and setup state machine, and the
+reported exact-commit validation. Concurrent graph-simulation, design-system,
+RAG configuration, lockfile, generated-local-storage, and performance work was
+excluded and preserved.
+
+### failed-child-stderr-crosses-closed-wire | high | open
+
+Type: wire minimization and no-legacy enforcement. `run_current_setup` converts
+any non-success child into `Err(capture.stderr.clone())`, then publishes that
+unvalidated producer stderr as the receipt's `evidence.validation` value. An
+exit-nonzero Core process can therefore serve arbitrary text, unrelated
+provider names, retired metadata, paths, or secrets through the polled job
+response. This directly contradicts D9d and the implementation record's claim
+that raw stdout and stderr never cross the wire. The passing projection tests
+cover successful or validator-rejected stdout and do not exercise nonzero
+stderr disclosure.
+
+Ownership: replace raw stderr/stdout evidence with a closed typed local failure
+kind and the digest of bounded producer bytes. Never place producer stream bytes
+in setup receipts. Add a real nonzero child discriminator whose stderr contains
+unknown and retired-looking metadata, and prove none of those bytes crosses the
+wire while the failure remains diagnosable by typed phase/cause and digest.
+
+### dangling-indirection-bypasses-target-confinement | high | open
+
+Type: target confinement and mutation admission. `declared_item_state` uses
+`Path::exists()` both to classify the declared item and while walking to its
+nearest existing ancestor. Rust's existence probe follows links and returns
+false for a dangling symbolic link. A dangling file link, directory link, or
+Windows reparse entry is therefore skipped as though no filesystem entry were
+present; the walk reaches a confined parent and returns authoritative missing
+state, which can authorize installation. The committed escape tests point links
+at live outside targets and do not discriminate this case. D9e requires an
+encountered indirection to be resolved and confined before mutation.
+
+Ownership: walk entries with `symlink_metadata` or an equivalent no-follow
+existence predicate. Treat every encountered link/reparse entry as an
+indirection requiring successful canonical resolution within the canonical
+target; unresolved, dangling, or escaping entries are disagreement and cannot
+authorize mutation. Add dangling file-link and directory-link cases and a
+Windows dangling junction/reparse case alongside the existing live-target
+controls, proving zero mutation admission.
+
+### shutdown-drop-does-not-prove-full-tree-settlement | high | open
+
+Type: process ownership and shutdown safety. The shutdown `select!` drops the
+active `run_bounded` future, publishes an indeterminate aggregate, and lets the
+task remove its own retained handle before `shutdown_jobs` can join it. In the
+pinned `command-group` 5.0.1 implementation, the Unix group builder establishes
+a process group but does not apply its builder `kill_on_drop` flag to the Tokio
+child, so dropping the future can leave the wrapper and descendants running.
+On Windows, closing the kill-on-close Job Object requests termination but this
+path still does not wait on the completion port to prove the job is empty. The
+explicit timeout/output paths call `kill().await` and are sound; the task-abort
+and server-shutdown paths are not the same terminate-and-reap path required by
+D4a. The only drop discriminator ran on this Windows host and checks heartbeat
+cessation, not the route/server shutdown composition or definitive group reap.
+
+Ownership: give the aggregate an explicit cancellation protocol that retains
+its group handle, terminates the group, awaits group-empty/reap confirmation,
+and only then settles and releases single-flight ownership. Do not depend on
+future drop for this guarantee. Cover Unix and Windows wrapper descendants and
+exercise actual route/server shutdown during Doctor, preview, and install,
+proving no surviving heartbeat and no overlapping retry. Keep the terminal
+result indeterminate whenever full-tree proof cannot be obtained.
+
+### malformed-preflight-cause-is-collapsed | medium | open
+
+Type: terminal classification. Timeout, output-cap, and runner termination
+causes now survive `preflight_failure`, but Doctor and preview validators are
+immediately converted with `.ok()`. Missing fields, malformed JSON, wrong
+identity, path escape, and coherent-but-disagreeing current facts all collapse
+to `preflight_evidence_disagreement`. D9f requires malformed evidence and other
+bounded failure causes to remain specifically identifiable; the correction
+therefore closes the original timeout/output examples but not the full typed
+preflight contract it claims.
+
+Ownership: preserve validator failures as a bounded closed error enum and emit
+the phase plus stable cause without producer text. Add Doctor and preview cases
+that distinguish malformed JSON, schema mismatch, target disagreement,
+canonical escape, and state disagreement while proving zero install spawn.
+
+### corrected-controls-and-validation-evidence | low | verified
+
+Type: positive controls and scope. Exact current Doctor predicates, including
+the narrow exit-2 clean-Core envelope, strict current manifest membership,
+canonical containment for resolvable existing/missing items, atomic hard-cap
+admission, safe-versus-force single-flight conflict, bounded typed successful
+install/Doctor projections and digests, the real project-locked Core five-shape
+matrix, and load-stable explicit timeout/output tests are present. The fixed
+operations remain core, claude, antigravity, and codex; no `all`, Gemini,
+profile, deprecated API, alias, translation, fallback, or compatibility path was
+introduced. The correction's ten paths are coherent and scoped; unrelated dirty
+work is outside the commit.
+
+Independent pinned-toolchain verification passed all 26 focused provisioning
+route tests serially, including the project-locked Core matrix: 26 passed, zero
+failed, in 138.67 seconds. `git diff --check` is clean. The implementation
+record accurately limits broader acceptance evidence to the reported checks and
+keeps the prior unrelated broad-suite failure assigned to its owner; a full
+repository test run is not claimed here.
+
+### setup-lifecycle-correction-formal-disposition | high | FAIL
+
+Type: formal implementation review disposition. Commit `bdc0b45c` closes the
+strict Doctor, successful-evidence projection, hard-cap, current Core matrix,
+safe/force concurrency, explicit timeout/reap, and process-test stability
+portions of the prior findings. The three HIGH defects above still permit open
+producer stderr on the current-only wire, mutation admission through dangling
+filesystem indirections, and server shutdown without cross-platform full-tree
+settlement. The MEDIUM finding records the remaining typed-cause loss. The
+correction is not review-passed. Resolve all four findings with discriminating
+production-path tests and obtain another formal review before acceptance.
+
+## Setup lifecycle re-review recommendations
+
+- Close every setup receipt to Dashboard-authored typed fields and digests; no
+  raw producer stdout or stderr may cross the wire.
+- Use no-follow filesystem entry detection so dangling and escaping links,
+  junctions, and reparse points can never establish authoritative missing state.
+- Replace drop-based aggregate cancellation with an explicit cross-platform
+  terminate-and-reap protocol retained through server shutdown.
+- Preserve closed validator causes through preflight and re-run the focused,
+  bounded-child, HTTP concurrency, lint, and project-locked Core gates.
