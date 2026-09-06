@@ -511,6 +511,224 @@ export const NATIVE_CONTROL_LEDGER = [
         "Remove the native input and store-provided field class recipe in the settings migration.",
     },
   },
+  {
+    source: {
+      path: "frontend/src/app/left/AddProjectDialog.tsx",
+      owner: "AddProjectDialogBody",
+      slot: "project-path-input",
+    },
+    element: "input",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/TextField.tsx",
+      name: "TextField",
+      status: "planned",
+    },
+    rationale: {
+      summary: "AddProjectDialog uses an ordinary single-line project-path field.",
+      equivalence:
+        "The field needs the planned TextField contract for a controlled value, accessible label, placeholder, disabled state, and focus treatment; path parsing remains dialog behavior.",
+      replacement:
+        "Compose TextField while retaining the monospaced presentation, spellcheck policy, debounced path resolution, Enter handling, and registration flow.",
+      deletion:
+        "Remove the dialog-owned native input and duplicated field-state classes during the project-path migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/left/CreateDocDialog.tsx",
+      owner: "DocumentStage",
+      slot: "document-title-input",
+    },
+    element: "input",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/TextField.tsx",
+      name: "TextField",
+      status: "planned",
+    },
+    rationale: {
+      summary: "DocumentStage uses an ordinary single-line document-title field.",
+      equivalence:
+        "The field needs the planned TextField contract for a controlled value, visible and accessible labeling, placeholder, and focus treatment.",
+      replacement:
+        "Compose TextField while retaining create-draft updates and the dialog-specific Enter-to-submit behavior.",
+      deletion:
+        "Remove the document-stage native input and duplicated field-state classes during the title-field migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/agent/ClarificationCard.tsx",
+      owner: "ClarificationCard",
+      slot: "choice-other-text-input",
+    },
+    element: "input",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/TextField.tsx",
+      name: "TextField",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "ClarificationCard uses an ordinary single-line field for a choice outside the offered options.",
+      equivalence:
+        "The field needs the planned TextField contract for a controlled bounded value, accessible label, placeholder, and focus treatment.",
+      replacement:
+        "Compose TextField while retaining choice-versus-free-text draft derivation, maximum length, and Enter submission semantics.",
+      deletion:
+        "Remove the choice fallback's native input and duplicated field-state classes during clarification migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/agent/ClarificationCard.tsx",
+      owner: "ClarificationCard",
+      slot: "free-text-input",
+    },
+    element: "input",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/TextField.tsx",
+      name: "TextField",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "ClarificationCard uses an ordinary single-line field for bounded text answers.",
+      equivalence:
+        "The field needs the planned TextField contract for a controlled bounded value, accessible label, placeholder, and focus treatment.",
+      replacement:
+        "Compose TextField while retaining the engine-required single-line answer contract, maximum length, draft updates, and submission gating.",
+      deletion:
+        "Remove the free-text answer's native input and duplicated field-state classes during clarification migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/viewer/PropertiesPopover.tsx",
+      owner: "PropertiesPopover",
+      slot: "document-name-input",
+    },
+    element: "input",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/TextField.tsx",
+      name: "TextField",
+      status: "planned",
+    },
+    rationale: {
+      summary: "PropertiesPopover uses an ordinary single-line document-name field.",
+      equivalence:
+        "The field needs the planned TextField contract for a controlled value, accessible label, spellcheck policy, compact sizing, and focus treatment.",
+      replacement:
+        "Compose TextField while retaining rename-draft updates, save eligibility, and the adjacent rename action.",
+      deletion:
+        "Remove the properties-owned native name input and duplicated field-state classes during property migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/viewer/PropertiesPopover.tsx",
+      owner: "PropertiesPopover",
+      slot: "document-date-input",
+    },
+    element: "input",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/TextField.tsx",
+      name: "TextField",
+      status: "planned",
+    },
+    rationale: {
+      summary: "PropertiesPopover uses an ordinary text field for date metadata.",
+      equivalence:
+        "The field is a controlled string input with accessible labeling, placeholder, numeric keyboard hint, spellcheck policy, compact sizing, and ordinary focus treatment rather than a native date picker.",
+      replacement:
+        "Compose TextField while retaining raw metadata updates, the numeric input mode, and the existing placeholder and labeling.",
+      deletion:
+        "Remove the properties-owned native date text input and duplicated field-state classes during property migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/authoring/ReviewStation.tsx",
+      owner: "RequestChangesComposer",
+      slot: "request-changes-comment",
+    },
+    element: "textarea",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/TextArea.tsx",
+      name: "TextArea",
+      status: "planned",
+    },
+    rationale: {
+      summary: "RequestChangesComposer uses an ordinary review-authoring textarea.",
+      equivalence:
+        "The field needs the planned TextArea contract for a controlled multiline value, visible labeling, focus treatment, resize policy, rows, autofocus, and validation relationships.",
+      replacement:
+        "Compose TextArea while retaining trimmed required-comment validation and Control-or-Command-plus-Enter submission.",
+      deletion:
+        "Remove the review composer's native textarea and duplicated field-state classes during review-authoring migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/viewer/CommentThreadPanel.tsx",
+      owner: "CommentRow",
+      slot: "edit-comment-textarea",
+    },
+    element: "textarea",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/TextArea.tsx",
+      name: "TextArea",
+      status: "planned",
+    },
+    rationale: {
+      summary: "CommentRow uses an ordinary textarea for editing a comment.",
+      equivalence:
+        "The field needs the planned TextArea contract for a controlled multiline value, accessible label, rows, vertical resize, and focus treatment.",
+      replacement:
+        "Compose TextArea while retaining edit-draft reset, trimmed save gating, cancellation, and comment mutation behavior.",
+      deletion:
+        "Remove the comment row's native edit textarea and duplicated field-state classes during comment-authoring migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/viewer/CommentThreadPanel.tsx",
+      owner: "ComposeBox",
+      slot: "new-comment-textarea",
+    },
+    element: "textarea",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/TextArea.tsx",
+      name: "TextArea",
+      status: "planned",
+    },
+    rationale: {
+      summary: "ComposeBox uses an ordinary textarea for new comments.",
+      equivalence:
+        "The field needs the planned TextArea contract for a controlled multiline value, accessible label, placeholder, rows, vertical resize, and focus treatment.",
+      replacement:
+        "Compose TextArea while retaining actor-readiness gating, trimmed submit behavior, anchor creation, and post-submit reset.",
+      deletion:
+        "Remove the comment compose box's native textarea and duplicated field-state classes during comment-authoring migration.",
+    },
+  },
 ] as const satisfies readonly NativeControlLedgerEntry[];
 export const RELATIVE_VALUE_LEDGER: readonly RelativeValueLedgerEntry[] = [];
 export const NAMING_DEBT_LEDGER: readonly NamingDebtLedgerEntry[] = [];
