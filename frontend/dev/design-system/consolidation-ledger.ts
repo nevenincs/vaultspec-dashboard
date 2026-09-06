@@ -4367,10 +4367,234 @@ export const VIEWER_RELATIVE_VALUE_LEDGER = [
   },
 ] as const satisfies readonly RelativeValueLedgerEntry[];
 
+export const PALETTE_AND_AGENT_RELATIVE_VALUE_LEDGER = [
+  {
+    source: {
+      path: "frontend/src/app/palette/DocumentSearchSurface.tsx",
+      owner: "DocumentSearchSurface",
+      slot: "search-overlay-viewport-geometry",
+    },
+    expression: "max-h-[calc(100vh-9rem)] w-[32rem] max-w-[calc(100vw-2rem)]",
+    units: ["vh", "rem", "vw"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-component",
+      path: "frontend/tokens/components.tokens.json",
+      name: "component.document-search.viewport-geometry",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "DocumentSearchSurface's height, nominal width, and compact guard form one reusable search-overlay geometry role.",
+      equivalence:
+        "The planned bindings preserve calc(100vh - 9rem), 32rem, and calc(100vw - 2rem) exactly.",
+      replacement:
+        "Generate the exact document-search viewport bindings and consume them together on the overlay panel.",
+      deletion:
+        "Remove all three arbitrary utilities only after direct component-role consumption.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/palette/SearchPaletteSurface.tsx",
+      owner: "SearchPaletteSurface",
+      slot: "expanded-result-column-width",
+    },
+    expression: "w-[22rem]",
+    units: ["rem"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-component",
+      path: "frontend/tokens/components.tokens.json",
+      name: "component.search-palette.result-column-width",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "The 22rem expanded result column is reusable split-pane geometry owned by SearchPaletteSurface.",
+      equivalence:
+        "The planned role preserves exactly 22rem and leaves the adjacent preview flexible.",
+      replacement: "Generate and consume the exact result-column width binding.",
+      deletion: "Remove w-[22rem] only after direct component-role consumption.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/palette/SearchPaletteSurface.tsx",
+      owner: "SearchPaletteSurface",
+      slot: "result-list-height-limit",
+    },
+    expression: "max-h-[28rem]",
+    units: ["rem"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-component",
+      path: "frontend/tokens/components.tokens.json",
+      name: "component.search-palette.result-region-max-height",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "SearchPaletteSurface's populated result list uses the shared 28rem result-region height limit.",
+      equivalence:
+        "The planned role preserves exactly 28rem for both populated and empty result regions.",
+      replacement:
+        "Generate and consume the exact search result-region max-height binding.",
+      deletion: "Remove max-h-[28rem] after direct component-role consumption.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/palette/SearchPaletteSurface.tsx",
+      owner: "SearchPaletteSurface",
+      slot: "empty-result-region-height-limit",
+    },
+    expression: "max-h-[28rem]",
+    units: ["rem"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-component",
+      path: "frontend/tokens/components.tokens.json",
+      name: "component.search-palette.result-region-max-height",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "The empty search result region shares the populated list's exact 28rem height limit.",
+      equivalence:
+        "The planned role preserves exactly 28rem and keeps empty/populated panel geometry stable.",
+      replacement: "Consume the generated search result-region max-height binding.",
+      deletion: "Remove max-h-[28rem] after direct component-role consumption.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/palette/SearchResultPill.tsx",
+      owner: "SearchResultPill",
+      slot: "selection-border-width",
+    },
+    expression: "border-[0.09375rem]",
+    units: ["rem"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/palette/SearchResultPill.tsx",
+      name: "SearchResultPill",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "SearchResultPill's 0.09375rem border is exact selected-result silhouette geometry.",
+      constraint:
+        "The border remains present in selected and transparent states to prevent layout shift; no other component shares this stroke contract.",
+      exactValue:
+        "Retain border-[0.09375rem] under SearchResultPill rather than treating it as foundation spacing.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/palette/CommandPalette.tsx",
+      owner: "CommandPaletteSurface",
+      slot: "command-overlay-width-geometry",
+    },
+    expression: "w-[32rem] max-w-[calc(100vw-2rem)]",
+    units: ["rem", "vw"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-component",
+      path: "frontend/tokens/components.tokens.json",
+      name: "component.command-palette.width-geometry",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "The command overlay's nominal width and compact guard are reusable palette geometry.",
+      equivalence:
+        "The planned bindings preserve 32rem and calc(100vw - 2rem) exactly without changing placement.",
+      replacement:
+        "Generate and consume both exact command-palette width bindings on the overlay panel.",
+      deletion:
+        "Remove both arbitrary utilities only after direct component-role consumption.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/agent/Composer.tsx",
+      owner: "Composer",
+      slot: "entry-height-limit",
+    },
+    expression: "max-h-[6.75rem]",
+    units: ["rem"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/agent/Composer.tsx",
+      name: "Composer",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "The composer entry's 6.75rem height cap is exact interaction geometry for its expanding textarea seam.",
+      constraint:
+        "The cap balances multi-line authoring against transcript visibility and is not shared by ordinary TextArea consumers.",
+      exactValue: "Retain max-h-[6.75rem] under Composer's specialized entry contract.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/agent/transcriptKit.tsx",
+      owner: "AgentTag",
+      slot: "attribution-letter-spacing",
+    },
+    expression: "tracking-[0.025rem]",
+    units: ["rem"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-foundation",
+      path: "frontend/tokens/type.tokens.json",
+      name: "type.tracking.eyebrow",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "Agent attribution uses the same reusable 0.025rem eyebrow tracking role as SectionLabel and hover-card metadata.",
+      equivalence:
+        "The planned role preserves exactly 0.025rem across these equivalent compact attribution treatments.",
+      replacement: "Consume the exact generated eyebrow-tracking binding in AgentTag.",
+      deletion:
+        "Remove tracking-[0.025rem] only after direct foundation-role consumption.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/agent/transcriptKit.tsx",
+      owner: "UserTurnBubble",
+      slot: "bubble-line-length-limit",
+    },
+    expression: "max-w-[85%]",
+    units: ["%"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/agent/transcriptKit.tsx",
+      name: "UserTurnBubble",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "The user-turn bubble's 85% width cap is exact conversation-layout geometry.",
+      constraint:
+        "The percentage preserves a visible alignment cue while adapting to transcript width; it is not a global container role.",
+      exactValue: "Retain max-w-[85%] under UserTurnBubble.",
+    },
+  },
+] as const satisfies readonly RelativeValueLedgerEntry[];
+
 export const RELATIVE_VALUE_LEDGER: readonly RelativeValueLedgerEntry[] = [
   ...KIT_RELATIVE_VALUE_LEDGER,
   ...CHROME_AND_SHELL_RELATIVE_VALUE_LEDGER,
   ...VIEWER_RELATIVE_VALUE_LEDGER,
+  ...PALETTE_AND_AGENT_RELATIVE_VALUE_LEDGER,
 ];
 export const NAMING_DEBT_LEDGER: readonly NamingDebtLedgerEntry[] = [];
 export const CONSOLIDATION_INVARIANTS: readonly ConsolidationInvariant[] = [];
