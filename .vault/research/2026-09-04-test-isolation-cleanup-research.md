@@ -3,9 +3,9 @@ tags:
   - '#research'
   - '#test-isolation-cleanup'
 date: '2026-09-04'
-modified: '2026-09-04'
+modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:c28562cc425b9e330c9984107fa92c423996a40ee03874fea24ff46259d8dc1b'
+body_hash: 'sha256:492473c52275ad61652864c74e86426e85086b5a24284e15c2cbf90402431103'
 related: []
 ---
 
@@ -118,6 +118,42 @@ each refuted by a measured counter rather than by argument. Notably the
 `abort()` explanation had a 100% deterministic standalone reproduction and still
 was not what fired in situ; proving a mechanism exists is not proving it fires.
 
+### The adjacent happy-dom barrier drops an asynchronous teardown
+
+The installed happy-dom 20.10.2 contract declares `DetachedWindowAPI.abort()` as
+returning `Promise<void>`. Its async-task manager aborts pending work and waits for
+the resulting microtasks before that promise resolves, and Vitest's own happy-dom
+environment teardown awaits the operation. `frontend/src/testing/liveSetup.ts`,
+however, narrows `abort` to `() => void`, waits up to one second on
+`waitUntilComplete()`, and then drops the abort promise. This creates a real
+ordering gap after the global RTL unmount barrier: abort-triggered fetch cleanup,
+rejections, and socket destruction can escape the test that owns them and surface
+during a later case or file.
+
+The fixed drain also scales with happy-dom test cases rather than files. The
+current frontend contains 234 happy-dom files and roughly 1,901 happy-dom cases,
+so the one-second race can add as much as 1,901 seconds of serial wait. Native
+abort already performs cancellation and microtask settlement, making the
+pre-abort timer redundant as both a correctness barrier and a performance
+mechanism.
+
+### The suite is file-serial despite its four-worker setting
+
+Vitest forces one worker when `fileParallelism` is false. The current
+`vite.config.ts` keeps files serial because they share one mutable live engine,
+so its adjacent `maxWorkers: 4` setting and performance explanation do not
+describe the execution that occurs: `fileParallelism: false` makes execution
+file-serial and renders `maxWorkers: 4` ineffective.
+
+### A crashed service can retain known process identity
+
+The served system-program contract can report an unavailable or crashed service
+while retaining an optional discovered port; it reports no process id for that
+state. The tolerant frontend adapter intentionally preserves the served optional
+identity: running carries port and process id, crashed may carry port only, and
+absent carries neither. A test that equates `available: false` with absent identity
+contradicts the wire contract.
+
 ### Option space
 
 Three shapes, with the trade-off that distinguishes them:
@@ -170,5 +206,10 @@ with its own blast radius and belongs in its own record.
 - `node_modules/@vitest/runner/dist/chunk-artifact.js:2568` — reverse ordering for `afterEach`
 - `frontend/vite.config.ts:117` — the vitest `test` block
 - `frontend/src/testing/liveSetup.ts:53` — the existing imported-`afterEach` teardown
+- `node_modules/happy-dom/lib/window/DetachedWindowAPI.js:50` — asynchronous window abort
+- `node_modules/happy-dom/lib/async-task-manager/AsyncTaskManager.js:269` — abort settlement
+- `node_modules/vitest/dist/chunks/index.1_nbEjJY.js:1164` — Vitest awaits happy-dom abort
+- `frontend/src/stores/server/systemPrograms.live.test.ts:82` — stale unavailable-identity assertion
+- `engine/crates/vaultspec-api/src/routes/stream.rs:52` — crashed-service identity contract
 - `frontend/src/app/chrome/useReducedMotion.test.tsx` — the single suite fixed in `55b5e7a41b`
-- `@testing-library/react@16.3.2`, `vitest@4.1.8`
+- `@testing-library/react@16.3.2`, `vitest@5`, `happy-dom@20.10.2`
