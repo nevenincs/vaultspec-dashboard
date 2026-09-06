@@ -5557,7 +5557,158 @@ export const RELATIVE_VALUE_LEDGER: readonly RelativeValueLedgerEntry[] = [
   ...STAGE_AND_TIMELINE_RELATIVE_VALUE_LEDGER,
   ...RESIDUAL_RELATIVE_VALUE_LEDGER,
 ];
-export const NAMING_DEBT_LEDGER: readonly NamingDebtLedgerEntry[] = [];
+export const NAMING_DEBT_LEDGER = [
+  {
+    source: {
+      path: "frontend/src/app/kit/TextField.tsx",
+      owner: "TextField",
+      slot: "component-export-name",
+    },
+    debtKind: "code-only-name",
+    codeName: "TextField",
+    designAlias: null,
+    disposition: "track-parity-debt",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/TextField.tsx",
+      name: "TextField",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "TextField is the campaign's code-side name for the planned ordinary single-line field primitive.",
+      unresolvedBinding:
+        "The accepted research supports the primitive's behavior and reuse, but this no-Figma campaign does not establish a matching design-system node name or alias.",
+      reconciliation:
+        "A separately authorized design reconciliation must confirm or rename the export and then replace this debt entry with the verified name binding.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/kit/TextArea.tsx",
+      owner: "TextArea",
+      slot: "component-export-name",
+    },
+    debtKind: "code-only-name",
+    codeName: "TextArea",
+    designAlias: null,
+    disposition: "track-parity-debt",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/TextArea.tsx",
+      name: "TextArea",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "TextArea is the campaign's code-side name for the planned ordinary multiline field primitive.",
+      unresolvedBinding:
+        "The accepted research supports the primitive's behavior and reuse, but this no-Figma campaign does not establish a matching design-system node name or alias.",
+      reconciliation:
+        "A separately authorized design reconciliation must confirm or rename the export and then replace this debt entry with the verified name binding.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/kit/OptionRow.tsx",
+      owner: "OptionRow",
+      slot: "component-export-name",
+    },
+    debtKind: "code-only-name",
+    codeName: "OptionRow",
+    designAlias: null,
+    disposition: "track-parity-debt",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/OptionRow.tsx",
+      name: "OptionRow",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "OptionRow is the campaign's code-side name for the planned behaviorally explicit menu and option primitive.",
+      unresolvedBinding:
+        "The accepted research supports the primitive's behavior and reuse, but this no-Figma campaign does not establish a matching design-system node name or alias.",
+      reconciliation:
+        "A separately authorized design reconciliation must confirm or rename the export and then replace this debt entry with the verified name binding.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/kit/ActivityIndicator.tsx",
+      owner: "ActivityIndicator",
+      slot: "component-export-name",
+    },
+    debtKind: "unresolved-design-alias",
+    codeName: "ActivityIndicator",
+    designAlias: null,
+    disposition: "track-parity-debt",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/ActivityIndicator.tsx",
+      name: "ActivityIndicator",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "ActivityIndicator is an existing kit component whose public-barrel exposure is part of this campaign.",
+      unresolvedBinding:
+        "The source has no opt-in design citation, and the no-Figma fence prevents this campaign from deciding whether its code name matches or aliases a design-system node.",
+      reconciliation:
+        "A separately authorized design reconciliation must resolve the design name, add any required citation or coordinated rename, and retire this debt entry.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/chrome/AppErrorBoundary.tsx",
+      owner: "AppErrorBoundary",
+      slot: "component-export-name",
+    },
+    debtKind: "code-only-name",
+    codeName: "AppErrorBoundary",
+    designAlias: null,
+    disposition: "track-parity-debt",
+    canonicalOwner: {
+      layer: "shared-chrome",
+      path: "frontend/src/app/chrome/AppErrorBoundary.tsx",
+      name: "AppErrorBoundary",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "AppErrorBoundary is the campaign's code-side name for the planned app-owned error presentation wrapper.",
+      unresolvedBinding:
+        "The boundary-safe component structure is decided from shipped architecture, but this no-Figma campaign does not establish a matching design-system node name or alias.",
+      reconciliation:
+        "A separately authorized design reconciliation must confirm or rename the export and then replace this debt entry with the verified name binding.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/chrome/ModalSurface.tsx",
+      owner: "ModalSurface",
+      slot: "component-export-name",
+    },
+    debtKind: "code-only-name",
+    codeName: "ModalSurface",
+    designAlias: null,
+    disposition: "track-parity-debt",
+    canonicalOwner: {
+      layer: "shared-chrome",
+      path: "frontend/src/app/chrome/ModalSurface.tsx",
+      name: "ModalSurface",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "ModalSurface is the campaign's code-side name for the planned shared modal interaction frame.",
+      unresolvedBinding:
+        "The shared interaction structure is decided from shipped dialog and sheet behavior, but this no-Figma campaign does not establish a matching design-system node name or alias.",
+      reconciliation:
+        "A separately authorized design reconciliation must confirm or rename the export and then replace this debt entry with the verified name binding.",
+    },
+  },
+] as const satisfies readonly NamingDebtLedgerEntry[];
 export const CONSOLIDATION_INVARIANTS: readonly ConsolidationInvariant[] = [];
 
 export const CONSOLIDATION_LEDGER = {

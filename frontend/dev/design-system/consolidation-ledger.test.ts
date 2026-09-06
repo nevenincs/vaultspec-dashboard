@@ -15,6 +15,7 @@ import {
   DISPOSITION_RATIONALE_FIELDS,
   KIT_RELATIVE_VALUE_LEDGER,
   ledgerSourceKey,
+  NAMING_DEBT_LEDGER,
   NATIVE_CONTROL_ELEMENTS,
   NATIVE_CONTROL_LEDGER,
   PALETTE_AND_AGENT_RELATIVE_VALUE_LEDGER,
@@ -25,6 +26,7 @@ import {
   VIEWER_RELATIVE_VALUE_LEDGER,
   type NativeControlElement,
   type NativeControlLedgerEntry,
+  type NamingDebtLedgerEntry,
   type RelativeValueLedgerEntry,
   type RelativeValueUnit,
 } from "./consolidation-ledger";
@@ -137,6 +139,57 @@ const RELATIVE_VALUE_PARTITIONS = [
   readonly RelativeValueLedgerEntry[],
   number,
 ])[];
+
+const CAMPAIGN_COMPONENT_NAMING_DEBT = [
+  {
+    path: "frontend/src/app/kit/TextField.tsx",
+    name: "TextField",
+    debtKind: "code-only-name",
+    layer: "app-kit",
+    status: "planned",
+  },
+  {
+    path: "frontend/src/app/kit/TextArea.tsx",
+    name: "TextArea",
+    debtKind: "code-only-name",
+    layer: "app-kit",
+    status: "planned",
+  },
+  {
+    path: "frontend/src/app/kit/OptionRow.tsx",
+    name: "OptionRow",
+    debtKind: "code-only-name",
+    layer: "app-kit",
+    status: "planned",
+  },
+  {
+    path: "frontend/src/app/kit/ActivityIndicator.tsx",
+    name: "ActivityIndicator",
+    debtKind: "unresolved-design-alias",
+    layer: "app-kit",
+    status: "existing",
+  },
+  {
+    path: "frontend/src/app/chrome/AppErrorBoundary.tsx",
+    name: "AppErrorBoundary",
+    debtKind: "code-only-name",
+    layer: "shared-chrome",
+    status: "planned",
+  },
+  {
+    path: "frontend/src/app/chrome/ModalSurface.tsx",
+    name: "ModalSurface",
+    debtKind: "code-only-name",
+    layer: "shared-chrome",
+    status: "planned",
+  },
+] as const satisfies readonly {
+  path: `frontend/${string}`;
+  name: string;
+  debtKind: NamingDebtLedgerEntry["debtKind"];
+  layer: NamingDebtLedgerEntry["canonicalOwner"]["layer"];
+  status: NamingDebtLedgerEntry["canonicalOwner"]["status"];
+}[];
 
 /**
  * Semantic slots for repeated controls are explicitly bound to their zero-based
@@ -681,7 +734,10 @@ function declaredOwnerNames(file: string): Set<string> {
 }
 
 function rationaleKeys(
-  entry: Pick<NativeControlLedgerEntry | RelativeValueLedgerEntry, "rationale">,
+  entry: Pick<
+    NativeControlLedgerEntry | RelativeValueLedgerEntry | NamingDebtLedgerEntry,
+    "rationale"
+  >,
 ): string[] {
   return Object.keys(entry.rationale).sort();
 }
@@ -981,5 +1037,91 @@ describe("design-system consolidation relative-value ledger", () => {
       ledgerSourceKey(source),
     );
     expect(duplicateKeys([...stableKeys, stableKeys[0]])).toEqual([stableKeys[0]]);
+  });
+});
+
+describe("design-system consolidation naming-debt ledger", () => {
+  it("exhaustively records the six campaign-scoped component names", () => {
+    const actual = NAMING_DEBT_LEDGER.map(
+      ({ source, codeName, debtKind, canonicalOwner }) => ({
+        path: source.path,
+        name: codeName,
+        debtKind,
+        layer: canonicalOwner.layer,
+        status: canonicalOwner.status,
+      }),
+    );
+    expect(actual).toEqual(CAMPAIGN_COMPONENT_NAMING_DEBT);
+    expect(NAMING_DEBT_LEDGER).toHaveLength(6);
+    expect(
+      NAMING_DEBT_LEDGER.filter(({ debtKind }) => debtKind === "code-only-name"),
+    ).toHaveLength(5);
+    expect(
+      NAMING_DEBT_LEDGER.filter(
+        ({ debtKind }) => debtKind === "unresolved-design-alias",
+      ),
+    ).toHaveLength(1);
+
+    const plannedPrimitiveOwners = [
+      ...new Map(
+        NATIVE_CONTROL_LEDGER.filter(
+          ({ canonicalOwner }) =>
+            canonicalOwner.status === "planned" &&
+            canonicalOwner.layer === "app-kit" &&
+            canonicalOwner.path.endsWith(".tsx"),
+        ).map(({ canonicalOwner }) => [canonicalOwner.name, canonicalOwner]),
+      ).values(),
+    ].map(({ path, name }) => ({ path, name }));
+    expect(plannedPrimitiveOwners).toEqual(
+      CAMPAIGN_COMPONENT_NAMING_DEBT.slice(0, 3).map(({ path, name }) => ({
+        path,
+        name,
+      })),
+    );
+  });
+
+  it("enforces stable identities, unresolved aliases, owners, and debt rationale", () => {
+    expect(CONSOLIDATION_LEDGER.namingDebt).toBe(NAMING_DEBT_LEDGER);
+    const stableKeys = NAMING_DEBT_LEDGER.map(({ source }) => ledgerSourceKey(source));
+    expect(duplicateKeys(stableKeys)).toEqual([]);
+    expect(new Set(NAMING_DEBT_LEDGER.map(({ codeName }) => codeName)).size).toBe(
+      NAMING_DEBT_LEDGER.length,
+    );
+
+    for (const entry of NAMING_DEBT_LEDGER) {
+      const key = ledgerSourceKey(entry.source);
+      expect(entry.source.owner, key).toBe(entry.codeName);
+      expect(entry.source.slot, key).toBe("component-export-name");
+      expect(entry.designAlias, key).toBeNull();
+      expect(entry.disposition, key).toBe("track-parity-debt");
+      expect(entry.canonicalOwner.name, key).toBe(entry.codeName);
+      expect(entry.canonicalOwner.path, key).toBe(entry.source.path);
+      expect(["app-kit", "shared-chrome"], key).toContain(entry.canonicalOwner.layer);
+
+      const sourceFile = resolve(FRONTEND_ROOT, entry.source.path.slice(9));
+      if (entry.canonicalOwner.status === "existing") {
+        expect(existsSync(sourceFile), key).toBe(true);
+        expect(declaredOwnerNames(sourceFile).has(entry.codeName), key).toBe(true);
+        expect(readFileSync(sourceFile, "utf8"), key).not.toMatch(
+          /^\s*\/\/\s*@figma\s/m,
+        );
+      } else {
+        expect(entry.canonicalOwner.status, key).toBe("planned");
+        expect(existsSync(sourceFile), key).toBe(false);
+      }
+
+      const required = [...DISPOSITION_RATIONALE_FIELDS["track-parity-debt"]].sort();
+      expect(rationaleKeys(entry), key).toEqual(required);
+      for (const field of required) {
+        expect(
+          (entry.rationale as Record<string, string>)[field]?.trim(),
+          `${key} rationale.${field}`,
+        ).not.toBe("");
+      }
+      expect(entry.rationale.unresolvedBinding, key).toContain("no-Figma");
+      expect(entry.rationale.reconciliation, key).toContain(
+        "separately authorized design reconciliation",
+      );
+    }
   });
 });
