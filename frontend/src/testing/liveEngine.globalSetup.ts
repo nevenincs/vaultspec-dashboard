@@ -7,7 +7,12 @@
 //
 // Each run owns an isolated cache and removes it during teardown.
 
-import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import {
+  spawn,
+  spawnSync,
+  type ChildProcess,
+  type SpawnSyncReturns,
+} from "node:child_process";
 import {
   cpSync,
   mkdtempSync,
@@ -31,7 +36,54 @@ const FIXTURE_DIR = resolve(import.meta.dirname, "fixtures/live-vault");
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 const BIN_NAME = process.platform === "win32" ? "vaultspec.exe" : "vaultspec";
 const MAX_SERVE_LOG_BYTES = 1024 * 1024;
-const SETUP_COMMAND_TIMEOUT_MS = 60_000;
+// Wall-clock budget for ONE provisioning subprocess in this setup. Generous on
+// purpose: these commands cost about a second on an idle machine, but the CI
+// host runs several repositories' runners over one CPU set, so a neighbouring
+// suite is enough to stall a sub-second command for a minute or more. A stall
+// here aborts all ~500 test files before a single assertion runs, and reads in
+// the job log exactly like a test failure.
+const SETUP_COMMAND_TIMEOUT_MS = 180_000;
+
+// A killed-at-the-deadline provisioning command is retried once, and ONLY when
+// it was killed at the deadline. A command that ran to completion and reported
+// a non-zero status has said something about the workspace, and repeating it
+// would hide that; a command that never got to run has said nothing.
+const SETUP_COMMAND_ATTEMPTS = 2;
+
+/** True when spawnSync gave up on the deadline rather than the child exiting. */
+function timedOut(result: SpawnSyncReturns<Buffer>): boolean {
+  return (result.error as NodeJS.ErrnoException | undefined)?.code === "ETIMEDOUT";
+}
+
+/** Run one provisioning command, retrying a deadline kill, and throw on failure.
+ *
+ *  `describe` names the command in the thrown message: the caller knows which
+ *  step of the setup it was, and the message is the only thing the CI log
+ *  carries when this fails. */
+function runSetupCommand(
+  describe: string,
+  command: string,
+  args: string[],
+  options: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
+): void {
+  let result: SpawnSyncReturns<Buffer> | undefined;
+  for (let attempt = 1; attempt <= SETUP_COMMAND_ATTEMPTS; attempt += 1) {
+    result = spawnSync(command, args, {
+      ...options,
+      stdio: "pipe",
+      timeout: SETUP_COMMAND_TIMEOUT_MS,
+    });
+    if (!result.error && result.status === 0) return;
+    if (!timedOut(result)) break;
+    console.warn(
+      `[live-engine] ${describe} hit the ${SETUP_COMMAND_TIMEOUT_MS}ms deadline on attempt ${attempt}/${SETUP_COMMAND_ATTEMPTS}`,
+    );
+  }
+  const failure = result as SpawnSyncReturns<Buffer>;
+  throw new Error(
+    `${describe} failed (${failure.status}): ${failure.error?.message ?? failure.stderr?.toString() ?? ""}`,
+  );
+}
 
 /** Resolve the service binary the suite runs against.
  *
@@ -105,16 +157,10 @@ function freePort(): Promise<number> {
 }
 
 function git(scratch: string, args: string[]): void {
-  const r = spawnSync("git", args, {
+  runSetupCommand(`git ${args.join(" ")}`, "git", args, {
     cwd: scratch,
     env: { ...process.env, ...GIT_ENV },
-    timeout: SETUP_COMMAND_TIMEOUT_MS,
   });
-  if (r.error || r.status !== 0) {
-    throw new Error(
-      `git ${args.join(" ")} failed: ${r.error?.message ?? r.stderr?.toString() ?? r.status}`,
-    );
-  }
 }
 
 let engine: ChildProcess | undefined;
@@ -216,15 +262,11 @@ async function setupOwnedEngine(): Promise<() => Promise<void>> {
   cpSync(join(FIXTURE_DIR, "src"), join(scratch, "src"), { recursive: true });
 
   // 2. Initialize the fixture as a workspace with machine-local scaffolding.
-  const install = spawnSync(VAULTSPEC_CORE_BIN, ["install", "--target", scratch], {
-    stdio: "pipe",
-    timeout: SETUP_COMMAND_TIMEOUT_MS,
-  });
-  if (install.error || install.status !== 0) {
-    throw new Error(
-      `vaultspec-core install failed (${install.status}): ${install.error?.message ?? install.stderr?.toString() ?? ""}`,
-    );
-  }
+  runSetupCommand("vaultspec-core install", VAULTSPEC_CORE_BIN, [
+    "install",
+    "--target",
+    scratch,
+  ]);
 
   // 3. Commit the fixture while excluding service caches from change detection.
   writeFileSync(
