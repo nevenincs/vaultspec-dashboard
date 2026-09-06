@@ -55,16 +55,22 @@ jobs:
   #
   # Hosted, deliberately - a preflight that needs the fleet cannot report that
   # the fleet is down.
-  preflight:
-    name: Preflight runners
+  # DERIVATION ONLY. What this workflow schedules onto is repo-specific and
+  # stays here; the CHECK is one implementation for the whole fleet and lives
+  # in ci-fleet, pinned by digest below. This file used to carry a second copy
+  # of that check as a local composite action - the copy that never gets the
+  # fix is the one that ships the bug.
+  derive-selectors:
+    name: Derive the selectors this workflow schedules onto
     runs-on: ubuntu-latest
+    outputs:
+      selectors: ${{ steps.derive.outputs.selectors }}
     steps:
       # Only what the steps below read, only this commit.
       - uses: actions/checkout@v6
         with:
           fetch-depth: 1
           sparse-checkout: |
-            .github/actions/preflight-runners
             .github/workflows/product-release.yml
           sparse-checkout-cone-mode: false
 
@@ -135,16 +141,24 @@ jobs:
             echo "SELECTORS_EOF"
           } >> "${GITHUB_OUTPUT}"
 
-      - uses: ./.github/actions/preflight-runners
-        with:
-          selectors: ${{ steps.derive.outputs.selectors }}
-          # A PAT with `administration: read` if one is configured; the default
-          # GITHUB_TOKEN otherwise. Without the PAT this check is blind and says
-          # so rather than guessing.
-          token: ${{ secrets.FLEET_PREFLIGHT_TOKEN || secrets.GITHUB_TOKEN }}
-          # Unconditional here: this workflow runs only on a tag push or a
-          # deliberate dispatch, and both of those build artifacts on the fleet.
-          enforce: "true"
+  # HOSTED, DELIBERATELY, and that decision now lives with the check itself: a
+  # preflight that needs the fleet cannot report that the fleet is down.
+  #
+  # The token is passed with NO fallback. GITHUB_TOKEN can never read
+  # `actions/runners` - that endpoint needs Administration:read, which no
+  # `permissions:` value grants it - so the old `|| secrets.GITHUB_TOKEN`
+  # guaranteed a 403 wherever the PAT was absent. A reusable workflow enforces
+  # `required: true` on a secret; a composite action does not, which is the
+  # second reason this moved.
+  preflight:
+    name: Preflight runners
+    needs: derive-selectors
+    uses: nevenincs/ci-fleet/.github/workflows/preflight.yml@22455d014aced017224c7cdbfc925deb45939930
+    with:
+      repo: ${{ github.event.repository.name }}
+      selectors: ${{ needs.derive-selectors.outputs.selectors }}
+    secrets:
+      fleet_token: ${{ secrets.FLEET_PREFLIGHT_TOKEN }}
 
   build-product-tree:
     needs: preflight
