@@ -6,7 +6,7 @@ tags:
 date: '2026-09-05'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:a71920f24d42a139e4aff40fcec2b509727382e7785ec3df18b88d6ca21dcc66'
+body_hash: 'sha256:e388340f63ceb9f370562fedc2204b8b9fd0af2e2a61c346766957a29051abdc'
 related:
   - '[[2026-09-05-design-system-consolidation-W01-P01-S01]]'
   - '[[2026-09-05-design-system-consolidation-W01-P01-S04]]'
@@ -32,6 +32,7 @@ related:
   - '[[2026-09-05-design-system-consolidation-W01-P02-S08]]'
   - '[[2026-09-05-design-system-consolidation-W01-P02-S09]]'
   - '[[2026-09-05-design-system-consolidation-W01-P02-S10]]'
+  - '[[2026-09-05-design-system-consolidation-W01-P02-S11]]'
   - '[[2026-09-05-design-system-consolidation-adr]]'
   - '[[2026-09-05-design-system-consolidation-horizontal-polish-research]]'
   - '[[2026-09-05-design-system-consolidation-plan]]'
@@ -44,6 +45,7 @@ related:
   - '[[2026-09-06-design-system-consolidation-s08-scanner-test-review-audit]]'
   - '[[2026-09-06-design-system-consolidation-s09-package-script-review-audit]]'
   - '[[2026-09-06-design-system-consolidation-s10-toolchain-wiring-review-audit]]'
+  - '[[2026-09-06-design-system-consolidation-s11-removal-guard-review-audit]]'
   - '[[2026-09-06-design-system-consolidation-s164-baseline-decision-audit]]'
   - '[[2026-09-06-design-system-consolidation-s165-classification-review-audit]]'
   - '[[2026-09-06-design-system-consolidation-s166-classification-review-audit]]'
@@ -82,6 +84,7 @@ Auto-generated index of all documents tagged with `#design-system-consolidation`
 - `2026-09-06-design-system-consolidation-s08-scanner-test-review-audit` - `design-system-consolidation` audit: `s08 scanner test review`
 - `2026-09-06-design-system-consolidation-s09-package-script-review-audit` - `design-system-consolidation` audit: `s09 package script review`
 - `2026-09-06-design-system-consolidation-s10-toolchain-wiring-review-audit` - `design-system-consolidation` audit: `s10 toolchain wiring review`
+- `2026-09-06-design-system-consolidation-s11-removal-guard-review-audit` - `design-system-consolidation` audit: `s11 removal guard review`
 - `2026-09-06-design-system-consolidation-s164-baseline-decision-audit` - `design-system-consolidation` audit: `S164 executable-control baseline decision`
 - `2026-09-06-design-system-consolidation-s165-classification-review-audit` - `design-system-consolidation` audit: `S165 ordinary field classification review`
 - `2026-09-06-design-system-consolidation-s166-classification-review-audit` - `design-system-consolidation` audit: `S166 option and menu classification review`
@@ -125,6 +128,7 @@ Auto-generated index of all documents tagged with `#design-system-consolidation`
 - `2026-09-05-design-system-consolidation-W01-P02-S08` - Add focused scanner tests covering all ledger and ownership failure modes
 - `2026-09-05-design-system-consolidation-W01-P02-S09` - Register the design-system scanner as a frontend lint script while preserving unrelated package edits
 - `2026-09-05-design-system-consolidation-W01-P02-S10` - Include the scanner in the complete frontend lint recipe
+- `2026-09-05-design-system-consolidation-W01-P02-S11` - Guard the lint recipe and production-to-development import fence against accidental removal of the new check
 
 ### plan
 

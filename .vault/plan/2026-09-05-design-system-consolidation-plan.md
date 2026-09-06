@@ -10,7 +10,7 @@ related:
   - '[[2026-09-05-design-system-consolidation-shipped-frontend-blueprint-reference]]'
 modified: '2026-09-06'
 body_schema: body-v2
-body_hash: 'sha256:3c49040e0f866a3973283fb5023e779846e880651cd9ec60487371c0a130ba6c'
+body_hash: 'sha256:72d6658add65a5ec91288961a0676aaa8de9a8afb51d57a474faff9952fb1421'
 ---
 
 <!-- RETIRED: S02, S03, S95, S96, S158 -->
@@ -68,7 +68,7 @@ Add a ratcheting scanner and tests that reject unclassified sites, stale ledger 
 - [x] `W01.P02.S08` - Add focused scanner tests covering all ledger and ownership failure modes; `frontend/dev/tooling/scan-design-system.test.ts`.
 - [x] `W01.P02.S09` - Register the design-system scanner as a frontend lint script while preserving unrelated package edits; `frontend/package.json`.
 - [x] `W01.P02.S10` - Include the scanner in the complete frontend lint recipe; `dev/toolchain.py`.
-- [ ] `W01.P02.S11` - Guard the lint recipe and production-to-development import fence against accidental removal of the new check; `dev/guards/test_design_system_consolidation.py`.
+- [x] `W01.P02.S11` - Guard the lint recipe and production-to-development import fence against accidental removal of the new check; `dev/guards/test_design_system_consolidation.py`.
 
 ## Wave `W02` - establish kit owners and migrate settings
 
