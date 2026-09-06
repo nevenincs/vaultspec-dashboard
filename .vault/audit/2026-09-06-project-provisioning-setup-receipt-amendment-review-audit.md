@@ -5,7 +5,7 @@ tags:
 date: '2026-09-06'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:53407172e18cd63f18343ba89559a18bec4f315ccf25acfc6ee6a0d392d6c1a0'
+body_hash: 'sha256:eea9486fdbbbd7d90467fdac3c8b10982197277a15c15f7b1c811e06a8438d05'
 related:
   - "[[2026-07-07-project-provisioning-adr]]"
   - "[[2026-09-06-agent-panel-no-legacy-curation-audit]]"
@@ -211,3 +211,86 @@ closure.
   single-provider-missing case, multiple-provider-missing state, unsupported
   extra membership with zero child mutations, clean install, force install,
   timeout, and receipt/postcondition disagreement.
+
+## 2026-09-06 final re-review of per-ordinal convergence
+
+Review target: `5d9a619c2628261462397a2727ee6c0bd58f2271`, parent
+`69bc949a`. The review reconciled both open high findings and exercised the
+current Core 0.1.73 command matrix on disposable targets. Runtime and unrelated
+concurrent work were excluded.
+
+### per-ordinal-live-convergence | low | verified
+
+Type: partial-state recovery and idempotency. The D8d algorithm was exercised
+against core-only, one-provider-missing, multiple-provider-missing, and healthy
+current targets. Core-only reconciled core and mutated only claude,
+antigravity, and codex. The one-missing shape mutated only codex. The
+multiple-missing shape mutated only antigravity and codex in D8 order. The
+healthy shape reconciled all four ordinals and required no safe mutation. Every
+shape finished with exact manifest membership `{claude, antigravity, codex}`
+and fresh doctor evidence reporting a present framework and complete,
+coherent, clean current provider state. No already-installed error was accepted
+or spawned for an already-valid ordinal. This closes
+`partial-current-target-convergence`.
+
+### unsupported-membership-terminal-gate | low | verified
+
+Type: no-legacy state-machine safety. D8c performs the strict manifest read in
+process before doctor, preview, install, or any other child. A disposable
+manifest carrying one unsupported extra produced the typed
+`manifest_membership_disagreement` decision with zero child spawns; its SHA-256
+hash was unchanged before and after the gate, and the result exposed no name.
+Missing current membership remains a supported partial state and is handled by
+D8d. This closes `unsupported-membership-preflight-order` without adding a
+translation, removal, migration, alias, or compatibility path.
+
+### force-posture | low | verified
+
+Type: explicit overwrite contract. Force remains separately confirmed and,
+after the same unsupported-membership terminal gate, runs all four fixed
+current D8a operations with `--force`. A live healthy-target force sequence
+produced four valid `vaultspec.install.v1` install receipts and retained exact
+current manifest membership. Safe per-ordinal reconciliation cannot silently
+weaken or substitute for the explicit force request.
+
+### malformed-and-inconsistent-preflight | low | verified
+
+Type: fail-closed classification. D8d permits mutation only when authoritative
+manifest, doctor, preview, and declared-path evidence agree that an exact
+current ordinal is missing. A malformed read, disagreement, ambiguous path
+state, timeout, or output breach is closed to `indeterminate`, stops later
+mutation, and cannot be converted into missing state or permission to install.
+Final `complete` also rechecks exact manifest equality and fresh D9b doctor
+state, so a receipt/postcondition disagreement remains visible.
+
+### current-only-contract | low | verified
+
+Type: no-legacy and no-deprecated support. The correction adds only core,
+claude, antigravity, and codex operations. Unsupported membership is unnamed
+and terminal; unrelated doctor fields are discarded; no aggregate, retired
+provider, alias, fallback, migration, or compatibility operation is invoked or
+served. The earlier named diagnostic capture remains removed, and the review
+audit remains the single home for live evidence.
+
+### adr-final-newline | low | one mechanical hygiene warning remains
+
+Type: mechanical documentation hygiene. `vaultspec-core vault check markdown`
+reports only a missing final newline in the reviewed ADR. Review-only scope
+forbids altering the target commit, so this audit queues the safe CLI repair for
+the next documentation mutation. It does not change or obscure the decision.
+
+### per-ordinal-convergence-disposition | low | PASS
+
+Type: formal architecture-review disposition. Commit `5d9a619c` resolves both
+previous high findings. Per-ordinal safe convergence, unsupported-membership
+zero-mutation refusal, force semantics, malformed/inconsistent fail-closed
+classification, current-only operations, and evidence ownership are coherent
+and supported by the live producer behavior. No critical, high, or medium
+architecture defect remains. Runtime implementation and its real-process tests
+remain subject to their separate mandatory code review.
+
+## Final re-review recommendation
+
+- Apply the queued final-newline repair through Vaultspec Core during the next
+  ADR mutation. Implement and test D8c/D8d exactly, including child-spawn
+  accounting and unchanged-manifest assertions for unsupported membership.
