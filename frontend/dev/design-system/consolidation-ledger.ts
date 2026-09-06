@@ -2989,7 +2989,449 @@ export const NATIVE_CONTROL_LEDGER = [
     },
   },
 ] as const satisfies readonly NativeControlLedgerEntry[];
-export const RELATIVE_VALUE_LEDGER: readonly RelativeValueLedgerEntry[] = [];
+export const KIT_RELATIVE_VALUE_LEDGER = [
+  {
+    source: {
+      path: "frontend/src/app/kit/ActivityIndicator.tsx",
+      owner: "ActivityIndicator",
+      slot: "progress-bar-thickness",
+    },
+    expression: "h-[0.125rem]",
+    units: ["rem"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/ActivityIndicator.tsx",
+      name: "ActivityIndicator",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "The activity strip's 0.125rem thickness is exact component geometry rather than general spacing.",
+      constraint:
+        "Its two-device-pixel visual weight keeps the fixed progress strip subordinate to application content while remaining perceptible.",
+      exactValue:
+        "Retain h-[0.125rem] under ActivityIndicator; a foundation spacing alias would misstate the value's component-specific role.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/kit/Breadcrumb.tsx",
+      owner: "Breadcrumb",
+      slot: "trail-label-type-size",
+    },
+    expression: "text-[0.8125rem]",
+    units: ["rem"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-foundation",
+      path: "frontend/tokens/type.tokens.json",
+      name: "type.role.label.size",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "Breadcrumb trail labels use the existing 0.8125rem label-role type size.",
+      equivalence:
+        "The loose size is byte-for-byte equal to type.role.label.size and does not encode breadcrumb-only geometry.",
+      replacement:
+        "Bind the trail's font size directly to the existing label-role size while preserving its current line height and weight semantics.",
+      deletion:
+        "Remove text-[0.8125rem] from Breadcrumb when the exact DTCG size binding is consumed.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/kit/FacetRow.tsx",
+      owner: "FacetRow",
+      slot: "row-density-geometry",
+    },
+    expression: "gap-[0.625rem] py-[0.3125rem]",
+    units: ["rem"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/FacetRow.tsx",
+      name: "FacetRow",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "FacetRow's inline gap and block padding form one exact dense-row footprint.",
+      constraint:
+        "The 0.625rem gap and 0.3125rem padding coordinate custom controls, optional dots, labels, and counts without changing row density.",
+      exactValue:
+        "Retain gap-[0.625rem] and py-[0.3125rem] together under the FacetRow component recipe.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/kit/FacetRow.tsx",
+      owner: "FacetRow",
+      slot: "radio-control-geometry",
+    },
+    expression: "size-[1rem] border-[0.0875rem]",
+    units: ["rem"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/FacetRow.tsx",
+      name: "FacetRow",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "The custom radio's diameter and stroke are coordinated exact control geometry.",
+      constraint:
+        "Changing either 1rem diameter or 0.0875rem stroke changes the radio silhouette and its checked-state balance.",
+      exactValue:
+        "Retain size-[1rem] with border-[0.0875rem] as the FacetRow radio recipe.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/kit/FacetRow.tsx",
+      owner: "FacetRow",
+      slot: "radio-selected-dot-geometry",
+    },
+    expression: "size-[0.5rem]",
+    units: ["rem"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/FacetRow.tsx",
+      name: "FacetRow",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "The selected radio dot is exact internal geometry of the 1rem custom radio.",
+      constraint:
+        "Its 0.5rem diameter maintains the shipped one-half scale relationship to the radio control.",
+      exactValue: "Retain size-[0.5rem] for the selected-dot slot inside FacetRow.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/kit/FacetRow.tsx",
+      owner: "FacetRow",
+      slot: "checkbox-control-geometry",
+    },
+    expression: "size-[1rem] border-[0.075rem]",
+    units: ["rem"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/FacetRow.tsx",
+      name: "FacetRow",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "The custom checkbox's diameter and stroke are coordinated exact control geometry.",
+      constraint:
+        "The 1rem box and 0.075rem stroke frame the fixed check glyph without altering the shipped checkbox silhouette.",
+      exactValue:
+        "Retain size-[1rem] with border-[0.075rem] as the FacetRow checkbox recipe.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/kit/FacetRow.tsx",
+      owner: "FacetRow",
+      slot: "status-dot-geometry",
+    },
+    expression: "size-[0.5rem]",
+    units: ["rem"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/FacetRow.tsx",
+      name: "FacetRow",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "FacetRow's optional status dot has exact indicator geometry distinct from spacing.",
+      constraint:
+        "The 0.5rem diameter preserves the shipped status-dot prominence beside the custom control and label.",
+      exactValue: "Retain size-[0.5rem] for the status-dot slot owned by FacetRow.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/kit/FacetRow.tsx",
+      owner: "FacetRow",
+      slot: "label-type-size",
+    },
+    expression: "text-[0.78125rem]",
+    units: ["rem"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-component",
+      path: "frontend/tokens/type.tokens.json",
+      name: "component.facet-row.label-size",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "FacetRow's repeated 0.78125rem label metric needs an explicit component-owned role rather than a loose utility.",
+      equivalence:
+        "The planned component token preserves exactly 0.78125rem and does not snap the label to the nearby foundation label or meta steps.",
+      replacement:
+        "Add the exact shipped label-size role through the DTCG pipeline and consume its generated utility in FacetRow.",
+      deletion:
+        "Remove text-[0.78125rem] only after the exact component token is generated and directly consumed.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/kit/FacetRow.tsx",
+      owner: "FacetRow",
+      slot: "count-leading-space",
+    },
+    expression: "w-[0.25rem]",
+    units: ["rem"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-foundation",
+      path: "frontend/tokens/spacing.tokens.json",
+      name: "spacing.1",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "The count spacer is exactly the existing 0.25rem foundation spacing step.",
+      equivalence:
+        "w-[0.25rem] and spacing.1 resolve to the same computed width at the established rem basis.",
+      replacement:
+        "Use the generated width utility for spacing.1 without changing the spacer element or layout.",
+      deletion:
+        "Remove w-[0.25rem] after direct consumption of the existing spacing token.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/kit/FacetRow.tsx",
+      owner: "FacetRow",
+      slot: "count-type-size",
+    },
+    expression: "text-[0.6875rem]",
+    units: ["rem"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-foundation",
+      path: "frontend/tokens/type.tokens.json",
+      name: "type.role.caption.size",
+      status: "existing",
+    },
+    rationale: {
+      summary: "FacetRow counts use the existing 0.6875rem caption-role type size.",
+      equivalence:
+        "The arbitrary value exactly equals type.role.caption.size and serves the same dense metadata role.",
+      replacement:
+        "Bind the count to the existing caption role while retaining its tabular numeral treatment.",
+      deletion:
+        "Remove text-[0.6875rem] when FacetRow consumes the canonical caption role.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/kit/Kbd.tsx",
+      owner: "Kbd",
+      slot: "keycap-minimum-width",
+    },
+    expression: "min-w-[1.25rem]",
+    units: ["rem"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/Kbd.tsx",
+      name: "Kbd",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "Kbd's minimum width is exact keycap geometry, not a general spacing role.",
+      constraint:
+        "The 1.25rem floor keeps single-glyph keycaps square enough to read while allowing longer shortcut labels to grow.",
+      exactValue: "Retain min-w-[1.25rem] as part of the Kbd component silhouette.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/kit/SearchField.tsx",
+      owner: "SearchField",
+      slot: "field-shell-geometry",
+    },
+    expression: "h-[2.125rem] px-[0.625rem]",
+    units: ["rem"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/SearchField.tsx",
+      name: "SearchField",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "SearchField's height and inline padding form one exact component shell geometry.",
+      constraint:
+        "The 2.125rem height and 0.625rem padding jointly align the search glyph, input, and optional clear action.",
+      exactValue:
+        "Retain h-[2.125rem] and px-[0.625rem] together under SearchField until an exact component-shell token has independent reuse.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/kit/SearchField.tsx",
+      owner: "SearchField",
+      slot: "input-type-size",
+    },
+    expression: "text-[0.75rem]",
+    units: ["rem"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-foundation",
+      path: "frontend/tokens/type.tokens.json",
+      name: "type.role.meta.size",
+      status: "existing",
+    },
+    rationale: {
+      summary: "The search input uses the existing 0.75rem meta-role type size.",
+      equivalence:
+        "text-[0.75rem] is computed-value equivalent to type.role.meta.size and carries the same compact supporting-text scale.",
+      replacement:
+        "Bind SearchField's input size to the existing meta-role metric while preserving its current weight and input behavior.",
+      deletion: "Remove text-[0.75rem] when the exact DTCG size binding is consumed.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/kit/SectionLabel.tsx",
+      owner: "SectionLabel",
+      slot: "eyebrow-letter-spacing",
+    },
+    expression: "tracking-[0.025rem]",
+    units: ["rem"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-foundation",
+      path: "frontend/tokens/type.tokens.json",
+      name: "type.tracking.eyebrow",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "The repeated 0.025rem eyebrow tracking is a reusable typography role rather than SectionLabel-only geometry.",
+      equivalence:
+        "The planned role preserves exactly 0.025rem and also matches the shipped transcript and hover-card eyebrow treatment.",
+      replacement:
+        "Add an exact eyebrow tracking token through the DTCG type pipeline and consume its generated binding in SectionLabel.",
+      deletion:
+        "Remove tracking-[0.025rem] only after the exact reusable role is generated and directly consumed.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/kit/Skeleton.tsx",
+      owner: "SkeletonBar",
+      slot: "width-api-documentation-example",
+    },
+    expression: "w-[5rem]",
+    units: ["rem"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/Skeleton.tsx",
+      name: "SkeletonBar",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "The raw 106-site scan includes a documented example of caller-defined SkeletonBar width rather than an executable class site.",
+      constraint:
+        "SkeletonBar intentionally accepts arbitrary width utilities so callers can mimic the exact content line they stand in for.",
+      exactValue:
+        "Retain w-[5rem] as a non-executable API example in the bounded textual baseline; it prescribes no shared runtime value.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/kit/Skeleton.tsx",
+      owner: "SkeletonRow",
+      slot: "boxed-row-block-padding",
+    },
+    expression: "py-[0.6875rem]",
+    units: ["rem"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/Skeleton.tsx",
+      name: "SkeletonRow",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "SkeletonRow's boxed variant uses exact padding to mimic its settled row footprint.",
+      constraint:
+        "The 0.6875rem block padding is geometry for loading-state height, not the coincidentally equal caption type metric.",
+      exactValue:
+        "Retain py-[0.6875rem] in the boxed SkeletonRow recipe so loading and settled footprints stay aligned.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/kit/Spinner.tsx",
+      owner: "Spinner",
+      slot: "ring-stroke-width",
+    },
+    expression: "border-[0.1875rem]",
+    units: ["rem"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/Spinner.tsx",
+      name: "Spinner",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "Spinner's 0.1875rem border is the exact stroke geometry of the shared loading ring.",
+      constraint:
+        "The stroke must remain balanced at both supported ring diameters and match the shipped boot-to-app loading silhouette.",
+      exactValue:
+        "Retain border-[0.1875rem] under Spinner rather than treating the stroke as general spacing.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/kit/Switch.tsx",
+      owner: "Switch",
+      slot: "track-height",
+    },
+    expression: "h-[1.125rem]",
+    units: ["rem"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/Switch.tsx",
+      name: "Switch",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "Switch's 1.125rem track height is exact geometry coordinated with its knob and horizontal travel.",
+      constraint:
+        "Changing the height alone would disturb the current knob centering and on/off silhouette.",
+      exactValue: "Retain h-[1.125rem] as the Switch track-height recipe.",
+    },
+  },
+] as const satisfies readonly RelativeValueLedgerEntry[];
+
+export const RELATIVE_VALUE_LEDGER: readonly RelativeValueLedgerEntry[] = [
+  ...KIT_RELATIVE_VALUE_LEDGER,
+];
 export const NAMING_DEBT_LEDGER: readonly NamingDebtLedgerEntry[] = [];
 export const CONSOLIDATION_INVARIANTS: readonly ConsolidationInvariant[] = [];
 
