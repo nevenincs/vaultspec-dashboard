@@ -10,7 +10,7 @@ related:
   - '[[2026-09-05-design-system-consolidation-shipped-frontend-blueprint-reference]]'
 modified: '2026-09-06'
 body_schema: body-v2
-body_hash: 'sha256:1f71e420ee904d9e86d597f02aa16a088216ad5c9ce4b5de20090f3f980f6fce'
+body_hash: 'sha256:9450dd1dba52d5642531a2bc0628da9a7eef9f324bc744b7321d1f15a32f6984'
 ---
 
 <!-- RETIRED: S02, S03, S95, S96, S158 -->
@@ -79,7 +79,7 @@ Land the reusable field, textarea, option-row, icon-action, and activity contrac
 Create only narrow primitives supported by repeated equivalent behavior and ledger every code-only naming exception.
 
 - [x] `W02.P03.S12` - Implement the ordinary TextField contract with accessible labeling, focus, disabled, size, and theme behavior; `frontend/src/app/kit/TextField.tsx`.
-- [ ] `W02.P03.S13` - Verify TextField semantics, labeling, state treatment, ref forwarding, and value propagation; `frontend/src/app/kit/TextField.render.test.tsx`.
+- [x] `W02.P03.S13` - Verify TextField semantics, labeling, state treatment, ref forwarding, and value propagation; `frontend/src/app/kit/TextField.render.test.tsx`.
 - [ ] `W02.P03.S14` - Implement the ordinary TextArea contract without absorbing editor or composer semantics; `frontend/src/app/kit/TextArea.tsx`.
 - [ ] `W02.P03.S15` - Verify TextArea semantics, labeling, resize policy, focus, disabled, and value propagation; `frontend/src/app/kit/TextArea.render.test.tsx`.
 - [ ] `W02.P03.S16` - Implement the behaviorally explicit OptionRow contract that forwards semantic and keyboard props while leaving roving navigation, menu cursoring, and focus containment with composing chrome; `frontend/src/app/kit/OptionRow.tsx`.
