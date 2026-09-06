@@ -5,7 +5,7 @@ tags:
 date: '2026-09-06'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:f3be562e52935470147c5aafbc3145bdfeb04712a9078c196daa31e6fbf4f5d3'
+body_hash: 'sha256:55a1c6f2d4637bd15d11330e838533662b8299162237a0cd8ec7feab1cf56293'
 related:
   - "[[2026-08-01-a2a-agent-flow-adr]]"
   - "[[2026-08-01-agent-panel-shell-integration-adr]]"
@@ -865,3 +865,121 @@ composition proof required to make those state transitions reviewable. The
 commit is not review-passed. Correct every HIGH defect, add the specified
 discriminating evidence, and obtain another formal review before acceptance. No
 runtime, ADR decision, or plan row changed in this review.
+
+## 2026-09-06 architecture review of provisioning evidence boundary
+
+Review target: `27d29a339bb2e85622d671c06e5ed9898413e6e3`, exact parent
+`e2e707652a58f2ca3ae8692df99c11938236e7b9`. This documentation-only review
+reconciled the new D4a/b and D9d-f decisions against the runtime FAIL findings,
+the accepted setup state machine, live Vaultspec Core 0.1.73 behavior, the
+current-only provider boundary, and the single-home-fact rule. Runtime and
+unrelated concurrent work were excluded.
+
+### core-missing-doctor-contract-rejects-real-clean-target | high | open
+
+Type: typed missing-state admission and producer-contract drift. D9f requires a
+successful exit-zero Doctor envelope with status `unchanged` before any ordinal
+may be classified missing, then says core requires framework `missing`. Those
+requirements cannot coexist against the current producer. On a disposable
+unmanaged Git target, `vaultspec-core spec doctor -t <target> --json` returned
+exit 2, schema `vaultspec.spec.doctor.v1`, status `failed`, framework `missing`,
+and an empty provider object. The proposed predicate therefore classifies the
+real clean target indeterminate and never authorizes its first core install.
+The original runtime defect cannot be fixed by broadly accepting failed Doctor
+results; core needs its own exact, closed typed negative envelope distinct from
+the successful non-core missing contract.
+
+### missing-item-ancestor-containment | high | open
+
+Type: target confinement and pre-mutation safety. D9e canonicalizes the target
+and each producer-declared item that already exists. It explicitly permits a
+missing preview item to authorize installation after checking only items that
+exist. A missing item can be below an existing symlink, junction, or other
+redirecting ancestor whose canonical location is outside the target. For
+example, an absent provider child beneath an existing redirected provider
+directory is not itself canonicalizable under D9e, so preflight can authorize
+Core to write outside the target. Post-install item canonicalization detects the
+escape only after mutation. The contract must prove containment through the
+nearest existing ancestor of every missing declared path, or an equivalent
+no-follow resolution, before granting mutation authority.
+
+### transient-producer-evidence-boundary | low | verified
+
+Type: wire minimization and current-only evidence. D9d resolves the earlier
+contradiction: exact bounded install and Doctor stdout is transient validation
+input used for strict decoding and SHA-256 computation, and is neither persisted
+nor returned. The wire contains bounded typed projections and digests only.
+Command-bound current provider identity replaces producer authority; unknown
+fields, unknown provider entries, and unrelated metadata are discarded before
+storage or service. Core receipts omit a provider projection, while each
+non-core Doctor projection carries only its own required current entry. This
+closes raw open-world stdout exposure without a compatibility surface.
+
+### owned-process-tree-and-hard-capacity | low | verified
+
+Type: cancellation, shutdown, replay, and resource bounds. D4a places every
+Doctor, preview, and install process in an aggregate-owned full-tree boundary,
+requires Windows Job Object termination-on-close and empty-tree proof before
+`timeout_cancelled`, routes timeout, output breach, shutdown, abort, and drop
+through one termination/reap path, and retains single-flight exclusion when
+proof is unavailable. D4b makes `MAX_JOBS` a hard bound across running and
+completed entries, preserves attach/conflict resolution at capacity, permits
+only safe completed eviction, and refuses a distinct identity before task or
+child spawn when no slot exists. These clauses close the corresponding
+architecture gaps; runtime proof remains mandatory.
+
+### non-core-doctor-and-cause-contract | low | verified
+
+Type: typed evidence and terminal classification. For non-core missing state,
+D9f requires exit zero, the exact Doctor schema and `unchanged` status,
+framework `present`, the selected command-bound current provider object, exact
+required types, and mutually consistent `not_installed`/`missing` facts.
+Absent, mistyped, failed, wrong-framework, and contradictory evidence is
+indeterminate and authorizes no install. Typed timeout, output-cap, read/wait,
+malformed, and cancellation causes survive preflight; later mutation stops, and
+`timeout_cancelled` remains restricted to proven full-tree settlement.
+
+### current-only-and-lifecycle-boundary | low | verified
+
+Type: no-legacy, no-deprecated, and single-home-fact conformance. The amendment
+adds no provider, operation, alias, translation, migration, fallback, or wire
+field outside the fixed current setup contract. Unknown and unrelated producer
+metadata is validation-only input that is discarded rather than served. The
+amendment cites `2026-09-06-agent-panel-no-legacy-curation-audit`, which remains
+the single home for the runtime findings it resolves; the ADR records the
+chosen correction and does not rewrite the runtime audit's evidence.
+
+### provisioning-adr-markdown-hygiene | low | queued
+
+Type: mechanical documentation hygiene. `vaultspec-core vault check markdown`
+reports one extra blank line and a missing final-newline repair in the reviewed
+ADR, whose final body also contains a literal `\n` residue. Review-only scope
+leaves the target commit unchanged. The next documentation correction should
+apply the Core-owned markdown repair and remove the literal residue.
+
+### provisioning-evidence-boundary-architecture-disposition | high | FAIL
+
+Type: formal architecture-review disposition. D4a, D4b, D9d, the non-core half
+of D9f, and typed cause preservation close their matching runtime-review
+contract gaps. The real clean-target Doctor mismatch and missing-item ancestor
+escape leave two high-severity mutation-safety defects. Commit `27d29a33`
+cannot authorize runtime wire finalization until both are corrected and
+re-reviewed. Existing runtime findings for real-Core production composition,
+concurrent posture conflict, and load-stable process tests remain implementation
+obligations; this docs-only pass does not close them.
+
+## Provisioning evidence-boundary recommendations
+
+- Define core-missing evidence as its own exact current Core negative contract:
+  the expected process exit, Doctor schema/status, framework state, empty or
+  otherwise closed provider projection, and required typed fields. Preserve the
+  stricter exit-zero/status-unchanged/framework-present/current-entry contract
+  for non-core missing. Prove clean-core, failed-but-not-missing, wrong-exit,
+  wrong-status, wrong-framework, malformed, and contradictory cases.
+- Before authorizing mutation for a missing declared item, canonicalize and
+  confine its nearest existing ancestor under the canonical target, and repeat
+  canonical item containment after installation. Test missing file and
+  directory descendants below escaping symlinks and Windows junctions, plus
+  normal in-target missing ancestors and existing-item controls.
+- Apply the queued Vaultspec Core markdown repair in the correction pass while
+  preserving the evidence and decision boundary.
