@@ -10,7 +10,7 @@ related:
   - '[[2026-09-05-design-system-consolidation-shipped-frontend-blueprint-reference]]'
 modified: '2026-09-06'
 body_schema: body-v2
-body_hash: 'sha256:f7cb229492f57e5194614bbcbda680d8493b47664713a11453fd42472c4e7050'
+body_hash: 'sha256:9a8177b4fa7fdd573f31b3d70dd95edf8c721ea84334bfae5f8ba37ad53fd135'
 ---
 
 <!-- RETIRED: S02, S03, S95, S96, S158 -->
@@ -43,7 +43,7 @@ Establish one machine-readable ledger that distinguishes migrations, retained se
 - [x] `W01.P01.S164` - Classify kit-owned native controls and direct settings-wrapper migration candidates; `frontend/dev/design-system/consolidation-ledger.ts`.
 - [x] `W01.P01.S165` - Classify ordinary text-field and textarea migration families across settings, dialogs, clarification, properties, review, and comments; `frontend/dev/design-system/consolidation-ledger.ts`.
 - [x] `W01.P01.S166` - Classify menu, option-row, context-menu, filter, date-basis, command, and search-result control families; `frontend/dev/design-system/consolidation-ledger.ts`.
-- [ ] `W01.P01.S167` - Classify dialog, composer, compact-shell, settings, and viewer icon-action families; `frontend/dev/design-system/consolidation-ledger.ts`.
+- [x] `W01.P01.S167` - Classify dialog, composer, compact-shell, settings, and viewer icon-action families; `frontend/dev/design-system/consolidation-ledger.ts`.
 - [ ] `W01.P01.S168` - Classify specialized search, composer-entry, code-overlay, date-input, select, and task-checkbox native seams; `frontend/dev/design-system/consolidation-ledger.ts`.
 - [ ] `W01.P01.S169` - Classify graph, island, timeline-handle, tree-row, and renderer-coordination native seams; `frontend/dev/design-system/consolidation-ledger.ts`.
 - [ ] `W01.P01.S170` - Classify remaining left-rail, right-rail, panel, authoring, shell, and platform native controls; `frontend/dev/design-system/consolidation-ledger.ts`.

@@ -6,12 +6,13 @@ tags:
 date: '2026-09-05'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:afcb494f7c72ec4de5cf77d2dd23f61756440a601159dbd678034e046c69a4f9'
+body_hash: 'sha256:ac6870b362f0a33ef5f1415c38eee4c088641558b399abde59e6e83aa8919e9c'
 related:
   - '[[2026-09-05-design-system-consolidation-W01-P01-S01]]'
   - '[[2026-09-05-design-system-consolidation-W01-P01-S164]]'
   - '[[2026-09-05-design-system-consolidation-W01-P01-S165]]'
   - '[[2026-09-05-design-system-consolidation-W01-P01-S166]]'
+  - '[[2026-09-05-design-system-consolidation-W01-P01-S167]]'
   - '[[2026-09-05-design-system-consolidation-adr]]'
   - '[[2026-09-05-design-system-consolidation-horizontal-polish-research]]'
   - '[[2026-09-05-design-system-consolidation-plan]]'
@@ -20,6 +21,7 @@ related:
   - '[[2026-09-06-design-system-consolidation-s164-baseline-decision-audit]]'
   - '[[2026-09-06-design-system-consolidation-s165-classification-review-audit]]'
   - '[[2026-09-06-design-system-consolidation-s166-classification-review-audit]]'
+  - '[[2026-09-06-design-system-consolidation-s167-classification-review-audit]]'
 ---
 
 # `design-system-consolidation` feature index
@@ -38,6 +40,7 @@ Auto-generated index of all documents tagged with `#design-system-consolidation`
 - `2026-09-06-design-system-consolidation-s164-baseline-decision-audit` - `design-system-consolidation` audit: `S164 executable-control baseline decision`
 - `2026-09-06-design-system-consolidation-s165-classification-review-audit` - `design-system-consolidation` audit: `S165 ordinary field classification review`
 - `2026-09-06-design-system-consolidation-s166-classification-review-audit` - `design-system-consolidation` audit: `S166 option and menu classification review`
+- `2026-09-06-design-system-consolidation-s167-classification-review-audit` - `design-system-consolidation` audit: `S167 icon action classification review`
 
 ### exec
 
@@ -45,6 +48,7 @@ Auto-generated index of all documents tagged with `#design-system-consolidation`
 - `2026-09-05-design-system-consolidation-W01-P01-S164` - Classify kit-owned native controls and direct settings-wrapper migration candidates
 - `2026-09-05-design-system-consolidation-W01-P01-S165` - Classify ordinary text-field and textarea migration families across settings, dialogs, clarification, properties, review, and comments
 - `2026-09-05-design-system-consolidation-W01-P01-S166` - Classify menu, option-row, context-menu, filter, date-basis, command, and search-result control families
+- `2026-09-05-design-system-consolidation-W01-P01-S167` - Classify dialog, composer, compact-shell, settings, and viewer icon-action families
 
 ### plan
 

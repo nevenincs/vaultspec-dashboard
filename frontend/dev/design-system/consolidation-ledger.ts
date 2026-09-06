@@ -1018,6 +1018,175 @@ export const NATIVE_CONTROL_LEDGER = [
         "Remove the collapsed search result's native button and duplicated row wrapper during search-result migration.",
     },
   },
+  {
+    source: {
+      path: "frontend/src/app/chrome/Dialog.tsx",
+      owner: "Dialog",
+      slot: "close-action",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/IconButton.tsx",
+      name: "IconButton",
+      status: "existing",
+    },
+    rationale: {
+      summary: "Dialog duplicates the canonical glyph-only close action.",
+      equivalence:
+        "The action needs the IconButton contract for an accessible name, glyph content, disabled state, activation, focus treatment, and quiet hover state.",
+      replacement:
+        "Compose IconButton while retaining the localized close name, dismissibility-derived disabled state, close callback, and header placement.",
+      deletion:
+        "Remove the dialog-owned native close button and duplicated icon-action classes during dialog migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/agent/Composer.tsx",
+      owner: "ComposerChip",
+      slot: "remove-action",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/IconButton.tsx",
+      name: "IconButton",
+      status: "existing",
+    },
+    rationale: {
+      summary: "ComposerChip duplicates the canonical glyph-only remove action.",
+      equivalence:
+        "The action needs the IconButton contract for an accessible name, glyph content, activation, focus treatment, and quiet hover state.",
+      replacement:
+        "Compose IconButton while retaining the localized per-chip remove name, staged attachment mutation, and compact chip placement.",
+      deletion:
+        "Remove the composer chip's native remove button and duplicated icon-action classes during composer migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/agent/Composer.tsx",
+      owner: "ComposerScopeControls",
+      slot: "attach-trigger",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/IconButton.tsx",
+      name: "IconButton",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "ComposerScopeControls duplicates the canonical glyph-only attach action.",
+      equivalence:
+        "The action needs the IconButton contract for an accessible name, glyph content, activation, disabled treatment, focus treatment, and quiet hover state.",
+      replacement:
+        "Compose IconButton while retaining the localized label and title, expanded state, popover anchoring, and attach-menu toggle behavior.",
+      deletion:
+        "Remove the composer's native attach button and duplicated bordered icon-action classes during composer migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/shell/MobileTopBar.tsx",
+      owner: "IconSlot",
+      slot: "icon-action",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/IconButton.tsx",
+      name: "IconButton",
+      status: "existing",
+    },
+    rationale: {
+      summary: "IconSlot duplicates the canonical glyph-only action contract.",
+      equivalence:
+        "Both controls carry an accessible name, glyph content, pressed state, disabled state, activation, focus treatment, and shape-based active treatment.",
+      replacement:
+        "Compose IconButton while retaining action resolution, back and trailing-action dispatch, pressed state, disabled fallback handling, and the coarse 2.75rem touch target.",
+      deletion:
+        "Remove the compact-shell native icon button and duplicated state classes after IconButton accepts the required coarse-pointer sizing composition.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/viewer/RelatedDocPicker.tsx",
+      owner: "RelatedDocPicker",
+      slot: "remove-related-action",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/IconButton.tsx",
+      name: "IconButton",
+      status: "existing",
+    },
+    rationale: {
+      summary: "RelatedDocPicker duplicates the canonical glyph-only remove action.",
+      equivalence:
+        "The action needs the IconButton contract for an accessible name, glyph content, activation, focus treatment, and quiet hover state.",
+      replacement:
+        "Compose IconButton while retaining the authored-stem localized name, selected-document removal, badge placement, and compact glyph scale.",
+      deletion:
+        "Remove the related-document native remove button and duplicated icon-action classes during picker migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/settings/SettingsDialog.tsx",
+      owner: "SettingRow",
+      slot: "reset-action",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/Button.tsx",
+      name: "Button",
+      status: "existing",
+    },
+    rationale: {
+      summary: "SettingRow duplicates an ordinary localized text action.",
+      equivalence:
+        "The reset action needs the canonical Button contract for accessible text, activation, focus treatment, and quiet visual emphasis.",
+      replacement:
+        "Compose Button while retaining conditional availability, the store-derived reset value and label, row commit behavior, and footer placement.",
+      deletion:
+        "Remove the settings row's native reset button and store-provided button class recipe during settings migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/settings/SettingsDialog.tsx",
+      owner: "ScopeTargetToggle",
+      slot: "scope-target-option",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/Segment.tsx",
+      name: "Segment",
+      status: "existing",
+    },
+    rationale: {
+      summary: "ScopeTargetToggle duplicates the canonical segmented-radio option.",
+      equivalence:
+        "Both controls are controlled radio buttons with selected state, click selection, group labeling, focus treatment, and shape-based active treatment.",
+      replacement:
+        "Compose SegmentedToggle and Segment while retaining the store-derived target rows, localized labels, and global-versus-scope selection behavior.",
+      deletion:
+        "Remove the settings-owned native radio option, radiogroup wrapper classes, and row-provided option classes during settings migration.",
+    },
+  },
 ] as const satisfies readonly NativeControlLedgerEntry[];
 export const RELATIVE_VALUE_LEDGER: readonly RelativeValueLedgerEntry[] = [];
 export const NAMING_DEBT_LEDGER: readonly NamingDebtLedgerEntry[] = [];
