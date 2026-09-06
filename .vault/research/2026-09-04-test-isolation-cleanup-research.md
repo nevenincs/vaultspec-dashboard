@@ -5,7 +5,7 @@ tags:
 date: '2026-09-04'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:e38b1321256b19aa8b63783546099494d7d8a5296f2850b0946341ee6ee24448'
+body_hash: 'sha256:1ff911d273f136d9f387a6b778104ab78d5e3f1c2d7b7963aa1c2b48a201cbc7'
 related: []
 ---
 
@@ -292,6 +292,76 @@ React cleanup therefore remains synchronous, while direct test ownership can awa
 the separate settlement seam. No Happy DOM task count, timer, timeout, or global
 drain participates.
 
+### Complete owner settlement leaves Happy DOM transport bookkeeping
+
+The next exact S17 command ran the teardown helper, authoring contract, AgentPanel,
+and Composer together. All four files and all 92 assertions passed in 122.06
+seconds. Every QueryClient was enrolled, direct clients and finite work settled,
+the one post-settlement check passed, RTL cleanup ran, structural streams and the
+original authoring stop promise settled, and the clients cleared. The run still
+printed 19 `socket hang up` errors, each paired with `ECONNRESET`; it printed no
+`AbortError`, unhandled-error section, worker exit, or unexpected engine exit.
+
+Those remaining errors have no unsettled query, stream, or authoring promise to
+own them. Happy DOM reports them from its Node request error path after its fetch
+task and Response have already resolved. `liveTransport` currently calls the
+ambient global `fetch`, so a happy-dom file silently selects Happy DOM's request
+implementation while a node-environment file selects Node's. This makes the same
+test-only transport depend on its document environment and lets late Happy DOM
+bookkeeping outlive the application promises that S17 can observe.
+
+The durable transport boundary can stay entirely inside `frontend/src/testing`.
+A Node `http`/`https` FetchLike can keep the tests on the real loopback wire while
+owning one non-pooled socket per call. It can resolve a standard Response at
+headers, expose a backpressured ReadableStream for finite and SSE bodies, and delay
+body completion or reader-cancel completion until the underlying response and
+dedicated socket close. The same boundary can forward method, headers, body, and
+AbortSignal without a retry, timeout, buffer-all step, or Happy DOM task.
+
+The existing call surface is narrower than RequestInit. Live-client callers use
+only GET, POST, PUT, PATCH, and DELETE with HeadersInit, optional JSON string body,
+and optional AbortSignal. They do not use browser cache, credentials, mode,
+keepalive, redirect, referrer, integrity, priority, or window controls, nor Blob,
+FormData, URLSearchParams, or streaming request bodies. HEAD is the only additional
+method needed to prove null-body response semantics. A fail-closed subset can
+therefore preserve every current call without pretending to implement browser
+fetch. Unsupported inputs can reject their returned Promise with a TypeError naming
+the field or body kind before any socket exists; they need not throw synchronously.
+
+Backpressure must be behavioral in both directions. When a string-body
+`ClientRequest.write()` returns false, request completion cannot call `end()` until
+the real request emits `drain`. On the response side, the IncomingMessage starts
+paused, pauses again whenever a Web-stream enqueue makes `desiredSize <= 0`, and
+resumes only from the Web stream's `pull`. Wrapping the actual Node methods while
+delegating to them unchanged lets a local real server prove the write-false,
+drain-before-end and pause-before-pull, resume-on-pull order without a socket mock.
+
+HEAD, 204, and 304 cannot be passed to the Response constructor with a body. With
+no reader to own their terminal state, the transport's fetch promise must drain the
+Node response and await the dedicated socket close before returning
+`Response(null, ...)`. Redirects need equally explicit semantics: the live engine
+does not redirect, so 3xx remains an ordinary unfollowed Response and any explicit
+RequestInit redirect policy is rejected before a socket opens.
+
+Abort propagation also has an identity choice. Preserving `signal.reason` exactly
+keeps caller-owned cancellation distinguishable from transport faults; only an
+aborted signal with no reason needs a synthesized AbortError. The same reason owns
+pre-header rejection and post-header body error, and the abort listener must leave
+on every terminal path.
+
+The alternatives do not close the demonstrated lifecycle gap. More query-owner
+waiting has no remaining promise to await. A Happy DOM task drain or file-teardown
+patch would restore environment-wide lifecycle ownership and depend on private
+bookkeeping. Selecting the ambient global fetch only in node-environment files
+would leave two transports behind the same live-client contract. Adding another
+fetch package is unnecessary when the pinned Node runtime already supplies the
+HTTP, HTTPS, Web Response, and Web Stream primitives required by the live engine.
+
+The raw global-fetch checks in `engineConformance.test.ts` are a separate contract:
+they deliberately exercise Node's platform fetch directly against the spawned
+engine. They need no routing through `liveClient` and provide an independent guard
+that the new shared live transport does not replace every fetch surface.
+
 ### Option space
 
 Three shapes, with the trade-off that distinguishes them:
@@ -341,6 +411,7 @@ with its own blast radius and belongs in its own record.
 - `C:\Users\hello\AppData\Local\Temp\vaultspec-s15-agentpanel-post-cancel-state.log` — settled QueryClient and retained Happy DOM state
 - `C:\Users\hello\AppData\Local\Temp\vaultspec-s15-agentpanel-minimal-natural-settle.log` — finite natural-settlement control
 - `C:\Users\hello\AppData\Local\Temp\vaultspec-s15-agent-panel-integration.log` — first post-S16 AgentPanel integration output
+- orchestration exec session `59956`, final chunk `c800b0` — first complete S17 four-file run, 92 passing assertions and 19 reset pairs
 - `node_modules/@testing-library/react/dist/index.js:26` — the `typeof afterEach` guard
 - `node_modules/@testing-library/react/dist/index.js:41` — the act-environment guard
 - `node_modules/@testing-library/react/dist/act-compat.js:41` — `withGlobalActEnvironment`
@@ -367,6 +438,15 @@ with its own blast radius and belongs in its own record.
 - `frontend/src/stores/server/authoring.test.ts:1` — authoring store behavioral-test home
 - `frontend/src/stores/server/queries/comments.ts:77` — React effect directly returns the synchronous public authoring release
 - `frontend/src/platform/logger/logger.ts:231` — application-wide structured reporting spine for stop-settlement rejection
+- `frontend/src/testing/liveClient.ts:31` — ambient global fetch selected by the current shared live transport
+- `frontend/src/testing/engineConformance.test.ts:28` — intentional direct raw-fetch conformance path
+- `frontend/src/stores/server/engine/client.ts:173` — FetchLike string-input Response contract
+- `frontend/src/stores/server/engine/client.ts:921` — current GET/POST/PUT/PATCH RequestInit usage
+- `frontend/src/stores/server/authoring/index.ts:622` — current POST/PATCH/DELETE JSON-string request usage
+- `frontend/src/stores/server/agent/a2aTeam.ts:855` — current method/header/string-body/signal usage
+- `frontend/node_modules/happy-dom/lib/fetch/Fetch.js:416` — Happy DOM task and Node request ownership
+- `frontend/node_modules/happy-dom/lib/fetch/Fetch.js:448` — fetch-task completion and Response resolution
+- `frontend/node_modules/happy-dom/lib/fetch/Fetch.js:537` — late Node request error logging
 - `frontend/node_modules/@tanstack/query-core/src/query.ts:199` — active query promise observability
 - `frontend/src/stores/server/queries/internal.ts:173` — structural engine-stream key
 - `frontend/src/stores/server/agent/a2aTeam.ts:997` — structural A2A run-relay key

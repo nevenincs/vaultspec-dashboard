@@ -5,7 +5,7 @@ tags:
 date: '2026-09-04'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:8cccbfa3934205a3e696495f194eb8524488dfa30fc7969ffbc421e9602c2ba0'
+body_hash: 'sha256:a9903a0af86b655657cf5e8fe956393e192af556b1f21c71486d1993e310c3ef'
 related:
   - "[[2026-09-04-test-isolation-cleanup-research]]"
 ---
@@ -43,6 +43,12 @@ The first bounded run after that removal confirms the ownership change and expos
 the next boundary: the remaining abort/reset output originates during Vitest's
 file teardown, not the removed application hook. The exact evidence and candidate
 owners remain grounded in the linked research.
+
+The completed S17 owner sequence now exposes a still narrower boundary. The linked
+research records a green application-owned teardown followed by late Happy DOM
+request errors for which no query, stream, or authoring promise remains. The shared
+live-test transport must own its socket lifecycle independently of the document
+environment before S17 can be accepted.
 
 ## Considerations
 
@@ -133,6 +139,25 @@ For test-owned teardown across finite and structural queries:
 - **Await finite work, unmount, await structural cancellation, then clear.**
   CHOSEN. Explicit client enrollment and structural key classification make each
   phase finite and attributable without changing application query semantics.
+
+For the live-engine test transport:
+
+- **Add more query or authoring settlement.** REJECTED AFTER EXECUTION. The S17
+  sequence reaches every observable owner before the remaining Happy DOM request
+  errors print; there is no additional owner promise to await.
+- **Drain, abort, patch, or filter Happy DOM's request lifecycle.** REJECTED. It
+  restores environment-wide ownership, depends on private bookkeeping, or hides
+  the diagnostic instead of closing the socket that produces it.
+- **Select a different transport only in happy-dom files.** REJECTED. One
+  `liveTransport` name would continue to mean two lifecycle contracts depending on
+  the file environment.
+- **Route the shared live client through a bounded Node HTTP/HTTPS transport.**
+  CHOSEN. It preserves the real engine wire while giving every live-client request
+  one explicit, awaitable, non-pooled socket owner outside Happy DOM. Intentional
+  direct global-fetch conformance tests remain unchanged.
+- **Add a third-party fetch implementation.** REJECTED. The pinned Node runtime
+  already provides the HTTP, HTTPS, Response, and stream primitives required for
+  this test-only contract.
 
 ## Constraints
 
@@ -258,6 +283,82 @@ contract test fail on an ordered-state or error-identity assertion without sleep
 or a deadline. Every deferred promise is settled explicitly by the test body, so a
 mutation cannot pass or fail merely by reaching the runner timeout.
 
+The live-test client delegates to a test-only Node HTTP/HTTPS FetchLike instead of
+the ambient global fetch. Its accepted surface is deliberately smaller than
+RequestInit: an absolute HTTP or HTTPS string URL; GET, HEAD, POST, PUT, PATCH, or
+DELETE; HeadersInit; an absent, null, or string body; and an absent, null, or live
+AbortSignal. GET and HEAD reject a supplied body. Every other body kind and every
+other RequestInit key produces a rejected Promise before socket creation. Cache,
+credentials, mode, keepalive, redirect, referrer, referrerPolicy, integrity,
+priority, and window are explicitly unsupported rather than silently ignored.
+Invalid scheme, method, method/body pairing, body kind, or RequestInit field rejects
+that Promise with a TypeError naming the rejected input; validation never escapes as
+a synchronous throw.
+
+Application end-to-end headers are preserved, while the transport owns the
+hop-by-hop connection policy and forces `Connection: close`; a caller cannot opt
+back into pooling through that header. A string body is written once. If
+`ClientRequest.write()` returns false, the transport awaits that request's real
+`drain` event before calling `end()`. Abort or request error wins that wait without
+a timer and removes the pending drain listener.
+
+For a body-bearing response, the fetch promise returns a standard Response at
+headers. Its backpressured ReadableStream starts the IncomingMessage paused, pauses
+it whenever enqueue makes `desiredSize <= 0`, and resumes it only from `pull`, so
+finite payloads and SSE share one transport without buffering the whole response.
+Finite body completion, body error, AbortSignal cancellation, and reader
+cancellation converge on one terminal cleanup that removes signal and Node-event
+listeners and closes request, response, and socket exactly once. Body completion
+and reader cancellation do not resolve until the dedicated socket has closed.
+
+HEAD, 204, and 304 responses have no Web body owner. The fetch promise drains their
+Node response and awaits socket close before constructing `Response(null, ...)`.
+Other HTTP error and redirect statuses remain ordinary unfollowed Response values;
+the transport never follows a 3xx response.
+
+An already-aborted signal opens no request. Pre-header abort rejects the fetch
+promise with the exact `signal.reason`; post-header abort errors the body with that
+same value. Only an absent reason is replaced by a synthesized AbortError. Direct
+reader cancellation closes cleanly without manufacturing an AbortError. Underlying
+request and response failures retain their original cause.
+
+The transport creates no cookie, CORS, retry, timeout, pooling, response-buffering,
+or global-drain layer. HTTPS uses strict certificate validation. These limits match
+the spawned live engine's direct-origin contract and keep this helper from becoming
+a second browser implementation.
+
+A happy-dom contract suite drives the helper through a real local HTTP server. It
+wraps the actual `ClientRequest.write` and `end`, observes the actual `drain` event,
+and wraps the client IncomingMessage `pause` and `resume`, while delegating every
+method unchanged and restoring every prototype in `finally`. This proves
+write-false, drain-before-end and pause-at-capacity, resume-on-pull order over a real
+socket rather than a request or response mock. A local self-signed HTTPS
+server separately proves HTTPS dispatch and strict certificate rejection without
+an insecure override.
+
+The suite also proves the accepted input matrix, fail-closed named-TypeError Promise
+rejection without synchronous throw or socket creation for every unsupported body
+and RequestInit field, request method/header/string-body
+fidelity, forced connection close, body-bearing Response-at-headers behavior,
+finite drain-to-socket-close ordering, headers-before-body SSE streaming,
+HEAD/204/304 null-body construction after close, unfollowed redirect response,
+pre-header and post-header custom abort-reason identity, post-header reader
+cancellation, request and response error propagation, listener removal,
+one-socket-per-call ownership, and zero retained socket after every terminal path.
+
+The live-client routing test is demonstrated red when ambient global fetch is
+restored. Additional deterministic mutations ignore write-false, call end before
+drain, leave a drain waiter pending after abort, omit desired-size pause or pull
+resume, accept an unsupported input, attach a body to HEAD/204/304, follow a
+redirect, permit keep-alive, resolve drain or cancel before close, omit resource
+destruction, retain the abort listener, enable pooling, swallow an error, or replace
+a custom abort or non-abort failure. Each must fail an immediate state, identity,
+or order assertion without a sleep, retry, or runner timeout.
+
+`engineConformance.test.ts` retains its direct raw global-fetch calls and remains
+outside this transport's implementation scope. Its focused pass proves the new
+shared live-client boundary did not replace the independent platform-fetch check.
+
 Files remain serial against the one shared engine. Configuration states that
 truth directly: retain `fileParallelism: false` and set `maxWorkers: 1`, removing
 the obsolete claim that four workers improved this suite. Unexpected engine exit
@@ -281,6 +382,11 @@ component unmount between tests; application and test code own the operations th
 start; Vitest owns environment destruction after the file. Reusing Vitest's
 file-destruction primitive inside every test collapses those boundaries and creates
 the very cross-test diagnostics the barrier is intended to prevent.
+
+The Node transport applies the same ownership rule below application promises.
+Replacing the shared live-client boundary is a smaller and stronger correction than
+adding another application drain because it removes document-environment selection
+from every live-client request while preserving the real wire.
 
 ## Consequences
 
@@ -339,6 +445,18 @@ The ordered live-render helper is test-only policy over production-owned promise
 It adds no application delay and does not redefine a successful or failed query.
 Its maintenance cost is explicit enrollment when a covered test creates another
 client; the mutation suite makes omission visible rather than silently leaking it.
+
+All `liveTransport` consumers now exercise the same Node socket implementation in
+node and happy-dom files. This broadens S18's test-harness blast radius, but not the
+shipped application: the helper and its Node imports remain under
+`frontend/src/testing`, and production clients retain browser fetch. Dedicated
+non-pooled sockets trade some test-only connection setup for deterministic terminal
+ownership and a hard bound of one socket per active request.
+
+The helper is deliberately narrower than browser fetch. A future live-engine need
+for redirects, cookies, browser CORS behavior, or another scheme requires a reviewed
+contract expansion rather than silent emulation. Strict HTTPS validation and direct
+error propagation stay fail-loud.
 
 A deterministic pure-test failure is never classified as an engine-port failure
 merely because the engine also died during the run. Infrastructure classification

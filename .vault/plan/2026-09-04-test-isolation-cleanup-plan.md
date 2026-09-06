@@ -9,7 +9,7 @@ related:
   - '[[2026-09-04-test-isolation-cleanup-research]]'
 modified: '2026-09-06'
 body_schema: body-v2
-body_hash: 'sha256:1c0700f8190ee3f9820eaf6d4f4a81d6ec9c06fe41249f5a7963abdceb463269'
+body_hash: 'sha256:c38d0070b10969363f03161b3e55af08375a8b628591856fc224fef436c0f598'
 ---
 
 # `test-isolation-cleanup` plan
@@ -65,6 +65,13 @@ exposed original authoring stop promise, then clear. The public authoring dispos
 stays synchronous for both React effect callers. S15 resumes only after that
 mutation-proven contract lands.
 
+The first complete S17 four-file run proved every helper phase and all 92
+assertions, yet late Happy DOM Node-request errors remained after every observable
+owner had settled. `S18` therefore replaces the ambient test fetch behind
+`liveClient` with one bounded Node HTTP/HTTPS transport before S17 is re-entered.
+The transport stays test-only and real-wire; direct raw-fetch conformance remains
+independent.
+
 ## Steps
 
 - [x] `S01` - Add the global unmount barrier setup file and register it after the live-engine setup file; `frontend/vite.config.ts`.
@@ -81,6 +88,7 @@ mutation-proven contract lands.
 - [x] `S13` - Add a cross-test lifecycle guard proving the harness never calls happy-dom abort between cases and demonstrate it red with the removed hook restored; `frontend/src/testing/perTestWindowLifecycle.guard.test.ts`.
 - [x] `S14` - Record the first exact eight-file prefix as a completed diagnostic enumeration even though the zero-diagnostic barrier is red, preserve its log, and route the attributed AgentPanel cluster plus smaller unassigned reset cluster to S15 without an unchanged rerun; `frontend/dev/tooling/scan-design-system.test.ts, frontend/dev/tooling/scan-localization.test.ts, frontend/src/app/agent/Composer.render.test.tsx, frontend/src/app/palette/DocumentSearchSurface.localization.test.tsx, frontend/src/app/stage/GraphControls.render.test.tsx, frontend/src/app/agent/AgentPanel.render.test.tsx, frontend/dev/tooling/token-drift-check.test.ts, frontend/src/stores/server/authoring.happyPath.live.test.ts`.
 - [x] `S16` - Implement and mutation-prove a shared two-phase SSE cancellation contract that aborts only pending response acquisition, then gracefully cancels the response reader, and route engine, A2A, and authoring lifecycle streams through it; `frontend/src/stores/server/queries/sse.ts, frontend/src/stores/server/queries/streams.ts, frontend/src/stores/server/queries/streams.test.ts, frontend/src/stores/server/agent/a2aTeam.ts, frontend/src/stores/server/authoring/index.ts, frontend/src/stores/server/authoring.test.ts`.
+- [ ] `S18` - Implement and mutation-prove a bounded Node HTTP/HTTPS transport for live-engine tests, route the shared live client through it, and preserve direct raw-fetch conformance; `frontend/src/testing/nodeHttpTransport.ts, frontend/src/testing/nodeHttpTransport.test.ts, frontend/src/testing/liveClient.ts`.
 - [ ] `S17` - Install and mutation-prove an owner-enrolled live-render teardown that awaits finite queries before RTL unmount, then awaits S16 stream cancellation and a separately exposed authoring stop-settlement promise before clearing clients, and apply it to AgentPanel and Composer; `frontend/src/testing/queryTeardown.ts, frontend/src/testing/queryTeardown.test.ts, frontend/src/app/agent/AgentPanel.render.test.tsx, frontend/src/app/agent/Composer.render.test.tsx, frontend/src/stores/server/authoring/index.ts, frontend/src/stores/server/authoring.test.ts`.
 - [ ] `S15` - Verify corrected stream cancellation once in AgentPanel and Composer separately, then require the exact eight-file prefix and full frontend lint to pass; stop for an in-place amendment before any residual-owner repair; `frontend/src/app/agent/AgentPanel.render.test.tsx, frontend/src/app/agent/Composer.render.test.tsx, frontend/dev/tooling/scan-design-system.test.ts, frontend/dev/tooling/scan-localization.test.ts, frontend/src/app/palette/DocumentSearchSurface.localization.test.tsx, frontend/src/app/stage/GraphControls.render.test.tsx, frontend/dev/tooling/token-drift-check.test.ts, frontend/src/stores/server/authoring.happyPath.live.test.ts`.
 - [ ] `S10` - Run one timing-enabled serialized full frontend suite and one ordinary serialized confirmation suite, recording timing and failure classification; `frontend`.
@@ -98,15 +106,19 @@ amendment boundary with both candidate files restored. `S16` now implements and
 mutation-proves the shared acquisition-versus-reader cancellation owner. The next
 `S15` AgentPanel gate reached a second amendment boundary before any later gate or
 source edit. `S17` implements the finite-versus-structural test-owner sequence;
-`S15` then verifies AgentPanel and Composer separately, the exact prefix, and lint.
-Only after that corrective sequence is `S10` re-entered as the final timing-enabled
-and ordinary full-suite gate; no execution is a blind rerun of unchanged state.
+its first complete run leaves the zero-diagnostic gate red. `S18` installs and
+proves the transport lifecycle boundary, then S17 repeats its exact combined gate
+once. `S15` then verifies AgentPanel and Composer separately, the exact prefix, and
+lint. Only after that corrective sequence is `S10` re-entered as the final
+timing-enabled and ordinary full-suite gate; no execution is a blind rerun of
+unchanged state.
 
 The suite runs online against one spawned engine with mutable fixture state, so
 files remain serial and no sibling worker or separate full/live-engine run may
-overlap `S14`, `S16`, `S17`, `S15`, or `S10`. `S17` completes before the next
-`S15` integration run. Performance comes from removing dead teardown time and
-destructive cancellation, never from unsafe file concurrency.
+overlap `S14`, `S16`, `S18`, `S17`, `S15`, or `S10`. `S18` completes before S17
+is re-entered, and S17 completes before the next `S15` integration run. Performance
+comes from removing dead teardown time and destructive cancellation, never from
+unsafe file concurrency.
 
 ## Verification
 
@@ -148,6 +160,65 @@ Composer once, one exact eight-file prefix, and full frontend lint, in that orde
 and against fresh sequential engines where applicable. Every test run must pass
 assertions and the zero-diagnostic gate. Any residual owner stops for an in-place
 amendment before repair; no identical unchanged invocation is repeated as a retry.
+
+S18 provides one `FetchLike` under `frontend/src/testing` and routes
+`liveTransport`, `liveFetch`, and every test client created from them through it in
+both node and happy-dom files. It accepts only an absolute HTTP/HTTPS string URL;
+GET, HEAD, POST, PUT, PATCH, or DELETE; HeadersInit; absent, null, or string body;
+and absent, null, or live AbortSignal. GET and HEAD reject a supplied body. Any
+other body kind or RequestInit key rejects the returned Promise before a socket
+opens. Cache, credentials, mode, keepalive, redirect, referrer, referrerPolicy,
+integrity, priority, and window are explicitly rejected. Invalid scheme, method,
+method/body pairing, body kind, or field rejects that Promise with a TypeError naming
+the input; validation does not throw synchronously.
+
+The transport uses one dedicated non-pooled socket per invocation and forces
+`Connection: close` while preserving application end-to-end headers. When writing
+a string body, `ClientRequest.write() === false` requires the real `drain` event
+before `end()`; abort or request error wins that wait without a timer and removes
+the drain listener. A body-bearing response resolves at headers with a
+backpressured standard ReadableStream: the IncomingMessage starts paused, pauses
+whenever enqueue makes `desiredSize <= 0`, and resumes only from `pull`. Finite body
+completion and reader cancellation resolve only after the response and socket close.
+
+HEAD, 204, and 304 drain and close before returning `Response(null, ...)`. Other
+non-2xx and 3xx statuses remain ordinary unfollowed Response values. Already-aborted
+input opens no request. Pre-header cancellation rejects with the exact
+`signal.reason`; post-header cancellation errors the body with the same value; only
+an absent reason synthesizes AbortError. Reader cancellation closes normally.
+Every terminal path removes AbortSignal and Node-event listeners and closes each
+resource once while preserving original request and response errors. HTTPS remains
+certificate-validating. The helper adds no cookie, CORS, redirect following, retry,
+timeout, pooling, response buffering, diagnostic filter, or Happy DOM drain.
+
+The happy-dom contract suite uses a real local HTTP server and wraps the actual
+client `ClientRequest.write` and `end`, observes its `drain` event, and wraps client
+IncomingMessage `pause` and `resume`, always delegating unchanged and restoring the
+prototypes in `finally`. It proves write-false, drain-before-end and
+pause-at-capacity, resume-on-pull order without a wire mock. A self-signed local
+HTTPS server proves strict TLS rejection without an insecure override. The same
+suite proves the accepted input matrix, named-TypeError Promise rejection without a
+synchronous throw or socket creation for every unsupported body and RequestInit
+field, request fidelity, forced close, Response-at-headers streaming,
+finite drain-to-close, SSE, HEAD/204/304 null bodies, unfollowed redirects, exact
+custom abort-reason identity before and after headers, reader cancellation, error
+propagation, listener cleanup, one socket per call, and zero retained sockets.
+
+Deterministic mutations restore ambient global fetch, ignore write-false, move end
+before drain, leave a drain waiter pending after abort, omit desired-size pause or
+pull resume, accept an unsupported input, attach a body to HEAD/204/304, follow
+redirects, permit keep-alive, resolve drain or cancel before close, omit resource
+destruction, retain the abort listener, enable pooling, swallow an error, and replace
+a custom abort or non-abort failure. Each fails an immediate state, identity, or
+order assertion without sleeping or reaching a runner timeout.
+
+`frontend/src/testing/engineConformance.test.ts` remains unchanged and passes its
+focused direct-global-fetch checks. After the S18 contract, the exact S17 command
+over `queryTeardown.test.ts`, `authoring.test.ts`, `AgentPanel.render.test.tsx`, and
+`Composer.render.test.tsx` runs once against the shared live engine. All 92 existing
+assertions and the full helper order must pass with zero `socket hang up` or
+`ECONNRESET`, AbortError, unhandled-error section, worker exit, or unexpected engine
+exit. Any residual diagnostic stops for another in-place amendment.
 
 S17 enrolls every AgentPanel and Composer QueryClient explicitly. Before RTL
 cleanup, it snapshots and awaits active finite-query promises, excluding only
