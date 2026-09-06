@@ -6,7 +6,7 @@ tags:
 date: '2026-09-04'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:1ae00b5585dc8a58f7230469e04a3efa41fb514efb1ae62556e48c9d28bf4d60'
+body_hash: 'sha256:6ca0aac5b0580645e8916cdbdf3d968e00f99bf10dbadedde352d971b7cbf1ec'
 related:
   - '[[2026-09-04-test-isolation-cleanup-S01]]'
   - '[[2026-09-04-test-isolation-cleanup-S02]]'
@@ -18,6 +18,7 @@ related:
   - '[[2026-09-04-test-isolation-cleanup-S08]]'
   - '[[2026-09-04-test-isolation-cleanup-S09]]'
   - '[[2026-09-04-test-isolation-cleanup-S11]]'
+  - '[[2026-09-04-test-isolation-cleanup-S12]]'
   - '[[2026-09-04-test-isolation-cleanup-adr]]'
   - '[[2026-09-04-test-isolation-cleanup-plan]]'
   - '[[2026-09-04-test-isolation-cleanup-research]]'
@@ -26,6 +27,7 @@ related:
   - '[[2026-09-06-test-isolation-cleanup-s08-unexpected-engine-exit-diagnostics-review-audit]]'
   - '[[2026-09-06-test-isolation-cleanup-s09-affected-suite-barrier-review-audit]]'
   - '[[2026-09-06-test-isolation-cleanup-s11-system-program-identity-review-audit]]'
+  - '[[2026-09-06-test-isolation-cleanup-s12-per-test-abort-removal-review-audit]]'
 ---
 
 # `test-isolation-cleanup` feature index
@@ -45,6 +47,7 @@ Auto-generated index of all documents tagged with `#test-isolation-cleanup`.
 - `2026-09-06-test-isolation-cleanup-s08-unexpected-engine-exit-diagnostics-review-audit` - `test-isolation-cleanup` audit: `S08 unexpected engine exit diagnostics review`
 - `2026-09-06-test-isolation-cleanup-s09-affected-suite-barrier-review-audit` - `test-isolation-cleanup` audit: `S09 affected suite barrier review`
 - `2026-09-06-test-isolation-cleanup-s11-system-program-identity-review-audit` - `test-isolation-cleanup` audit: `S11 system program identity review`
+- `2026-09-06-test-isolation-cleanup-s12-per-test-abort-removal-review-audit` - `test-isolation-cleanup` audit: `S12 per-test abort removal review`
 
 ### exec
 
@@ -58,6 +61,7 @@ Auto-generated index of all documents tagged with `#test-isolation-cleanup`.
 - `2026-09-04-test-isolation-cleanup-S08` - Add bounded unexpected-engine-exit diagnostics without retries or behavior changes
 - `2026-09-04-test-isolation-cleanup-S09` - Run frontend/src/app/left/AddProjectDialog.localization.test.tsx, frontend/src/app/left/CreateDocDialog.render.test.tsx, frontend/src/stores/server/comments.live.test.ts, frontend/src/stores/server/systemPrograms.live.test.ts, frontend/src/stores/server/queries/docmeta.test.ts, both barrier guards, and full frontend lint
 - `2026-09-04-test-isolation-cleanup-S11` - Correct the live system-program adapter test for running, crashed, and absent identity states
+- `2026-09-04-test-isolation-cleanup-S12` - Remove the destructive per-test happy-dom abort path and its obsolete helper and guard while preserving RTL unmount and Vitest-owned file teardown
 
 ### plan
 

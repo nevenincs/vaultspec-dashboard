@@ -6,12 +6,9 @@
 // every hook-driven test speaks to the real spawned engine with no per-test
 // transport wiring — and there is no mock to leak between suites.
 
-import { afterEach } from "vitest";
-
 import { engineClient } from "../stores/server/engine";
 import { authoringClient } from "../stores/server/authoring";
 import { agentClient, a2aTeamClient } from "../stores/server/agent";
-import { abortHappyDOM, type HappyDOMAbort } from "./happyDOMAbort";
 import { liveTransport } from "./liveClient";
 
 // A failure dump that stops before the component under test is not evidence.
@@ -39,18 +36,3 @@ agentClient.useTransport(liveTransport);
 // `useActiveTeamRuns`/`useRunRelay`). Routing it at the same seam as the others
 // keeps every wire client on the spawned engine — no mock, no default origin.
 a2aTeamClient.useTransport(liveTransport);
-
-// After RTL has unmounted the test's components, cancel any happy-dom work they
-// left pending and await happy-dom's own cleanup settlement. Dropping this promise
-// lets abort-triggered fetch cleanup and rejections escape into a later test. The
-// native abort is the barrier: a fixed pre-abort drain only delays cancellation and
-// compounds across the serial suite. This stays inert in node-environment files,
-// where `happyDOM` is absent.
-afterEach(async () => {
-  const happyDOM = (
-    globalThis as {
-      happyDOM?: HappyDOMAbort;
-    }
-  ).happyDOM;
-  await abortHappyDOM(happyDOM);
-});

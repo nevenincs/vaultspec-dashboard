@@ -155,10 +155,9 @@ export default defineConfig(({ command }) => ({
     // deterministic fixture vault once and publishes ENGINE_BASE_URL/ENGINE_TOKEN.
     globalSetup: ["./src/testing/liveEngine.globalSetup.ts"],
     // Bind the app-wide engine client to the live transport in every worker.
-    // Two setup files, and the ORDER matters: vitest registers their hooks in
-    // listing order and runs afterEach hooks in reverse (`sequence.hooks:
-    // "stack"`), so the unmount barrier declared second tears components down
-    // BEFORE liveSetup awaits happy-dom's native abort and settlement.
+    // The live client bindings load before the sole global per-test lifecycle
+    // hook. RTL owns component unmount between cases; Vitest alone owns awaited
+    // happy-dom window destruction at the file boundary.
     setupFiles: ["./src/testing/liveSetup.ts", "./src/testing/rtlCleanup.ts"],
     // All test files share ONE spawned engine with mutable state (settings,
     // session, the editor write seam). Running files sequentially makes write
