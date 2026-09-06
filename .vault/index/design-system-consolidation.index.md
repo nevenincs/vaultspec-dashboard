@@ -6,7 +6,7 @@ tags:
 date: '2026-09-05'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:4cf78139bd59f37b3cde314a71619aaf5707bc1a46affc797d304a8976ab3648'
+body_hash: 'sha256:d78ed689fe50cf1c7863424d04dd600becaa6f612cf03e25beb236c63e35fc65'
 related:
   - '[[2026-09-05-design-system-consolidation-W01-P01-S01]]'
   - '[[2026-09-05-design-system-consolidation-W01-P01-S164]]'
@@ -15,6 +15,7 @@ related:
   - '[[2026-09-05-design-system-consolidation-W01-P01-S167]]'
   - '[[2026-09-05-design-system-consolidation-W01-P01-S168]]'
   - '[[2026-09-05-design-system-consolidation-W01-P01-S169]]'
+  - '[[2026-09-05-design-system-consolidation-W01-P01-S170]]'
   - '[[2026-09-05-design-system-consolidation-adr]]'
   - '[[2026-09-05-design-system-consolidation-horizontal-polish-research]]'
   - '[[2026-09-05-design-system-consolidation-plan]]'
@@ -26,6 +27,7 @@ related:
   - '[[2026-09-06-design-system-consolidation-s167-classification-review-audit]]'
   - '[[2026-09-06-design-system-consolidation-s168-specialized-seam-review-audit]]'
   - '[[2026-09-06-design-system-consolidation-s169-composite-seam-review-audit]]'
+  - '[[2026-09-06-design-system-consolidation-s170-residual-native-control-review-audit]]'
 ---
 
 # `design-system-consolidation` feature index
@@ -47,6 +49,7 @@ Auto-generated index of all documents tagged with `#design-system-consolidation`
 - `2026-09-06-design-system-consolidation-s167-classification-review-audit` - `design-system-consolidation` audit: `S167 icon action classification review`
 - `2026-09-06-design-system-consolidation-s168-specialized-seam-review-audit` - `design-system-consolidation` audit: `S168 specialized native seam classification review`
 - `2026-09-06-design-system-consolidation-s169-composite-seam-review-audit` - `design-system-consolidation` audit: `S169 graph and renderer seam classification review`
+- `2026-09-06-design-system-consolidation-s170-residual-native-control-review-audit` - `design-system-consolidation` audit: `S170 residual native-control classification review`
 
 ### exec
 
@@ -57,6 +60,7 @@ Auto-generated index of all documents tagged with `#design-system-consolidation`
 - `2026-09-05-design-system-consolidation-W01-P01-S167` - Classify dialog, composer, compact-shell, settings, and viewer icon-action families
 - `2026-09-05-design-system-consolidation-W01-P01-S168` - Classify specialized search, composer-entry, code-overlay, date-input, select, and task-checkbox native seams
 - `2026-09-05-design-system-consolidation-W01-P01-S169` - Classify graph, island, timeline-handle, tree-row, and renderer-coordination native seams
+- `2026-09-05-design-system-consolidation-W01-P01-S170` - Classify remaining left-rail, right-rail, panel, authoring, shell, and platform native controls
 
 ### plan
 

@@ -1727,6 +1727,1267 @@ export const NATIVE_CONTROL_LEDGER = [
         "The react-markdown override replaces GFM task checkboxes with StepCheckMark and preserves any other parsed input type as read-only renderer output; routing that fallback through a form-field primitive would imply editable application state and alter unknown markdown input semantics.",
     },
   },
+  {
+    source: {
+      path: "frontend/src/app/agent/AgentBeginView.tsx",
+      owner: "AgentStarters",
+      slot: "starter-card",
+    },
+    element: "button",
+    disposition: "retain-semantic-seam",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/agent/AgentBeginView.tsx",
+      name: "AgentStarters",
+      status: "existing",
+    },
+    rationale: {
+      summary: "AgentStarters owns its intent-card control.",
+      distinction:
+        "The repeated full-card target combines a lane icon, verb, outcome description, and draft-seeding behavior in the agent begin composition; it is structural content rather than a generic text action or option row.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/agent/AgentBeginView.tsx",
+      owner: "AgentRecents",
+      slot: "recent-session-option",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/OptionRow.tsx",
+      name: "OptionRow",
+      status: "planned",
+    },
+    rationale: {
+      summary: "AgentRecents renders behaviorally ordinary session rows.",
+      equivalence:
+        "Each row has a label and one activation callback, with session identity and current-session mutation remaining caller-owned.",
+      replacement:
+        "Compose OptionRow while retaining the capped recent-session list, untitled fallback, and session-selection intent.",
+      deletion:
+        "Remove the native button and duplicated recent-row interaction classes when OptionRow lands.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/agent/AgentChip.tsx",
+      owner: "AgentChip",
+      slot: "status-panel-toggle",
+    },
+    element: "button",
+    disposition: "retain-semantic-seam",
+    canonicalOwner: {
+      layer: "shared-chrome",
+      path: "frontend/src/app/agent/AgentChip.tsx",
+      name: "AgentChip",
+      status: "existing",
+    },
+    rationale: {
+      summary: "AgentChip owns the collapsed agent status target.",
+      distinction:
+        "The control is a roving footer-cluster item whose live run-status dot and state label form the collapsed panel representation; its compact status-chip contract is not Button or IconButton.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/agent/AgentPanel.tsx",
+      owner: "AgentPanelHeader",
+      slot: "archive-current-session-command",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/OptionRow.tsx",
+      name: "OptionRow",
+      status: "planned",
+    },
+    rationale: {
+      summary: "AgentPanelHeader's archive command is an ordinary menu row.",
+      equivalence:
+        "The native menuitem has leading content, a label, and one activation callback with no independent interaction model.",
+      replacement:
+        "Compose OptionRow while retaining current-session identity, archive dispatch, and menu dismissal in AgentPanelHeader.",
+      deletion:
+        "Remove the native menuitem and duplicated menu-row classes during migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/agent/AgentPanel.tsx",
+      owner: "AgentPanelHeader",
+      slot: "recent-session-command",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/OptionRow.tsx",
+      name: "OptionRow",
+      status: "planned",
+    },
+    rationale: {
+      summary: "AgentPanelHeader's recent-session choices are ordinary menu rows.",
+      equivalence:
+        "Each menuitem forwards current state, a label, and one activation callback while the adjacent archive action remains separately composed.",
+      replacement:
+        "Compose OptionRow while retaining session selection, current-session marking, history dismissal, and adjacent archive IconButton.",
+      deletion:
+        "Remove the native recent-session menuitem and duplicated row-state classes during migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/agent/ClarificationCard.tsx",
+      owner: "ClarificationCard",
+      slot: "choice-option",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/OptionRow.tsx",
+      name: "OptionRow",
+      status: "planned",
+    },
+    rationale: {
+      summary: "ClarificationCard renders behaviorally ordinary radio option rows.",
+      equivalence:
+        "The row needs selection, activation, accessible checked state, and forwarded key handling, all within OptionRow's planned contract.",
+      replacement:
+        "Compose OptionRow while retaining numeric accelerators, answer drafting, and single-choice immediate submission in ClarificationCard.",
+      deletion:
+        "Remove the native radio button and duplicated selected-row classes during clarification migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/agent/Composer.tsx",
+      owner: "ComposerTeamSelector",
+      slot: "default-team-option",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/OptionRow.tsx",
+      name: "OptionRow",
+      status: "planned",
+    },
+    rationale: {
+      summary: "ComposerTeamSelector's default choice is an ordinary radio menu row.",
+      equivalence:
+        "The menuitemradio exposes checked state, a label, and one selection callback within the planned OptionRow contract.",
+      replacement:
+        "Compose OptionRow while retaining default-team identity, selection, and popover dismissal in ComposerTeamSelector.",
+      deletion:
+        "Remove the native default-team button and duplicated menu-row classes during migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/agent/Composer.tsx",
+      owner: "ComposerTeamSelector",
+      slot: "preset-team-option",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/OptionRow.tsx",
+      name: "OptionRow",
+      status: "planned",
+    },
+    rationale: {
+      summary: "ComposerTeamSelector's preset choices are ordinary radio menu rows.",
+      equivalence:
+        "Each menuitemradio forwards checked and disabled state, title, primary label, optional reason, and activation to the planned OptionRow contract.",
+      replacement:
+        "Compose OptionRow while retaining served preset loadability, unavailable reasons, identity, selection, and dismissal.",
+      deletion:
+        "Remove the native preset button and duplicated checked and disabled row classes during migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/agent/Composer.tsx",
+      owner: "ComposerScopeControls",
+      slot: "attach-corpus-option",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/OptionRow.tsx",
+      name: "OptionRow",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "ComposerScopeControls' corpus attachment command is an ordinary menu row.",
+      equivalence:
+        "The menuitem carries disabled state, a label, and one activation callback within OptionRow's planned contract.",
+      replacement:
+        "Compose OptionRow while retaining attachment availability, corpus intent dispatch, and menu dismissal in the composer.",
+      deletion:
+        "Remove the native corpus menuitem and duplicated interaction classes during migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/agent/Composer.tsx",
+      owner: "ComposerScopeControls",
+      slot: "attach-evidence-option",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/OptionRow.tsx",
+      name: "OptionRow",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "ComposerScopeControls' evidence attachment command is an ordinary menu row.",
+      equivalence:
+        "The menuitem carries disabled state, a label, and one activation callback within OptionRow's planned contract.",
+      replacement:
+        "Compose OptionRow while retaining attachment availability, evidence intent dispatch, and menu dismissal in the composer.",
+      deletion:
+        "Remove the native evidence menuitem and duplicated interaction classes during migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/agent/Composer.tsx",
+      owner: "Composer",
+      slot: "slash-command-option",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/OptionRow.tsx",
+      name: "OptionRow",
+      status: "planned",
+    },
+    rationale: {
+      summary: "Composer's slash-command results are ordinary listbox options.",
+      equivalence:
+        "Each option forwards selected state, pointer activation, hover cursoring, and content through the planned OptionRow contract.",
+      replacement:
+        "Compose OptionRow while retaining command parsing, active-index management, mouse-down focus preservation, and command dispatch in Composer.",
+      deletion:
+        "Remove the native slash-result button and duplicated selected-row classes during migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/agent/ComposerAutonomyBanner.tsx",
+      owner: "ComposerAutonomyBanner",
+      slot: "dismiss-action",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/IconButton.tsx",
+      name: "IconButton",
+      status: "existing",
+    },
+    rationale: {
+      summary: "ComposerAutonomyBanner's dismiss glyph is an ordinary icon action.",
+      equivalence:
+        "The native button has a localized label, one X glyph, and one local dismissal callback.",
+      replacement:
+        "Render X through IconButton while retaining mode-scoped dismissal and re-arming behavior in the banner.",
+      deletion:
+        "Remove the native button and its local icon-action classes after migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/agent/ComposerFeatureChip.tsx",
+      owner: "ComposerFeatureChip",
+      slot: "feature-picker-trigger",
+    },
+    element: "button",
+    disposition: "retain-semantic-seam",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/agent/ComposerFeatureChip.tsx",
+      name: "ComposerFeatureChip",
+      status: "existing",
+    },
+    rationale: {
+      summary: "ComposerFeatureChip owns its standing feature-binding trigger.",
+      distinction:
+        "The chip communicates required, defaulted, unset, and locked feature-binding state while anchoring an editable free-text feature combobox; its standing semantic status is not a generic Button or DropdownButton value.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/agent/PendingChangesBridge.tsx",
+      owner: "PendingChangesBridge",
+      slot: "region-disclosure",
+    },
+    element: "button",
+    disposition: "retain-semantic-seam",
+    canonicalOwner: {
+      layer: "shared-chrome",
+      path: "frontend/src/app/agent/PendingChangesBridge.tsx",
+      name: "PendingChangesBridge",
+      status: "existing",
+    },
+    rationale: {
+      summary: "PendingChangesBridge owns its agent-region disclosure strip.",
+      distinction:
+        "The full-width boundary strip is both the standing out-of-session change count and the collapse affordance for the agent pending-changes region, with conditional presence and directional state integral to panel composition.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/left/CreateDocDialog.tsx",
+      owner: "DocumentStage",
+      slot: "back-action",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/Button.tsx",
+      name: "Button",
+      status: "existing",
+    },
+    rationale: {
+      summary: "DocumentStage's back control is an ordinary labeled action.",
+      equivalence:
+        "The native button carries a leading arrow, localized label, focus ref, and one navigation callback, all compatible with Button.",
+      replacement:
+        "Compose Button while retaining stage navigation, initial focus, localized labeling, and coarse-pointer sizing policy.",
+      deletion:
+        "Remove the native back button and duplicated action classes after migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/left/CreateDocDialog.tsx",
+      owner: "DocumentStage",
+      slot: "document-type-option",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/OptionRow.tsx",
+      name: "OptionRow",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "DocumentStage renders document types as behaviorally ordinary radio option rows.",
+      equivalence:
+        "The rows need checked state, accessible unavailability, leading and trailing content, roving props, and activation within OptionRow's planned contract.",
+      replacement:
+        "Compose OptionRow while retaining prerequisite traversal, reason association, document-type identity, and focus-zone ownership in DocumentStage.",
+      deletion:
+        "Remove the native radio option and duplicated selected, eligible, and unavailable classes during migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/left/CreateDocDialog.tsx",
+      owner: "DocumentStage",
+      slot: "remove-linked-document-action",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/IconButton.tsx",
+      name: "IconButton",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "DocumentStage's linked-document removal glyph is an ordinary icon action.",
+      equivalence:
+        "The repeated native button has a localized item-specific label, one X glyph, and one removal callback.",
+      replacement:
+        "Render X through IconButton while retaining related-document identity and coarse-pointer target policy in the dialog.",
+      deletion:
+        "Remove the native button and duplicated removal-action classes after migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/left/FeatureSearchField.tsx",
+      owner: "FeatureSuggestionList",
+      slot: "feature-suggestion-option",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/OptionRow.tsx",
+      name: "OptionRow",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "FeatureSuggestionList renders behaviorally ordinary search-result options.",
+      equivalence:
+        "Each row forwards option identity, selected state, primary and metadata content, pointer activation, and hover cursoring to OptionRow.",
+      replacement:
+        "Compose OptionRow while retaining active-descendant ownership, mouse-down focus preservation, corpus metadata, and feature commit behavior.",
+      deletion:
+        "Remove the native suggestion button and duplicated active-row classes during migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/left/PickerPlacesRail.tsx",
+      owner: "PickerPlacesRail",
+      slot: "responsive-place-row",
+    },
+    element: "button",
+    disposition: "retain-semantic-seam",
+    canonicalOwner: {
+      layer: "shared-chrome",
+      path: "frontend/src/app/left/PickerPlacesRail.tsx",
+      name: "PickerPlacesRail",
+      status: "existing",
+    },
+    rationale: {
+      summary: "PickerPlacesRail owns its responsive place-navigation row.",
+      distinction:
+        "The same native site changes from a horizontal compact pill to a vertical rail row while carrying current-location state and path navigation; that shell-adaptive geometry is integral to the places rail rather than a general option row.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/left/ProjectNavigator.tsx",
+      owner: "ProjectNavigatorBody",
+      slot: "recent-project-option",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/OptionRow.tsx",
+      name: "OptionRow",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "ProjectNavigatorBody renders behaviorally ordinary recent-project rows.",
+      equivalence:
+        "Each row forwards current and disabled state, roving props, label content, activation, and keyboard handling within OptionRow's planned contract.",
+      replacement:
+        "Compose OptionRow while retaining project switching, Delete and Backspace history removal, active cues, and focus-zone ownership in the navigator.",
+      deletion:
+        "Remove the native row button and store-provided row interaction classes during migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/left/WorktreePicker.tsx",
+      owner: "renderWorktreeRow",
+      slot: "worktree-option",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/OptionRow.tsx",
+      name: "OptionRow",
+      status: "planned",
+    },
+    rationale: {
+      summary: "renderWorktreeRow emits behaviorally ordinary picker options.",
+      equivalence:
+        "The row forwards current and disabled state, leading and trailing content, roving props, activation, and context-menu handlers within OptionRow's planned contract.",
+      replacement:
+        "Compose OptionRow while retaining unsaved-draft guarding, worktree activation, degraded badges, keyboard routing, and picker dismissal.",
+      deletion:
+        "Remove the native worktree button and store-provided row interaction classes during migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/left/WorktreePicker.tsx",
+      owner: "renderProjectRow",
+      slot: "project-option",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/OptionRow.tsx",
+      name: "OptionRow",
+      status: "planned",
+    },
+    rationale: {
+      summary: "renderProjectRow emits behaviorally ordinary picker options.",
+      equivalence:
+        "The row forwards current and disabled state, leading content, roving props, activation, and keyboard handling within OptionRow's planned contract.",
+      replacement:
+        "Compose OptionRow while retaining unsaved-draft guarding, project switching, Escape dismissal, and focus-zone ownership.",
+      deletion:
+        "Remove the native project button and store-provided row interaction classes during migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/left/WorktreePicker.tsx",
+      owner: "renderRecentRow",
+      slot: "recent-worktree-option",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/OptionRow.tsx",
+      name: "OptionRow",
+      status: "planned",
+    },
+    rationale: {
+      summary: "renderRecentRow emits behaviorally ordinary picker options.",
+      equivalence:
+        "The row forwards current and disabled state, leading content, roving props, activation, and keyboard handling within OptionRow's planned contract.",
+      replacement:
+        "Compose OptionRow while retaining cross-project activation, unsaved-draft guarding, Escape dismissal, and focus-zone ownership.",
+      deletion:
+        "Remove the native recent-worktree button and store-provided row interaction classes during migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/left/WorktreePicker.tsx",
+      owner: "renderAddProjectRow",
+      slot: "add-project-command",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/OptionRow.tsx",
+      name: "OptionRow",
+      status: "planned",
+    },
+    rationale: {
+      summary: "renderAddProjectRow emits an ordinary picker command row.",
+      equivalence:
+        "The row has leading content, a label, roving props, activation, and keyboard dismissal within OptionRow's planned contract.",
+      replacement:
+        "Compose OptionRow while retaining add-dialog dispatch, keyboard-open provenance, Escape dismissal, and focus-zone ownership.",
+      deletion:
+        "Remove the native add-project button and duplicated command-row classes during migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/left/WorktreePicker.tsx",
+      owner: "renderAllToggleRow",
+      slot: "worktree-section-disclosure",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/OptionRow.tsx",
+      name: "OptionRow",
+      status: "planned",
+    },
+    rationale: {
+      summary: "renderAllToggleRow emits an ordinary picker disclosure row.",
+      equivalence:
+        "The row forwards expanded state, leading and trailing content, roving props, activation, and keyboard handling within OptionRow's planned contract.",
+      replacement:
+        "Compose OptionRow while retaining section-open state, worktree count, Escape dismissal, and focus-zone ownership.",
+      deletion:
+        "Remove the native disclosure button and duplicated command-row classes during migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/left/WorktreePicker.tsx",
+      owner: "WorktreePicker",
+      slot: "identity-trigger",
+    },
+    element: "button",
+    disposition: "retain-semantic-seam",
+    canonicalOwner: {
+      layer: "shared-chrome",
+      path: "frontend/src/app/left/WorktreePicker.tsx",
+      name: "WorktreePicker",
+      status: "existing",
+    },
+    rationale: {
+      summary: "WorktreePicker owns its multi-line workspace identity trigger.",
+      distinction:
+        "The trigger is the picker focus-return anchor and combines project, worktree, branch, dirty, ahead, behind, degraded, and expanded state with ArrowDown focus transfer; it is a canonical shell composite rather than a generic dropdown button.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/left/WorktreePicker.tsx",
+      owner: "WorktreePicker",
+      slot: "retry-action",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/Button.tsx",
+      name: "Button",
+      status: "existing",
+    },
+    rationale: {
+      summary: "WorktreePicker's retry control is an ordinary text action.",
+      equivalence:
+        "The native button has a localized label and one retry callback with no picker-specific keyboard model.",
+      replacement:
+        "Compose the compact appropriate Button variant while retaining degraded-state placement and retry intent in WorktreePicker.",
+      deletion:
+        "Remove the native retry button and duplicated link-action classes after migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/palette/DocumentSearchSurface.tsx",
+      owner: "DocumentSearchSurface",
+      slot: "document-result-option",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/OptionRow.tsx",
+      name: "OptionRow",
+      status: "planned",
+    },
+    rationale: {
+      summary: "DocumentSearchSurface renders behaviorally ordinary result options.",
+      equivalence:
+        "Each result forwards option content, selected state, tab-stop state, and activation within OptionRow's planned contract.",
+      replacement:
+        "Compose OptionRow while retaining input-owned result cursoring, node opening, result identity, and modal dismissal.",
+      deletion:
+        "Remove the native result button and redundant row wrapper classes during migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/panels/RagJobsTable.tsx",
+      owner: "HeaderCell",
+      slot: "sort-control",
+    },
+    element: "button",
+    disposition: "retain-semantic-seam",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/panels/RagJobsTable.tsx",
+      name: "HeaderCell",
+      status: "existing",
+    },
+    rationale: {
+      summary: "HeaderCell owns its compact sortable-column control.",
+      distinction:
+        "The target conditionally replaces a static grid header, preserves column alignment, and exposes active sort direction in the table header geometry; Button and OptionRow would introduce unrelated control or row chrome.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/panels/RagJobsTable.tsx",
+      owner: "JobRow",
+      slot: "job-selection-row",
+    },
+    element: "button",
+    disposition: "retain-semantic-seam",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/panels/RagJobsTable.tsx",
+      name: "JobRow",
+      status: "existing",
+    },
+    rationale: {
+      summary: "JobRow owns the selectable RAG-job grid row.",
+      distinction:
+        "The full-row target is a five-column data grid carrying selection, status, live progress, relative start, and duration while toggling the associated detail region; it is not a generic option-row composition.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/panels/RagJobsTable.tsx",
+      owner: "RagJobsTableBody",
+      slot: "phase-facet-chip",
+    },
+    element: "button",
+    disposition: "retain-semantic-seam",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/panels/RagJobsTable.tsx",
+      name: "RagJobsTableBody",
+      status: "existing",
+    },
+    rationale: {
+      summary: "RagJobsTableBody owns its multi-select phase facet chips.",
+      distinction:
+        "Each role=checkbox pill combines semantic phase color, label, live count, and independent multi-selection in a compact table filter cluster; neither the vertical FacetRow nor single-choice OptionRow expresses that geometry and contract.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/right/ChangesOverview.tsx",
+      owner: "ChangeRow",
+      slot: "changed-file-row",
+    },
+    element: "button",
+    disposition: "retain-semantic-seam",
+    canonicalOwner: {
+      layer: "shared-chrome",
+      path: "frontend/src/app/right/ChangesOverview.tsx",
+      name: "ChangeRow",
+      status: "existing",
+    },
+    rationale: {
+      summary: "ChangeRow owns the changed-file tree row.",
+      distinction:
+        "The row is structural content under collapsible status groups and combines file opening, path identity, binary state, additions and deletions, status-owned styling, and tree indent geometry; it is not an ordinary option row.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/right/ChangesOverview.tsx",
+      owner: "ChangesOverviewBody",
+      slot: "retry-action",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/Button.tsx",
+      name: "Button",
+      status: "existing",
+    },
+    rationale: {
+      summary: "ChangesOverviewBody's retry control is an ordinary text action.",
+      equivalence:
+        "The native button has a served label and one retry callback with no tree-specific semantics.",
+      replacement:
+        "Compose the appropriate Button variant while retaining error-state ownership and retry behavior in ChangesOverviewBody.",
+      deletion:
+        "Remove the native retry button and store-provided retryButtonClassName styling after migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/right/FrameworkStatusCluster.tsx",
+      owner: "StatusChip",
+      slot: "framework-panel-toggle",
+    },
+    element: "button",
+    disposition: "retain-semantic-seam",
+    canonicalOwner: {
+      layer: "shared-chrome",
+      path: "frontend/src/app/right/FrameworkStatusCluster.tsx",
+      name: "StatusChip",
+      status: "existing",
+    },
+    rationale: {
+      summary: "StatusChip owns its framework-state panel target.",
+      distinction:
+        "The roving footer-cluster item combines served tone, optional count, pressed panel state, and coarse-pointer sizing as the collapsed representation of a framework plane; it is not a generic Button or IconButton.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/right/PlanStepTree.tsx",
+      owner: "StepRow",
+      slot: "step-preview-action",
+    },
+    element: "button",
+    disposition: "retain-semantic-seam",
+    canonicalOwner: {
+      layer: "shared-chrome",
+      path: "frontend/src/app/right/PlanStepTree.tsx",
+      name: "StepRow",
+      status: "existing",
+    },
+    rationale: {
+      summary: "StepRow owns its untabbable step-preview target.",
+      distinction:
+        "The button is the pointer surface paired with the row's single checkbox tab stop; Enter and cross-axis navigation on that checkbox invoke the same preview, so extracting it would split one composite's coordinated focus and activation contract.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/right/StatusTab.tsx",
+      owner: "PlanPill",
+      slot: "plan-disclosure-row",
+    },
+    element: "button",
+    disposition: "retain-semantic-seam",
+    canonicalOwner: {
+      layer: "shared-chrome",
+      path: "frontend/src/app/right/StatusTab.tsx",
+      name: "PlanPill",
+      status: "existing",
+    },
+    rationale: {
+      summary: "PlanPill owns its plan-tree disclosure row.",
+      distinction:
+        "The button is the plan list's roving tab stop and couples full-row disclosure, cross-axis tree navigation, progress composition, and a separate untabbable open action; that hierarchy contract is not a generic Button.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/right/StatusTab.tsx",
+      owner: "PlanPill",
+      slot: "open-plan-action",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/IconButton.tsx",
+      name: "IconButton",
+      status: "existing",
+    },
+    rationale: {
+      summary: "PlanPill's external-link glyph is an ordinary icon action.",
+      equivalence:
+        "The native button has an accessible label, one glyph, one click callback, and an intentionally forwarded negative tab index, all compatible with IconButton.",
+      replacement:
+        "Render ExternalLink through IconButton while retaining plan activation, graph framing, and the plan row's single-tab-stop policy.",
+      deletion:
+        "Remove the native open button and duplicated icon-action classes after migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/right/StatusTab.tsx",
+      owner: "RecentCommitItem",
+      slot: "message-disclosure-action",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/IconButton.tsx",
+      name: "IconButton",
+      status: "existing",
+    },
+    rationale: {
+      summary: "RecentCommitItem's message twisty is an ordinary icon action.",
+      equivalence:
+        "The native button has a state-specific accessible label, one chevron glyph, expanded state, disabled state, and one toggle callback within IconButton's contract.",
+      replacement:
+        "Render the chevron through IconButton while retaining commit-body availability and expansion state in RecentCommitItem.",
+      deletion:
+        "Remove the native toggle and store-provided toggleClassName styling after migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/right/StatusTab.tsx",
+      owner: "RecentCommitItem",
+      slot: "commit-selection-row",
+    },
+    element: "button",
+    disposition: "retain-semantic-seam",
+    canonicalOwner: {
+      layer: "shared-chrome",
+      path: "frontend/src/app/right/StatusTab.tsx",
+      name: "RecentCommitItem",
+      status: "existing",
+    },
+    rationale: {
+      summary: "RecentCommitItem owns its commit-selection row target.",
+      distinction:
+        "The button is the flexible center of a three-control commit header, aligns selectable subject and age columns beside disclosure and context actions, and selects a graph event with all touched nodes; generic row chrome would disturb that coordinated structure.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/right/StatusTab.tsx",
+      owner: "RecentCommitsBody",
+      slot: "show-more-action",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/Button.tsx",
+      name: "Button",
+      status: "existing",
+    },
+    rationale: {
+      summary: "RecentCommitsBody's show-more control is an ordinary text action.",
+      equivalence:
+        "The native button has a label and one pagination callback with no commit-row interaction semantics.",
+      replacement:
+        "Compose the appropriate Button variant while retaining bounded history pagination in RecentCommitsBody.",
+      deletion:
+        "Remove the native show-more button and store-provided showMoreButtonClassName styling after migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/right/menus/HoverCard.tsx",
+      owner: "HoverCard",
+      slot: "open-document-action",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/IconButton.tsx",
+      name: "IconButton",
+      status: "existing",
+    },
+    rationale: {
+      summary: "HoverCard's open glyph is an ordinary icon action.",
+      equivalence:
+        "The native button has an accessible label, one ExternalLink glyph, and one activation callback within IconButton's contract.",
+      replacement:
+        "Render ExternalLink through IconButton while retaining pointer-event escape behavior and document opening in HoverCard.",
+      deletion:
+        "Remove the native button and duplicated icon-action classes after migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/shell/BottomTabBar.tsx",
+      owner: "BottomTabBar",
+      slot: "compact-navigation-tab",
+    },
+    element: "button",
+    disposition: "retain-semantic-seam",
+    canonicalOwner: {
+      layer: "shared-chrome",
+      path: "frontend/src/app/shell/BottomTabBar.tsx",
+      name: "BottomTabBar",
+      status: "existing",
+    },
+    rationale: {
+      summary: "BottomTabBar owns its compact navigation tab site.",
+      distinction:
+        "The repeated control is a share-filling safe-area navigation target with manual activation, one roving tab stop, current-page state, and a nested compact active pill; generic IconButton geometry cannot express the canonical bottom-bar composition.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/shell/MobileTopBar.tsx",
+      owner: "MobileTopBar",
+      slot: "workspace-title-trigger",
+    },
+    element: "button",
+    disposition: "retain-semantic-seam",
+    canonicalOwner: {
+      layer: "shared-chrome",
+      path: "frontend/src/app/shell/MobileTopBar.tsx",
+      name: "MobileTopBar",
+      status: "existing",
+    },
+    rationale: {
+      summary: "MobileTopBar owns its interactive workspace title.",
+      distinction:
+        "The control remains the page's level-one heading through a display-contents wrapper while acting as the full-width sheet trigger with truncated identity and disclosure state; neither Button nor DropdownButton owns that shell heading contract.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/shell/MobileTopBar.tsx",
+      owner: "MobileTopBar",
+      slot: "text-action",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/Button.tsx",
+      name: "Button",
+      status: "existing",
+    },
+    rationale: {
+      summary: "MobileTopBar's text-only action is an ordinary labeled action.",
+      equivalence:
+        "The native button forwards an accessible label, disabled state, visible text, and one callback within Button's contract.",
+      replacement:
+        "Compose a semantic-size Button variant while retaining top-bar action ordering, fallback suppression, and compact target sizing.",
+      deletion:
+        "Remove the native text-action button and duplicated top-bar action classes after migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/shell/WorkspaceSwitcherSheet.tsx",
+      owner: "SwitcherRow",
+      slot: "workspace-option",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/OptionRow.tsx",
+      name: "OptionRow",
+      status: "planned",
+    },
+    rationale: {
+      summary: "SwitcherRow is a behaviorally ordinary workspace option row.",
+      equivalence:
+        "The row forwards current and disabled state, accessible text, leading and trailing content, and activation within OptionRow's planned contract.",
+      replacement:
+        "Compose OptionRow while retaining worktree, recent, project, and add-project intents plus unsaved-draft guarding and sheet dismissal.",
+      deletion:
+        "Remove SwitcherRow's native button and duplicated ROW_CLASS interaction styling during migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/timeline/TimeTravelChip.tsx",
+      owner: "TimeTravelChip",
+      slot: "return-to-live-action",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/Button.tsx",
+      name: "Button",
+      status: "existing",
+    },
+    rationale: {
+      summary: "TimeTravelChip's return-to-live control is an ordinary labeled action.",
+      equivalence:
+        "The native button has a leading glyph, localized label, and one callback; timeline-mode interpretation remains entirely in the caller.",
+      replacement:
+        "Compose the compact appropriate Button variant while retaining the stage-chip status message and canonical movePlayhead writer.",
+      deletion:
+        "Remove the native action and duplicated inline link-button classes after migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/viewer/AutocompleteCombobox.tsx",
+      owner: "AutocompleteCombobox",
+      slot: "suggestion-option",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/OptionRow.tsx",
+      name: "OptionRow",
+      status: "planned",
+    },
+    rationale: {
+      summary: "AutocompleteCombobox renders behaviorally ordinary suggestion options.",
+      equivalence:
+        "Each row forwards selected state, accessible identity, leading and secondary content, pointer activation, and hover cursoring within OptionRow's planned contract.",
+      replacement:
+        "Compose OptionRow while retaining portaled placement, mouse-down focus preservation, active-index ownership, commit behavior, and coarse-pointer sizing.",
+      deletion:
+        "Remove the native suggestion button and duplicated active-row classes during migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/viewer/CodeViewer.tsx",
+      owner: "CopyMenu",
+      slot: "copy-contents-command",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/OptionRow.tsx",
+      name: "OptionRow",
+      status: "planned",
+    },
+    rationale: {
+      summary: "CopyMenu's copy-contents command is an ordinary menu row.",
+      equivalence:
+        "The menuitem has a label and one activation callback within OptionRow's planned contract.",
+      replacement:
+        "Compose OptionRow while retaining clipboard dispatch, content identity, and menu dismissal in CopyMenu.",
+      deletion:
+        "Remove the native menuitem and shared COPY_MENU_ITEM_CLASS duplication during migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/viewer/CodeViewer.tsx",
+      owner: "CopyMenu",
+      slot: "copy-path-command",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/OptionRow.tsx",
+      name: "OptionRow",
+      status: "planned",
+    },
+    rationale: {
+      summary: "CopyMenu's conditional copy-path command is an ordinary menu row.",
+      equivalence:
+        "The menuitem has a label and one activation callback within OptionRow's planned contract.",
+      replacement:
+        "Compose OptionRow while retaining honest path absence, clipboard identity metadata, and menu dismissal in CopyMenu.",
+      deletion:
+        "Remove the native menuitem and shared COPY_MENU_ITEM_CLASS duplication during migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/viewer/CommentThreadPanel.tsx",
+      owner: "CommentRow",
+      slot: "reanchor-action",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/Button.tsx",
+      name: "Button",
+      status: "existing",
+    },
+    rationale: {
+      summary: "CommentRow's reanchor control is an ordinary labeled action.",
+      equivalence:
+        "The native button carries a leading glyph, disabled state, localized label, and one async action callback within Button's contract.",
+      replacement:
+        "Compose a compact Button while retaining selector resolution, busy state, mutation feedback, and comment identity in CommentRow.",
+      deletion:
+        "Remove the native reanchor button and duplicated inline action classes after migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/viewer/CommentThreadPanel.tsx",
+      owner: "CommentRow",
+      slot: "body-edit-trigger",
+    },
+    element: "button",
+    disposition: "retain-semantic-seam",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/viewer/CommentThreadPanel.tsx",
+      name: "CommentRow",
+      status: "existing",
+    },
+    rationale: {
+      summary: "CommentRow owns the comment body as its edit-mode trigger.",
+      distinction:
+        "The unchromed target preserves whitespace and selectable authored prose, then swaps that exact body into an editing textarea with draft and feedback state; generic Button styling would misrepresent content as action chrome.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/viewer/MarkdownReader.tsx",
+      owner: "CodeFence",
+      slot: "copy-code-action",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/Button.tsx",
+      name: "Button",
+      status: "existing",
+    },
+    rationale: {
+      summary: "CodeFence's copy control is an ordinary text action.",
+      equivalence:
+        "The native button has a localized label and one clipboard callback, while syntax rendering remains caller-owned.",
+      replacement:
+        "Compose the compact appropriate Button variant while retaining dispatchCopy fallback behavior and code-fence header composition.",
+      deletion:
+        "Remove the native copy button and its vs-code-fence__copy interaction styling after migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/viewer/MarkdownReader.tsx",
+      owner: "OrphanedNotesBar",
+      slot: "notes-disclosure-action",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/Button.tsx",
+      name: "Button",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "OrphanedNotesBar's note-count disclosure is an ordinary labeled action.",
+      equivalence:
+        "The native button has leading content, a localized count label, and one toggle callback within Button's contract.",
+      replacement:
+        "Compose the appropriate ghost Button while retaining orphan derivation, panel placement, and open state in OrphanedNotesBar.",
+      deletion:
+        "Remove the native disclosure button and duplicated inline action classes after migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/platform/errors/ErrorBoundary.tsx",
+      owner: "DefaultFallback",
+      slot: "app-reload-action",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/Button.tsx",
+      name: "Button",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "DefaultFallback's application reload control belongs to app-owned Button composition.",
+      equivalence:
+        "The native control has a localized label and one reload callback, but its product styling currently violates the platform containment boundary.",
+      replacement:
+        "Compose Button in the planned app-owned fallback renderer while platform ErrorBoundary retains only containment, diagnostics, reset, and injected rendering.",
+      deletion:
+        "Remove the native app fallback button and bespoke framework-palette classes from platform when AppErrorBoundary takes presentation ownership.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/platform/errors/ErrorBoundary.tsx",
+      owner: "DefaultFallback",
+      slot: "region-retry-action",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/Button.tsx",
+      name: "Button",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "DefaultFallback's region retry control belongs to app-owned Button composition.",
+      equivalence:
+        "The native control has a localized label and one reset callback, but its product styling currently violates the platform containment boundary.",
+      replacement:
+        "Compose Button in the planned app-owned fallback renderer while platform ErrorBoundary retains reset coordination and injected rendering.",
+      deletion:
+        "Remove the native region fallback button and bespoke framework-palette classes from platform when AppErrorBoundary takes presentation ownership.",
+    },
+  },
 ] as const satisfies readonly NativeControlLedgerEntry[];
 export const RELATIVE_VALUE_LEDGER: readonly RelativeValueLedgerEntry[] = [];
 export const NAMING_DEBT_LEDGER: readonly NamingDebtLedgerEntry[] = [];
