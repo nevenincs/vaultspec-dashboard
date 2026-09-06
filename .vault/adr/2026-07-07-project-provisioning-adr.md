@@ -4,7 +4,7 @@ tags:
   - '#project-provisioning'
 date: '2026-07-07'
 modified: '2026-09-06'
-body_hash: 'sha256:ae04fb3ac9a9c4df4629d53db58e912fda0ac78e13db29582c3cdc359e8644aa'
+body_hash: 'sha256:26876cad4350680b6dfd3ae4479a100d66dbf281ead933fa470729df4410778b'
 related:
   - "[[2026-07-07-project-provisioning-research]]"
   - "[[2026-07-04-dashboard-packaging-adr]]"
@@ -250,3 +250,50 @@ for forward-compatible decoding. Dashboard selects and validates evidence for
 exactly core, claude, antigravity, and codex and discards every unrelated field
 without naming, interpreting, storing, or returning it. Open-world decoding
 does not weaken the closed manifest membership rule.
+## Amendment - per-ordinal partial-state convergence (2026-09-06, owner auto-approved correction)
+
+This correction resolves the two high findings in the re-review recorded by
+`2026-09-06-project-provisioning-setup-receipt-amendment-review-audit`. It
+supersedes D8b's all-or-nothing fallback while retaining D8a, D9a-c, and the
+force posture contract where they do not conflict below.
+
+**D8c - unsupported membership terminates before any child spawn.** Setup first
+reads the strict Core manifest in process. If its `installed` set contains any
+name outside the exact current set `{claude, antigravity, codex}`, setup returns
+a typed terminal `manifest_membership_disagreement` before spawning doctor,
+preview, install, or any other child. The result may state that unsupported
+membership exists but must not name, translate, remove, provision, or expose the
+unsupported entry. Missing current membership is a supported partial state and
+continues to the per-ordinal preflight.
+
+**D8d - safe setup converges per ordinal.** In fixed D8 order, safe setup
+validates each current component using the D8b Core doctor, provider-specific
+install preview, strict manifest, and producer-declared path checks. An ordinal
+that already satisfies its exact D9 evidence emits a Dashboard-local
+`reconciled_existing` receipt and spawns no mutating install for that ordinal.
+An ordinal whose authoritative evidence proves the current component missing
+runs only that ordinal's D8a install operation, then validates the D9a install
+receipt and a fresh D9b postcondition before advancing. The first ordinal is
+`core`; the other ordinals remain `claude`, `antigravity`, and `codex` with
+`--skip core`. Force setup remains an explicit overwrite request and runs the
+full D8a force sequence after the same unsupported-membership refusal.
+
+A mismatch or malformed read that cannot distinguish missing from inconsistent
+state is `indeterminate`; it is never permission to mutate. A timeout or output
+breach keeps the D9 terminal classification and stops later mutation. A
+non-zero already-installed response is never success because an already-valid
+ordinal was reconciled before mutation and was not spawned. Each receipt keeps
+its ordinal and current-provider identity, Dashboard-local receipt identity,
+and bounded raw/digest evidence. Aggregate `complete` requires four successful
+or `reconciled_existing` receipts plus a final strict manifest whose membership
+equals the exact current set and a fresh doctor projection satisfying D9b.
+
+The supported sequence was exercised against live disposable targets in the
+four shapes required by the re-review: core-only executed the three missing
+provider ordinals; one-missing executed only that provider; multiple-missing
+executed only those providers in D8 order; and healthy repeated setup executed
+no mutating child. Every case finished with exact manifest membership and a
+current doctor projection. A separate unsupported-membership fixture returned
+`manifest_membership_disagreement` with zero child spawns and an unchanged
+manifest. These observations extend the live evidence set whose lifecycle home
+is the cited review audit; this ADR records only the resulting contract.
