@@ -10,7 +10,7 @@ related:
   - '[[2026-09-05-design-system-consolidation-shipped-frontend-blueprint-reference]]'
 modified: '2026-09-06'
 body_schema: body-v2
-body_hash: 'sha256:baa2973895f2cf7f92d44ef646869341fb55224bba7ddcfcb72a50206cff55c1'
+body_hash: 'sha256:127d1ab8cecf540c53530478db466dd613dd2ac7606009fee49f0f846d21b8a2'
 ---
 
 <!-- RETIRED: S02, S03, S95, S96, S158 -->
@@ -57,7 +57,7 @@ Establish one machine-readable ledger that distinguishes migrations, retained se
 - [x] `W01.P01.S178` - Verify the relative-value family ledger accounts for the complete 106-site baseline without duplicates; `frontend/dev/design-system/consolidation-ledger.test.ts`.
 - [x] `W01.P01.S179` - Capture immutable pre-execution hashes and preimages for all existing dirty and clean scene sources plus the SceneController contract; `frontend/dev/design-system/scene-freeze-baseline.json`.
 - [x] `W01.P01.S04` - Record temporary code-only component names, unresolved design aliases, and campaign-scoped parity debt; `frontend/dev/design-system/consolidation-ledger.ts`.
-- [ ] `W01.P01.S05` - Encode the frozen scene, graph, store-policy, wire, responsive-mode, and no-Figma scope boundaries as ledger invariants; `frontend/dev/design-system/consolidation-ledger.ts`.
+- [x] `W01.P01.S05` - Encode the frozen scene, graph, store-policy, wire, responsive-mode, and no-Figma scope boundaries as ledger invariants; `frontend/dev/design-system/consolidation-ledger.ts`.
 
 ### Phase `W01.P02` - enforce the baseline
 

@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { extname, relative, resolve } from "node:path";
 
@@ -9,11 +10,14 @@ import {
   CHROME_AND_SHELL_RELATIVE_VALUE_LEDGER,
   CONSOLIDATION_BASELINE_COUNTS,
   CONSOLIDATION_DISPOSITIONS,
+  CONSOLIDATION_INVARIANT_BOUNDARIES,
+  CONSOLIDATION_INVARIANTS,
   CONSOLIDATION_LEDGER,
   CONSOLIDATION_LEDGER_SCHEMA_VERSION,
   CONSOLIDATION_SOURCE_SCOPE,
   DISPOSITION_RATIONALE_FIELDS,
   KIT_RELATIVE_VALUE_LEDGER,
+  invariantEvidenceKey,
   ledgerSourceKey,
   NAMING_DEBT_LEDGER,
   NATIVE_CONTROL_ELEMENTS,
@@ -32,6 +36,7 @@ import {
 } from "./consolidation-ledger";
 
 const FRONTEND_ROOT = resolve(import.meta.dirname, "../..");
+const REPOSITORY_ROOT = resolve(FRONTEND_ROOT, "..");
 const NATIVE_ELEMENTS = new Set<string>(NATIVE_CONTROL_ELEMENTS);
 
 interface SourceControlSite {
@@ -190,6 +195,15 @@ const CAMPAIGN_COMPONENT_NAMING_DEBT = [
   layer: NamingDebtLedgerEntry["canonicalOwner"]["layer"];
   status: NamingDebtLedgerEntry["canonicalOwner"]["status"];
 }[];
+
+const EXPECTED_CAMPAIGN_INVARIANTS = [
+  ["scene-source-byte-freeze", "scene-source"],
+  ["graph-semantics-freeze", "graph-semantics"],
+  ["store-policy-preservation", "store-policy"],
+  ["wire-contract-preservation", "wire-contract"],
+  ["responsive-mode-preservation", "responsive-mode"],
+  ["no-figma-campaign-evidence", "figma-exclusion"],
+] as const;
 
 /**
  * Semantic slots for repeated controls are explicitly bound to their zero-based
@@ -1123,5 +1137,118 @@ describe("design-system consolidation naming-debt ledger", () => {
         "separately authorized design reconciliation",
       );
     }
+  });
+});
+
+describe("design-system consolidation campaign invariants", () => {
+  it("pins one explicit invariant to each accepted campaign boundary", () => {
+    expect(CONSOLIDATION_INVARIANTS.map(({ id, boundary }) => [id, boundary])).toEqual(
+      EXPECTED_CAMPAIGN_INVARIANTS,
+    );
+    expect(CONSOLIDATION_INVARIANTS).toHaveLength(6);
+    expect(new Set(CONSOLIDATION_INVARIANTS.map(({ id }) => id)).size).toBe(6);
+    expect(CONSOLIDATION_INVARIANTS.map(({ boundary }) => boundary)).toEqual(
+      CONSOLIDATION_INVARIANT_BOUNDARIES,
+    );
+    expect(CONSOLIDATION_LEDGER.invariants).toBe(CONSOLIDATION_INVARIANTS);
+  });
+
+  it("requires unique live evidence identities and enforceable statements", () => {
+    const allEvidenceKeys: string[] = [];
+    const allEvidencePaths: string[] = [];
+    for (const invariant of CONSOLIDATION_INVARIANTS) {
+      expect(invariant.id.trim()).not.toBe("");
+      expect(invariant.statement.trim(), invariant.id).not.toBe("");
+      expect(invariant.rationale.trim(), invariant.id).not.toBe("");
+      expect(invariant.evidence.length, invariant.id).toBeGreaterThan(0);
+
+      const evidenceKeys = invariant.evidence.map(invariantEvidenceKey);
+      expect(duplicateKeys(evidenceKeys), invariant.id).toEqual([]);
+      allEvidenceKeys.push(...evidenceKeys);
+      allEvidencePaths.push(...invariant.evidence.map(({ path }) => path));
+      for (const evidence of invariant.evidence) {
+        const evidencePath = resolve(REPOSITORY_ROOT, evidence.path);
+        expect(existsSync(evidencePath), invariantEvidenceKey(evidence)).toBe(true);
+        expect(evidence.owner.trim(), invariant.id).not.toBe("");
+        expect(evidence.slot.trim(), invariant.id).not.toBe("");
+        if (
+          evidence.path.startsWith("frontend/") &&
+          [".ts", ".tsx"].includes(extname(evidence.path))
+        ) {
+          expect(
+            declaredOwnerNames(evidencePath).has(evidence.owner),
+            `${evidence.path} must declare ${evidence.owner}`,
+          ).toBe(true);
+        }
+      }
+    }
+    expect(duplicateKeys(allEvidenceKeys)).toEqual([]);
+    expect(allEvidencePaths.some((path) => path.startsWith(".vault/adr/"))).toBe(true);
+    expect(allEvidencePaths.some((path) => path.startsWith(".codex/rules/"))).toBe(
+      true,
+    );
+  });
+
+  it("links the scene freeze to its exact worktree fingerprint and controller contract", () => {
+    const baselinePath = resolve(
+      FRONTEND_ROOT,
+      "dev/design-system/scene-freeze-baseline.json",
+    );
+    const baseline = JSON.parse(readFileSync(baselinePath, "utf8")) as {
+      schema: string;
+      sceneDiffFingerprint: { algorithm: string; value: string };
+      sceneControllerContract: { path: string; worktreeSha256: string };
+    };
+    expect(baseline.schema).toBe("vaultspec.design-system.scene-freeze-baseline.v1");
+    expect(baseline.sceneControllerContract.path).toBe(
+      "frontend/src/scene/sceneController.ts",
+    );
+    expect(baseline.sceneControllerContract.worktreeSha256).toMatch(/^[a-f0-9]{64}$/);
+
+    const sceneDiff = spawnSync("git", ["diff", "--", "frontend/src/scene"], {
+      cwd: REPOSITORY_ROOT,
+      encoding: "buffer",
+    });
+    expect(sceneDiff.status).toBe(0);
+    const fingerprint = spawnSync("git", ["hash-object", "--stdin"], {
+      cwd: REPOSITORY_ROOT,
+      input: sceneDiff.stdout,
+      encoding: "utf8",
+    });
+    expect(fingerprint.status).toBe(0);
+    expect(baseline.sceneDiffFingerprint.algorithm).toBe("git-blob-sha1");
+    expect(fingerprint.stdout.trim()).toBe(baseline.sceneDiffFingerprint.value);
+
+    const sceneInvariant = CONSOLIDATION_INVARIANTS.find(
+      ({ boundary }) => boundary === "scene-source",
+    );
+    expect(sceneInvariant?.evidence).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: "frontend/dev/design-system/scene-freeze-baseline.json",
+          slot: "worktree-preimages",
+        }),
+        expect.objectContaining({
+          path: baseline.sceneControllerContract.path,
+          owner: "SceneController",
+        }),
+      ]),
+    );
+  });
+
+  it("keeps the no-Figma fence explicit without changing long-term authority", () => {
+    const invariant = CONSOLIDATION_INVARIANTS.find(
+      ({ boundary }) => boundary === "figma-exclusion",
+    );
+    expect(invariant?.statement).toContain("does not use Figma capture");
+    expect(invariant?.statement).toContain("makes no Figma-parity claim");
+    expect(invariant?.statement).toContain(
+      "does not supersede Figma's separate long-term design authority",
+    );
+    expect(invariant?.evidence.map(({ path }) => path)).toEqual([
+      ".vault/adr/2026-09-05-design-system-consolidation-adr.md",
+      ".vault/research/2026-09-05-design-system-consolidation-horizontal-polish-research.md",
+      ".codex/rules/design-system.md",
+    ]);
   });
 });

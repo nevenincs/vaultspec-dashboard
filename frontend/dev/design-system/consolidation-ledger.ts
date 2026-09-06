@@ -156,12 +156,45 @@ export const CONSOLIDATION_INVARIANT_BOUNDARIES = [
 export type ConsolidationInvariantBoundary =
   (typeof CONSOLIDATION_INVARIANT_BOUNDARIES)[number];
 
+export type ConsolidationEvidencePath =
+  | FrontendRepositoryPath
+  | `.codex/${string}`
+  | `.vault/${string}`;
+
+export interface ConsolidationInvariantEvidence {
+  readonly path: ConsolidationEvidencePath;
+  readonly owner: string;
+  readonly slot: string;
+}
+
+export function invariantEvidenceKey(evidence: ConsolidationInvariantEvidence): string {
+  const pathSegments = evidence.path.split("/");
+  if (
+    !["frontend/", ".codex/", ".vault/"].some((root) =>
+      evidence.path.startsWith(root),
+    ) ||
+    evidence.path.includes("\\") ||
+    pathSegments.some(
+      (segment) => segment === "" || segment === "." || segment === "..",
+    )
+  ) {
+    throw new Error(`Invalid invariant evidence path: ${evidence.path}`);
+  }
+  if (evidence.owner.trim() === "" || evidence.slot.trim() === "") {
+    throw new Error("Invariant evidence owner and slot must be non-empty");
+  }
+  return JSON.stringify([evidence.path, evidence.owner, evidence.slot]);
+}
+
 export interface ConsolidationInvariant {
   readonly id: string;
   readonly boundary: ConsolidationInvariantBoundary;
   readonly statement: string;
   readonly rationale: string;
-  readonly evidence: readonly [LedgerSourceIdentity, ...LedgerSourceIdentity[]];
+  readonly evidence: readonly [
+    ConsolidationInvariantEvidence,
+    ...ConsolidationInvariantEvidence[],
+  ];
 }
 
 export interface ConsolidationLedger {
@@ -5709,7 +5742,158 @@ export const NAMING_DEBT_LEDGER = [
     },
   },
 ] as const satisfies readonly NamingDebtLedgerEntry[];
-export const CONSOLIDATION_INVARIANTS: readonly ConsolidationInvariant[] = [];
+export const CONSOLIDATION_INVARIANTS = [
+  {
+    id: "scene-source-byte-freeze",
+    boundary: "scene-source",
+    statement:
+      "Throughout this campaign, every frontend/src/scene .ts and .tsx file and the SceneController contract remain byte-identical to the worktree preimages in scene-freeze-baseline.json; verification may read them but implementation may not edit, add, or remove them.",
+    rationale:
+      "The baseline preserves both committed and pre-existing dirty scene bytes, so comparison against its worktree preimages proves this campaign did not overwrite unrelated scene work where a HEAD-only diff cannot.",
+    evidence: [
+      {
+        path: "frontend/dev/design-system/scene-freeze-baseline.json",
+        owner: "sceneFreezeBaseline",
+        slot: "worktree-preimages",
+      },
+      {
+        path: "frontend/src/scene/sceneController.ts",
+        owner: "SceneController",
+        slot: "public-contract-byte-preimage",
+      },
+      {
+        path: ".vault/adr/2026-09-05-design-system-consolidation-adr.md",
+        owner: "design-system-consolidation",
+        slot: "scene-behavioral-freeze",
+      },
+    ],
+  },
+  {
+    id: "graph-semantics-freeze",
+    boundary: "graph-semantics",
+    statement:
+      "Presentation consolidation must not change graph node or edge meaning, graph filtering or selection semantics, SceneCommand or SceneEvent behavior, layout and camera behavior, or rendering outcomes.",
+    rationale:
+      "Graph behavior is a settled model-and-scene contract outside a styling migration; app surfaces may continue to dispatch existing commands and render existing state without redefining either side of that seam.",
+    evidence: [
+      {
+        path: "frontend/src/scene/sceneController.ts",
+        owner: "SceneCommand",
+        slot: "graph-command-event-contract",
+      },
+      {
+        path: "frontend/src/stores/server/engine/graphTypes.ts",
+        owner: "DashboardState",
+        slot: "graph-state-semantics",
+      },
+      {
+        path: ".codex/rules/architecture-boundaries.md",
+        owner: "architecture-boundaries",
+        slot: "scene-contract-freeze",
+      },
+    ],
+  },
+  {
+    id: "store-policy-preservation",
+    boundary: "store-policy",
+    statement:
+      "Stores retain semantic state, normalization, selectors, setting value policy, and serialized values; this campaign may move visual mappings and CSS recipes to app composition but must not change the policy they represent, and the resulting stores must not depend on app-kit presentation contracts.",
+    rationale:
+      "Separating presentation ownership from stores closes the layer leak only when state and value behavior stay stable and visual dependencies are removed rather than legitimized through a different import path.",
+    evidence: [
+      {
+        path: "frontend/src/stores/server/settingsSelectors.ts",
+        owner: "settingsControlValue",
+        slot: "settings-value-policy",
+      },
+      {
+        path: "frontend/src/stores/view/filterSidebar.ts",
+        owner: "deriveFilterSidebarMenuSections",
+        slot: "filter-selection-policy",
+      },
+      {
+        path: ".codex/rules/architecture-boundaries.md",
+        owner: "architecture-boundaries",
+        slot: "stores-own-state-not-presentation",
+      },
+    ],
+  },
+  {
+    id: "wire-contract-preservation",
+    boundary: "wire-contract",
+    statement:
+      "Styling and component migrations must not change request or response fields, wire enum strings, tolerant adapters, stable identities, tiers-based degradation, setting serialization, or introduce engine access outside frontend stores.",
+    rationale:
+      "The engine-store wire is an independently governed contract; preserving its vocabulary and sole-client boundary prevents presentation work from changing served meaning, fallback truth, or persisted values.",
+    evidence: [
+      {
+        path: "frontend/src/stores/server/engine/client.ts",
+        owner: "EngineClient",
+        slot: "request-response-transport",
+      },
+      {
+        path: "frontend/src/stores/server/engine/graphTypes.ts",
+        owner: "EngineNode",
+        slot: "wire-model-shapes",
+      },
+      {
+        path: ".codex/rules/wire-contract.md",
+        owner: "wire-contract",
+        slot: "tiers-served-state-stable-identities",
+      },
+    ],
+  },
+  {
+    id: "responsive-mode-preservation",
+    boundary: "responsive-mode",
+    statement:
+      "The supported responsive vocabulary remains exactly compact and regular, compact selection remains bounded by the existing 40rem threshold, and this campaign introduces neither a third runtime mode nor a visual-review-desk viewport axis.",
+    rationale:
+      "The existing viewport class is a store-owned behavioral signal; representative wide and intermediate evidence both exercise regular behavior while compact remains the only alternate composition.",
+    evidence: [
+      {
+        path: "frontend/src/stores/view/viewportClass.ts",
+        owner: "ViewportClass",
+        slot: "compact-regular-vocabulary-and-threshold",
+      },
+      {
+        path: "frontend/src/app/AppShell.tsx",
+        owner: "AppShell",
+        slot: "responsive-shell-selection",
+      },
+      {
+        path: ".vault/adr/2026-09-05-design-system-consolidation-adr.md",
+        owner: "design-system-consolidation",
+        slot: "responsive-mode-freeze",
+      },
+    ],
+  },
+  {
+    id: "no-figma-campaign-evidence",
+    boundary: "figma-exclusion",
+    statement:
+      "This campaign does not use Figma capture, inspection, parity comparison, reconciliation, or acceptance evidence; it uses shipped code, runtime behavior, repository decisions, and tests, makes no Figma-parity claim, and does not supersede Figma's separate long-term design authority.",
+    rationale:
+      "The evidence fence keeps this behavior-preserving consolidation auditable without inventing external bindings or silently converting a code-baseline review into a design-parity decision.",
+    evidence: [
+      {
+        path: ".vault/adr/2026-09-05-design-system-consolidation-adr.md",
+        owner: "design-system-consolidation",
+        slot: "no-figma-evidence-fence",
+      },
+      {
+        path: ".vault/research/2026-09-05-design-system-consolidation-horizontal-polish-research.md",
+        owner: "horizontal-polish",
+        slot: "no-figma-scope-grounding",
+      },
+      {
+        path: ".codex/rules/design-system.md",
+        owner: "design-system",
+        slot: "long-term-figma-authority",
+      },
+    ],
+  },
+] as const satisfies readonly ConsolidationInvariant[];
 
 export const CONSOLIDATION_LEDGER = {
   schemaVersion: CONSOLIDATION_LEDGER_SCHEMA_VERSION,
