@@ -4,11 +4,13 @@ tags:
   - '#graph-simulation-stability'
 date: '2026-07-03'
 modified: '2026-09-05'
-body_hash: 'sha256:a707f9a496ac3e1fc9a9ea69e6b4055424c29338572df86a1ae6125e5c0cff55'
+body_hash: 'sha256:e344dec305ab0a466e9862e6873bf28cc54db1e0a90f53645915a0df60a30bd2'
 related:
-  - "[[2026-07-02-graph-implementation-review-adr]]"
-  - "[[2026-07-02-graph-simulation-stability-audit]]"
+  - '[[2026-07-02-graph-implementation-review-adr]]'
+  - '[[2026-07-02-graph-simulation-stability-audit]]'
   - '[[2026-06-29-graph-simulation-stability-research]]'
+  - '[[2026-09-05-graph-simulation-stability-performance-reference]]'
+  - '[[2026-09-05-graph-simulation-stability-performance-engineering-research]]'
 ---
 
 # `graph-simulation-stability` adr: `convergence-gated anneal and persisted layout base` | (**status:** `accepted`)
@@ -215,3 +217,17 @@ Reject equal-mass maximum-degree-normalized springs for this correction because 
 Correct frame scheduling with an elapsed-time accumulator that consumes whole fixed steps, preserves fractions, permits zero ticks, bounds catch-up work, and resets on inactivity. Close independently observed lifecycle defects: clicks below the existing drag threshold are energy-neutral, frozen state prevents ticking and dragging, graph replacement cancels stale gestures, and empty data stops running.
 
 Rest-state authority, survivor-pinning, bounded anneal and prewarm, gentle retuning, and local wake contracts remain. No wire or scene command change is needed. Existing damping and cooling defaults remain unchanged. Earlier language describing a guaranteed measured equilibrium is narrowed: calm/stall/cap termination is a bounded stopping policy, not proof of force equilibrium. Explicit restart may rearrange a layout. Verify mass-weighted momentum without cooling, contacts and pins, approximation accuracy, sparse and dense graph cost, frame-rate independence, and existing lifecycle guards.
+
+## Amendment (2026-09-05): correctness-preserving performance engineering
+
+The owner approved the CPU-first design and requested autonomous implementation through measurement and review. Grounding lives in `2026-09-05-graph-simulation-stability-performance-engineering-research` and the performance reference. This refines the existing force and position-authority decisions.
+
+Keep scene-owned CPU simulation, the public scene command contract, degree mass, reciprocal repulsion, current theta/cutoff/contact law, fixed physical steps, and cooling/damping/wake defaults. Optimize finite-distance arithmetic while retaining robust softening, coincidence, extreme-coordinate and cutoff handling. Arithmetic reassociation may produce roundoff-scale differences; pruning independently preserves movable outputs and shared RNG draw order. Retain sleepers as sources/obstacles and derive mobility per axis from pins. Skip only work whose discarded results cannot affect later observable computation. Preserve source geometry, movable interaction order, d3 link evaluation and effective collision order. Retain coincidence traversal where needed to preserve shared random state. Cache collision invariants with explicit invalidation and node-bounded storage.
+
+Classify scene updates before destructive rebuild. Reuse solver, position texture and compatible GPU buffers when ordered node identity, resolved ordered edge multiplicity and physical inputs are unchanged. Update changed attributes and cohort metadata without reheating an unchanged layout. Preserve command effects, selected/visible-state projection, camera arbitration, gesture safety, freeze, reset/empty handling, context restoration and in-flight convergence discipline. Topology/physics changes retain the established replacement/reflow path. Resolve theme colors once per build or invalidated theme revision, retaining fallback and non-hex parsing.
+
+Adopt a soft CPU work budget for live callbacks. Start at most one mandatory due tick, then admit additional catch-up ticks only while measured/predicted work fits an 8 ms budget, still bounded by the existing count cap. Store the budget in the canonical control registry. Preserve fractional elapsed time; deliberately discard due whole-step debt not executed because of overload and account for it in bounded counters. Alpha, anneal and sleep state advance only for executed ticks. Below budget, refresh-independent 60 Hz cadence holds. Under overload, settling can take longer in wall-clock time. No unbounded backlog, rescaled forces or fake alpha progress is permitted. One indivisible tick may exceed the budget; prewarm retains its bounded synchronous policy and single-tick overshoot limitation.
+
+Keep solver cost, total callback time and executed/discarded ticks distinct from CPU render submission. The dev-only harness compares baseline and optimized code on identical fixtures, including natural settle/local drag, callbacks, unchanged rebuilds and idle. Pair correctness tests with measurements; do not infer input latency or GPU duration from kernel timings.
+
+Worker migration, different RNG streams, reordered contact solving, coarser approximations and changed physical defaults are out of scope. Escalate to a separate ownership/synchronization/cancellation decision if optimized indivisible ticks still violate responsiveness targets. Report residual limits rather than claiming a whole-application 60 Hz guarantee.

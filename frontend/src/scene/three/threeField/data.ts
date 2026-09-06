@@ -18,6 +18,7 @@ import {
 import { D3ForceSolver } from "../d3ForceSolver";
 import { type NodePosition } from "../../positionCache";
 import { classifySwap } from "../swapClassifier";
+import { compatibleSceneEdges } from "../compatibleSceneUpdate";
 import { labelTextStyle } from "../labelStyle";
 import { rootFontPx } from "../uiScale";
 import {
@@ -264,6 +265,12 @@ export abstract class ThreeFieldData extends ThreeFieldGpuResources {
       });
       nodes = nodes.slice(0, MAX_SCENE_NODES);
     }
+
+    // Commit a pending cursor endpoint before capturing physics for either path.
+    // Numeric indices may survive a reuse, but a stale gesture must never survive
+    // a set-data command (nor seed a replacement from its pre-release position).
+    this.cancelInteraction();
+    if (!reset && !reflow && this.reuseData(nodes, edges, deltaDriven)) return;
 
     // Warm-start (object constancy): capture the PRIOR layout by id BEFORE teardown,
     // so nodes that persist across this set-data resume from where they were instead
@@ -513,6 +520,60 @@ export abstract class ThreeFieldData extends ThreeFieldGpuResources {
     this.applyEmphasis();
     this.requestRender();
     if (this.running) this.wake();
+  }
+
+  /** Attribute-only updates keep the full in-flight solver state: velocities,
+   * anneal progress, temperature and pins. A metadata refresh is not a restart. */
+  private reuseData(
+    nodes: SceneNodeData[],
+    edges: SceneEdgeData[],
+    deltaDriven: boolean,
+  ): boolean {
+    const solver = this.solver;
+    if (!solver || !this.nodeMesh || !this.positionTex) return false;
+    if ((this.builtEdges.length === 0) !== (this.edgeMesh === null)) return false;
+    const valid = compatibleSceneEdges(nodes, edges, this.idToIndex, this.builtEdges);
+    if (
+      !valid ||
+      !solver.matchesRadii(nodes.map((node) => nodeWorldRadius(node, this.appearance)))
+    ) {
+      return false;
+    }
+
+    this.setRunning(false);
+    this.simulationClock.reset();
+    this.nodes = nodes;
+    this.hoveredId = null;
+    this.visibleNodeIds = null;
+    this.featureCohort = new Map();
+    for (const node of nodes) {
+      for (const tag of node.featureTags ?? []) {
+        let cohort = this.featureCohort.get(tag);
+        if (!cohort) this.featureCohort.set(tag, (cohort = new Set()));
+        cohort.add(node.id);
+      }
+    }
+    this.refreshGraphAttributes(nodes, valid);
+    this.emphasisAnim = false;
+    this.fenceAlpha = 0;
+    this.fenceTargetAlpha = 0;
+    this.fenceTag = null;
+    this.pickCacheValid = false;
+    // A data command still snaps display to authoritative physics, including a
+    // just-committed drag endpoint. No ticking or alpha advancement is involved.
+    solver.pack(this.simPositions);
+    this.cpuPositions.set(this.simPositions);
+    this.displayEasing = false;
+    this.uploadPositions();
+    if (this.pendingFocusId !== null && this.idToIndex.has(this.pendingFocusId)) {
+      this.focusNode(this.pendingFocusId);
+    }
+    this.setRunning(!this.frozen && !solver.isSettled());
+    if (!deltaDriven) this.reengageAutoframe();
+    this.applyEmphasis();
+    this.requestRender();
+    if (this.running) this.wake();
+    return true;
   }
 
   /** Live incremental update (apply-deltas): fold add/remove/change-by-id into the

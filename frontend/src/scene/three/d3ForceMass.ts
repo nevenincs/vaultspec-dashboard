@@ -34,7 +34,8 @@ export function withNodeMass(
 /** Circle geometry and inertial mass are independent. Each contact exchanges
  * equal and opposite mass-weighted impulses; fixed coordinates have no mobility.
  * A diameter-sized grid limits candidates to adjacent cells, including vertical
- * chains. Storage is O(nodes); fully overlapping circles still cost O(nodes²). */
+ * chains. Reinitialize after changing radii or masses. Storage is O(nodes);
+ * fully overlapping circles still cost O(nodes²). */
 export function massCollide(
   masses: readonly number[],
   padding: number,
@@ -46,22 +47,35 @@ export function massCollide(
   let x = new Float64Array(0);
   let y = new Float64Array(0);
   let radii = new Float64Array(0);
+  let inverseMass = new Float64Array(0);
+  let diameter = 0;
   let cellX = new Float64Array(0);
   let cellY = new Float64Array(0);
   let next = new Int32Array(0);
+  let nextMovable = new Int32Array(0);
+  let movable = new Uint8Array(0);
+  let hasFixed = false;
+  let cellKeys: string[] = [];
   // Rebuilt per iteration, with at most one cell entry per node.
   const heads = new Map<string, number>();
+  const movableHeads = new Map<string, number>();
 
   const apply: Force<D3Node, undefined> = () => {
     if (strength === 0 || nodes.length < 2) return;
-    let diameter = 0;
-    for (let i = 0; i < nodes.length; i++) {
-      radii[i] = Math.max(0, nodes[i].radius + padding);
-      diameter = Math.max(diameter, radii[i] * 2);
-    }
     if (diameter === 0) return;
+    hasFixed = false;
+    for (let i = 0; i < nodes.length; i++) {
+      movable[i] = nodes[i].fx == null || nodes[i].fy == null ? 1 : 0;
+      if (!movable[i]) hasFixed = true;
+    }
     for (let iteration = 0; iteration < iterations; iteration++) {
       heads.clear();
+      movableHeads.clear();
+      let movableMinX = Infinity;
+      let movableMinY = Infinity;
+      let movableMaxX = -Infinity;
+      let movableMaxY = -Infinity;
+      let movableBoundsValid = true;
       for (let i = 0; i < nodes.length; i++) {
         const n = nodes[i];
         x[i] = n.fx ?? (n.x ?? 0) + (n.vx ?? 0);
@@ -69,15 +83,67 @@ export function massCollide(
         cellX[i] = Math.floor(x[i] / diameter);
         cellY[i] = Math.floor(y[i] / diameter);
         const key = `${cellX[i]},${cellY[i]}`;
+        cellKeys[i] = key;
         next[i] = heads.get(key) ?? -1;
         heads.set(key, i);
+        if (hasFixed && movable[i]) {
+          nextMovable[i] = movableHeads.get(key) ?? -1;
+          movableHeads.set(key, i);
+          movableMinX = Math.min(movableMinX, cellX[i]);
+          movableMinY = Math.min(movableMinY, cellY[i]);
+          movableMaxX = Math.max(movableMaxX, cellX[i]);
+          movableMaxY = Math.max(movableMaxY, cellY[i]);
+          if (
+            !(Math.abs(cellX[i]) < Number.MAX_SAFE_INTEGER) ||
+            !(Math.abs(cellY[i]) < Number.MAX_SAFE_INTEGER)
+          ) {
+            movableBoundsValid = false;
+          }
+        }
       }
       for (let i = 0; i < nodes.length; i++) {
+        if (!hasFixed) {
+          for (let dx = -1; dx <= 1; dx++) {
+            for (let dy = -1; dy <= 1; dy++) {
+              const key = `${cellX[i] + dx},${cellY[i] + dy}`;
+              for (let j = heads.get(key) ?? -1; j >= 0; j = next[j]) {
+                if (j <= i) break;
+                resolveContact(i, j);
+              }
+            }
+          }
+          continue;
+        }
+        if (
+          !movable[i] &&
+          movableBoundsValid &&
+          (cellX[i] + 1 < movableMinX ||
+            cellX[i] - 1 > movableMaxX ||
+            cellY[i] + 1 < movableMinY ||
+            cellY[i] - 1 > movableMaxY) &&
+          Math.abs(cellX[i]) < Number.MAX_SAFE_INTEGER &&
+          Math.abs(cellY[i]) < Number.MAX_SAFE_INTEGER
+        ) {
+          // No movable cell is adjacent. Safe integer grid coordinates make
+          // the nine keys distinct: only own-cell fixed coincidences draw RNG.
+          for (let j = heads.get(cellKeys[i]) ?? -1; j >= 0; j = next[j]) {
+            if (j <= i) break;
+            if (x[i] === x[j] && y[i] === y[j]) resolveContact(i, j);
+          }
+          continue;
+        }
         for (let dx = -1; dx <= 1; dx++) {
           for (let dy = -1; dy <= 1; dy++) {
             const key = `${cellX[i] + dx},${cellY[i] + dy}`;
-            for (let j = heads.get(key) ?? -1; j >= 0; j = next[j]) {
-              if (j <= i) continue;
+            // Keep fixed coincidences in their original place in the random
+            // stream. Compare keys, not offsets: extreme grid coordinates alias.
+            const fullCell = movable[i] || key === cellKeys[i];
+            const candidates = fullCell ? heads : movableHeads;
+            const chain = fullCell ? next : nextMovable;
+            for (let j = candidates.get(key) ?? -1; j >= 0; j = chain[j]) {
+              if (j <= i) break;
+              if (!movable[i] && !movable[j] && (x[i] !== x[j] || y[i] !== y[j]))
+                continue;
               resolveContact(i, j);
             }
           }
@@ -103,10 +169,10 @@ export function massCollide(
     }
     const a = nodes[i];
     const b = nodes[j];
-    const ax = a.fx == null ? 1 / masses[i] : 0;
-    const ay = a.fy == null ? 1 / masses[i] : 0;
-    const bx = b.fx == null ? 1 / masses[j] : 0;
-    const by = b.fy == null ? 1 / masses[j] : 0;
+    const ax = a.fx == null ? inverseMass[i] : 0;
+    const ay = a.fy == null ? inverseMass[i] : 0;
+    const bx = b.fx == null ? inverseMass[j] : 0;
+    const by = b.fy == null ? inverseMass[j] : 0;
     const mobility = dx * dx * (ax + bx) + dy * dy * (ay + by);
     if (mobility === 0) return;
     const impulse = ((radius - distance) * strength) / mobility;
@@ -122,10 +188,21 @@ export function massCollide(
     x = new Float64Array(nodes.length);
     y = new Float64Array(nodes.length);
     radii = new Float64Array(nodes.length);
+    inverseMass = new Float64Array(nodes.length);
+    diameter = 0;
+    for (let i = 0; i < nodes.length; i++) {
+      radii[i] = Math.max(0, nodes[i].radius + padding);
+      diameter = Math.max(diameter, radii[i] * 2);
+      inverseMass[i] = 1 / masses[i];
+    }
     cellX = new Float64Array(nodes.length);
     cellY = new Float64Array(nodes.length);
     next = new Int32Array(nodes.length);
+    nextMovable = new Int32Array(nodes.length);
+    movable = new Uint8Array(nodes.length);
+    cellKeys = new Array<string>(nodes.length);
     heads.clear();
+    movableHeads.clear();
   };
   return apply;
 }

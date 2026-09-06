@@ -849,6 +849,16 @@ export class D3ForceSolver {
     return { ...this.params };
   }
 
+  /** Exact collision-body compatibility for resource-preserving scene updates. */
+  matchesRadii(radii: readonly number[]): boolean {
+    return (
+      radii.length === this.count &&
+      radii.every(
+        (radius, i) => Number.isFinite(radius) && radius === this.nodes[i].radius,
+      )
+    );
+  }
+
   /** Update collision radii live (a node-size appearance change) so the non-overlap
    *  spacing tracks the drawn node size, then rebuild the collide force and gently
    *  reheat. Node size is both look AND behaviour — the drawn disc and the collision

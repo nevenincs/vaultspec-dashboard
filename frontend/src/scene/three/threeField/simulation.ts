@@ -360,6 +360,11 @@ export abstract class ThreeFieldSimulation extends ThreeFieldData {
   }
 
   protected frame = (now: number): void => {
+    const callbackStart = performance.now();
+    this.framePerformance.solverMs = 0;
+    this.framePerformance.renderMs = 0;
+    this.framePerformance.executedTicks = 0;
+    this.framePerformance.discardedTicks = 0;
     this.scheduled = false;
     let dirty = this.needsRender;
     this.needsRender = false;
@@ -371,24 +376,40 @@ export abstract class ThreeFieldSimulation extends ThreeFieldData {
       // TRANSITION persists the layout as the next cold load's base
       // once per settle, never per frame.
       //
-      // Fixed-timestep accumulator (sim-smoothness reference): the sim targets a
-      // 60Hz tick rate in WALL-CLOCK terms. A slow renderer (long frames) runs
-      // bounded catch-up ticks so the anneal/stall budgets and the felt settle
-      // duration stop depending on the frame rate; the catch-up cap keeps a
-      // pathological stall from spiraling the CPU.
+      // Always allow one due fixed step. Additional catch-up is admitted only
+      // while measured/predicted work fits the live CPU budget. Excess whole
+      // steps are explicitly discarded: overload slows wall-clock settling,
+      // never advances alpha without physics or accumulates a future backlog.
       const ticks = this.simulationClock.consume(now);
-      for (let t = 0; t < ticks; t++) {
+      let executed = 0;
+      while (executed < ticks) {
+        if (
+          executed > 0 &&
+          !this.simulationClock.canCatchUp(performance.now() - callbackStart)
+        ) {
+          break;
+        }
+        const tickStart = performance.now();
         this.solver.tick();
+        this.simulationClock.recordTick(performance.now() - tickStart);
+        executed++;
         if (!this.dragActive && this.solver.isSettled()) break;
       }
-      this.solver.pack(this.simPositions);
-      this.applyDisplayLerp();
-      this.uploadPositions();
+      this.simulationClock.discard(ticks - executed);
+      this.framePerformance.solverMs = this.simulationClock.stats.frameSolverMs;
+      this.framePerformance.executedTicks = executed;
+      this.framePerformance.discardedTicks =
+        this.simulationClock.stats.frameDiscardedTicks;
+      if (executed > 0) this.solver.pack(this.simPositions);
+      if (executed > 0 || this.displayEasing) {
+        this.applyDisplayLerp();
+        this.uploadPositions();
+        dirty = true;
+      }
       if (!this.dragActive && this.solver.isSettled()) {
         this.setRunning(false);
         this.persistSettledLayout();
       }
-      dirty = true;
     } else if (this.displayEasing) {
       // Physics is at rest (settled or paused) but the DISPLAY is still gliding
       // toward it (render-time lerp): finish the glide, then snap to exact physics
@@ -429,7 +450,8 @@ export abstract class ThreeFieldSimulation extends ThreeFieldData {
     if (dirty && !hidden) {
       const t0 = performance.now();
       this.renderFrame();
-      this.updatePerfLod(performance.now() - t0);
+      this.framePerformance.renderMs = performance.now() - t0;
+      this.updatePerfLod(this.framePerformance.renderMs);
     }
     if (
       this.running ||
@@ -440,6 +462,7 @@ export abstract class ThreeFieldSimulation extends ThreeFieldData {
     ) {
       this.wake();
     }
+    this.framePerformance.callbackMs = performance.now() - callbackStart;
   };
 
   /** Render-time position lerp (sim-smoothness reference — the Quartz mechanism):

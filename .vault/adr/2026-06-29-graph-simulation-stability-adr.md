@@ -8,6 +8,7 @@ body_hash: 'sha256:01d14bf5f35ba3458936b36c57f1890a396024c225fd80b4465f90e2da157
 related:
   - "[[2026-06-29-graph-simulation-stability-research]]"
   - '[[2026-07-03-graph-simulation-stability-research]]'
+  - '[[2026-09-05-graph-simulation-stability-performance-engineering-research]]'
 ---
 # `graph-simulation-stability` adr: `the settled layout is authoritative: additive set-data pins survivors and relaxes only new nodes` | (**status:** `accepted`)
 

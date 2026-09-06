@@ -7,7 +7,7 @@
 
 import type { SceneEdgeData, SceneNodeData } from "../sceneController";
 import { categoryColor } from "../field/categoryColor";
-import { cssColorNumber } from "../field/tokenReads";
+import { cssColorNumber, type ColorNumberReader } from "../field/tokenReads";
 import { appearanceDefaults, controlNumber } from "./graphControlSchema";
 
 // The base node diameter, used as the base world radius for relative node sizing.
@@ -174,10 +174,13 @@ const MODULE_HUE_CATEGORIES = [
 /** Module-identity hue for a served `module_hue` index, from the ordered
  *  categorical palette. A mis-served/out-of-range index wraps into the palette so
  *  it still paints a stable colour rather than the fallback. */
-export function categoryPaletteHue(index: number): number {
+export function categoryPaletteHue(
+  index: number,
+  read: ColorNumberReader = cssColorNumber,
+): number {
   const n = MODULE_HUE_CATEGORIES.length;
   const i = ((Math.trunc(index) % n) + n) % n;
-  return categoryColor(MODULE_HUE_CATEGORIES[i]);
+  return categoryColor(MODULE_HUE_CATEGORIES[i], read);
 }
 
 /** Per-path-depth mix toward the canvas ground for the module DEPTH gradient:
@@ -215,10 +218,17 @@ const HEAT_COLD_RECEDE_MIX = 0.35;
  *  accent (hot) — via the same tested sRGB mixer the depth gradient uses. Both
  *  stops are literal theme-token reads, so the ramp is theme-correct in all
  *  three modes and re-bakes on refresh-theme for free. */
-export function recencyHeatColor(rank: number | undefined): number {
-  const cold = mixHexToward(inkMutedColor(), canvasBackground(), HEAT_COLD_RECEDE_MIX);
+export function recencyHeatColor(
+  rank: number | undefined,
+  read: ColorNumberReader = cssColorNumber,
+): number {
+  const cold = mixHexToward(
+    inkMutedColor(read),
+    canvasBackground(read),
+    HEAT_COLD_RECEDE_MIX,
+  );
   if (typeof rank !== "number" || !Number.isFinite(rank)) return cold;
-  return mixHexToward(cold, accentColor(), Math.max(0, Math.min(1, rank)));
+  return mixHexToward(cold, accentColor(read), Math.max(0, Math.min(1, rank)));
 }
 
 /** Node body fill. For a CODE node with a served module-hue index: the
@@ -232,18 +242,19 @@ export function recencyHeatColor(rank: number | undefined): number {
 export function nodeColorNumber(
   node: SceneNodeData,
   params: AppearanceParams = APPEARANCE_DEFAULTS,
+  read: ColorNumberReader = cssColorNumber,
 ): number {
   if (params.nodeColorMode === "recency") {
-    return recencyHeatColor(node.recencyRank);
+    return recencyHeatColor(node.recencyRank, read);
   }
   if (typeof node.moduleHue === "number") {
     return mixHexToward(
-      categoryPaletteHue(node.moduleHue),
-      canvasBackground(),
+      categoryPaletteHue(node.moduleHue, read),
+      canvasBackground(read),
       moduleDepthMix(node.depth),
     );
   }
-  return categoryColor(node.docType ?? node.kind);
+  return categoryColor(node.docType ?? node.kind, read);
 }
 
 /** Edge geometry attributes that do NOT depend on colour. Colour is resolved
@@ -296,12 +307,12 @@ export function edgeEndColors(
     : { a: sourceColor, b: sourceColor };
 }
 
-export function canvasBackground(): number {
-  return cssColorNumber("--color-canvas-bg", 0xfdfaf6);
+export function canvasBackground(read: ColorNumberReader = cssColorNumber): number {
+  return read("--color-canvas-bg", 0xfdfaf6);
 }
 
-export function accentColor(): number {
-  return cssColorNumber("--color-accent", 0x8a7d5a);
+export function accentColor(read: ColorNumberReader = cssColorNumber): number {
+  return read("--color-accent", 0x8a7d5a);
 }
 
 /**
@@ -322,8 +333,8 @@ export function inkColor(): number {
   return cssColorNumber("--color-ink", 0x2b2722);
 }
 
-export function inkMutedColor(): number {
-  return cssColorNumber("--color-ink-muted", 0x6f675c);
+export function inkMutedColor(read: ColorNumberReader = cssColorNumber): number {
+  return read("--color-ink-muted", 0x6f675c);
 }
 
 /** Scene hairline rule — the slightly stronger border tone the canvas reads for chip /

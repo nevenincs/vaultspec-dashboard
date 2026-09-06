@@ -22,6 +22,123 @@ function irregularNodes(count: number): D3Node[] {
 }
 
 describe("symmetric many-body charge", () => {
+  it.each([0, 0.5, 2])(
+    "pruning preserves free outputs and coincidence RNG exactly at theta %s",
+    (theta) => {
+      for (const coincident of [false, true]) {
+        const nodes = irregularNodes(193).map((n, i) => {
+          const x = coincident && i % 7 < 3 ? 0 : n.x!;
+          const y = coincident && i % 7 < 3 ? 0 : n.y!;
+          return {
+            ...n,
+            x,
+            y,
+            vx: Math.sin(i),
+            vy: Math.cos(i),
+            fx: i % 17 === 0 ? null : x,
+            fy: i % 19 === 0 ? null : y,
+          };
+        });
+        // Charge geometry ignores pins. Removing them gives the same production
+        // traversal without fixed-region pruning, not a second force algorithm.
+        const unpruned = nodes.map((n) => ({ ...n, fx: null, fy: null }));
+        const calls = [0, 0];
+        for (const [index, input] of [nodes, unpruned].entries()) {
+          let seed = 1;
+          const force = symmetricManyBody(-120, 10, 400, theta);
+          force.initialize!(input, () => {
+            calls[index]++;
+            seed = (Math.imul(seed, 1664525) + 1013904223) | 0;
+            return (seed >>> 0) / 4294967296;
+          });
+          force(0.3);
+        }
+        expect(calls[0]).toBe(calls[1]);
+        if (coincident) expect(calls[0]).toBeGreaterThan(0);
+        for (let i = 0; i < nodes.length; i++) {
+          if (nodes[i].fx == null || nodes[i].fy == null) {
+            expect(nodes[i].vx).toBe(unpruned[i].vx);
+            expect(nodes[i].vy).toBe(unpruned[i].vy);
+          }
+        }
+      }
+    },
+  );
+
+  it.each([
+    { dx: 3, dy: 4, min: 1, max: 400, charge: -120 },
+    { dx: 3, dy: 4, min: 1, max: Infinity, charge: -120 },
+    { dx: 3, dy: 4, min: 10, max: Infinity, charge: -120 },
+    { dx: 1e100, dy: 1e100, min: 0, max: Infinity, charge: -1e-200 },
+    { dx: 1e150, dy: 1e150, min: 0, max: Infinity, charge: -1e-23 },
+    { dx: 1e-160, dy: 1e-160, min: 0, max: Infinity, charge: -1 },
+    { dx: 1e-200, dy: 1e-200, min: 1, max: Infinity, charge: -120 },
+    { dx: 1e200, dy: 1e200, min: 1, max: Infinity, charge: -120 },
+    { dx: 1e200, dy: 1e200, min: 1, max: 1.5e200, charge: -120 },
+    { dx: 1e-200, dy: 1e-200, min: 1, max: 1.5e-200, charge: -120 },
+  ])("retains robust unit-direction arithmetic for $dx / $dy", (config) => {
+    const { dx, dy, min, max, charge } = config;
+    const squared = dx * dx + dy * dy;
+    const distance =
+      squared > 0 && Number.isFinite(squared) ? Math.sqrt(squared) : Math.hypot(dx, dy);
+    const magnitude = charge / Math.max(distance, min);
+    const expected = [(dx / distance) * magnitude, (dy / distance) * magnitude];
+    const nodes = evaluate(
+      [
+        { x: 0, y: 0, radius: 4 },
+        { x: dx, y: dy, radius: 4 },
+      ],
+      symmetricManyBody(charge, min, max, 0),
+    );
+    for (const [axis, actual] of [nodes[0].vx!, nodes[0].vy!].entries()) {
+      expect(Number.isFinite(actual)).toBe(true);
+      expect(actual).not.toBe(0);
+      expect(Math.abs((actual - expected[axis]) / expected[axis])).toBeLessThan(1e-14);
+    }
+  });
+
+  it("rechecks arithmetic safety when alpha crosses extreme coefficient ranges", () => {
+    const nodes: D3Node[] = [
+      { x: 0, y: 0, radius: 4 },
+      { x: 20, y: 30, radius: 4 },
+    ];
+    const force = symmetricManyBody(-120, 10, 400, 0);
+    force.initialize!(nodes, Math.random);
+    const distance = Math.sqrt(20 * 20 + 30 * 30);
+    for (const alpha of [1, 1e-310, 1e305, 0.5]) {
+      for (const n of nodes) n.vx = n.vy = 0;
+      force(alpha);
+      const magnitude = (-120 * alpha) / distance;
+      const expected = [(20 / distance) * magnitude, (30 / distance) * magnitude];
+      for (const [axis, actual] of [nodes[0].vx!, nodes[0].vy!].entries()) {
+        expect(Number.isFinite(actual)).toBe(true);
+        expect(actual).not.toBe(0);
+        expect(Math.abs(actual - expected[axis])).toBeLessThanOrEqual(
+          Math.abs(expected[axis]) * 1e-14 + 4 * Number.MIN_VALUE,
+        );
+      }
+    }
+  });
+
+  it("keeps cutoff rounding identical within a few ulps of the boundary", () => {
+    for (const max of [0.1, 10, Math.sqrt(2), 1e-160, 1e160]) {
+      for (const offset of [-2, -1, 0, 1, 2]) {
+        const dx = max * (1 + offset * Number.EPSILON);
+        const squared = dx * dx;
+        const distance =
+          squared > 0 && Number.isFinite(squared) ? Math.sqrt(squared) : Math.hypot(dx);
+        const nodes = evaluate(
+          [
+            { x: 0, y: 0, radius: 4 },
+            { x: dx, y: 0, radius: 4 },
+          ],
+          symmetricManyBody(-10, 0, max, 0),
+        );
+        expect(nodes[0].vx === 0).toBe(distance >= max);
+      }
+    }
+  });
+
   it.each([-10, 10])(
     "exchanges the analytical pair impulse for charge %s",
     (charge) => {

@@ -376,6 +376,8 @@ function AddProjectDialogBody() {
                 event.preventDefault();
                 event.stopPropagation();
                 if (submitting) return;
+                // A slow listing must not lose Enter intent to the typing debounce.
+                cancelPendingParse();
                 applyTypedPath(path, true);
               }
             }}

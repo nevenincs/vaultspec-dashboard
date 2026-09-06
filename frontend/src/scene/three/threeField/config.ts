@@ -71,11 +71,12 @@ export const EMPHASIS_FADE_TAU_MS = 70;
 // Fixed legibility constants, not user-tunable look params.
 export const DISPLAY_LERP_K = 0.12; // display → physics fraction per frame
 export const DISPLAY_SNAP_EPS = 0.01; // world units: within this of truth → snap exact + stop
-// Fixed-timestep sim accumulator: the solver targets 60 ticks/s in wall-clock terms —
-// a slow renderer runs bounded catch-up ticks per frame so anneal/stall budgets and the
-// felt settle duration stop depending on the frame rate.
+// Fixed physical steps target 60 ticks/s while affordable. Under overload the live
+// loop discards whole-step debt rather than monopolizing callbacks with catch-up.
 export const SIM_TICK_MS = 1000 / 60;
 export const SIM_MAX_CATCHUP_TICKS = 3;
+/** Soft live CPU budget: a single indivisible due tick may exceed it. */
+export const SIM_FRAME_BUDGET_MS = controlNumber("simFrameBudgetMs");
 export const FOCUS_RING_WIDTH_PX = 2; // thin accent focus ring on the hovered hub
 // Cluster-selection perimeter fence: the positive marker of
 // the durable feature-cluster selection — a convex padded hull (rounded n-gon) traced
