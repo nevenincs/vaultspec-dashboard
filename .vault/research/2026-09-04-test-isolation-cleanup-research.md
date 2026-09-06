@@ -5,7 +5,7 @@ tags:
 date: '2026-09-04'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:f58e790d2f5d7f89ec969480b67471e913c0da991656fce1e1a134a71945d79a'
+body_hash: 'sha256:152c2ba5918e55c5dd4137631d69ba4703960bdb4d51213ce01f983a301129ba'
 related: []
 ---
 
@@ -209,6 +209,45 @@ completed diagnostic action may therefore be recorded even though the plan-wide
 zero-diagnostic barrier is still red. That red barrier routes to `S15`; it is not
 waived, reclassified as success, or grounds for an unchanged repeat of `S14`.
 
+### Query settlement does not own a live response body
+
+The mandated `S15` isolation restored both candidate files byte-for-byte after
+each probe and left no source diff. AgentPanel's direct test-harness candidate was
+disproved: cleanup followed by awaited `cancelQueries()` over every retained client
+and then `clear()` still produced 114 reset pairs and six file-teardown AbortError
+stacks. After that exact sequence, TanStack reported zero fetching queries and zero
+retained queries while Happy DOM still reported seven sockets and one asynchronous
+task. Query-cache settlement is therefore not proof that a live response body has
+closed.
+
+Natural settlement was clean for one finite AgentPanel case, but applying that
+strategy to the whole file is unbounded because `a2a/run-relay/*` is a deliberately
+long-lived SSE query. Waiting for every request to finish would turn an owned
+cancellation problem into a hang and is not an admissible suite barrier.
+
+The remaining ordering defect is below TanStack. The general engine stream and the
+A2A relay pass TanStack's owner `AbortSignal` directly into `fetch`, then consume
+the response through `sseChunks`. The authoring lifecycle loop has the same shape
+outside TanStack: its subscription controller opens the event stream with that
+signal, `sseChunks` consumes the response, and last-subscriber removal aborts the
+controller. The reader's `finally` already awaits `reader.cancel()`, but on owner
+cancellation the fetch listener runs first and destroys the socket before generator
+cleanup can cancel the response body. All three production consumers require the
+same correction; an A2A-only or test-only patch is incomplete.
+
+The smallest complete boundary is two-phase stream ownership. While response
+headers are pending, a private request controller follows the owner signal so an
+already-aborted owner does not open a request and a pre-header cancellation settles
+the pending fetch. Once headers arrive, that bridge is removed before consumption;
+the response reader then owns cancellation and is awaited. A post-header owner
+cancellation completes the iterator normally after `reader.cancel()` and does not
+abort the resolved fetch request first. Natural EOF and non-owner read failure
+remain `StreamLostError`, and cancellation/listener failures remain visible.
+If header settlement and owner abort race, the state observed first selects the
+phase: abort-before-response cancels acquisition; response-before-abort removes the
+bridge, checks the owner before the first read, and cancels the reader. There is no
+handoff interval in which both controllers own the response.
+
 ### Option space
 
 Three shapes, with the trade-off that distinguishes them:
@@ -254,6 +293,9 @@ with its own blast radius and belongs in its own record.
 ## Sources
 
 - `C:\Users\hello\AppData\Local\Temp\vaultspec-s14-eight-file-prefix.log` — first and only exact S14 prefix output
+- `C:\Users\hello\AppData\Local\Temp\vaultspec-s15-agentpanel-post-repair.log` — disproved cleanup/cancelQueries/clear candidate
+- `C:\Users\hello\AppData\Local\Temp\vaultspec-s15-agentpanel-post-cancel-state.log` — settled QueryClient and retained Happy DOM state
+- `C:\Users\hello\AppData\Local\Temp\vaultspec-s15-agentpanel-minimal-natural-settle.log` — finite natural-settlement control
 - `node_modules/@testing-library/react/dist/index.js:26` — the `typeof afterEach` guard
 - `node_modules/@testing-library/react/dist/index.js:41` — the act-environment guard
 - `node_modules/@testing-library/react/dist/act-compat.js:41` — `withGlobalActEnvironment`
@@ -273,6 +315,11 @@ with its own blast radius and belongs in its own record.
 - `frontend/src/stores/server/agent/index.ts:484` — signal-aware AgentPanel query owner
 - `frontend/src/stores/server/agent/a2aTeam.ts:1059` — signal-aware Composer/team query owner
 - `frontend/src/stores/server/queryClient.ts:12` — shared QueryClient lifecycle policy
+- `frontend/src/stores/server/queries/sse.ts:65` — reader loop and awaited reader cancellation
+- `frontend/src/stores/server/queries/streams.ts:78` — general engine stream forwards the owner signal into fetch
+- `frontend/src/stores/server/agent/a2aTeam.ts:1263` — A2A streamed query forwards the owner signal into fetch
+- `frontend/src/stores/server/authoring/index.ts:894` — lifecycle unsubscribe controller is forwarded through fetch into SSE consumption
+- `frontend/src/stores/server/authoring.test.ts:1` — authoring store behavioral-test home
 - `frontend/src/stores/server/systemPrograms.live.test.ts:82` — stale unavailable-identity assertion
 - `engine/crates/vaultspec-api/src/routes/stream.rs:52` — crashed-service identity contract
 - `frontend/src/app/chrome/useReducedMotion.test.tsx` — the single suite fixed in `55b5e7a41b`

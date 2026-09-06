@@ -9,7 +9,7 @@ related:
   - '[[2026-09-04-test-isolation-cleanup-research]]'
 modified: '2026-09-06'
 body_schema: body-v2
-body_hash: 'sha256:b1c3d8f379b4817b49d20ea2c030489a37c845bf9ed888fb3872e7b43e842e98'
+body_hash: 'sha256:4ad8ef3e766ad80d3773d8ecb469dc3f2d615dc2837ec59c4e2b50b758a3c0ce'
 ---
 
 # `test-isolation-cleanup` plan
@@ -49,9 +49,13 @@ Vitest alone owns awaited happy-dom abort at file teardown. A replacement guard
 proves the window is not aborted between cases. The first bounded reproduction
 completed every assertion but retained runner-teardown abort/reset diagnostics;
 that diagnostic enumeration completes `S14` while leaving the plan-wide barrier
-red. `S15` isolates the two candidate files, repairs only a demonstrated owner,
-and must clear the bounded barrier before `S10`. No Step authorizes diagnostic
-suppression, retry, timeout inflation, mocking, or assertion weakening.
+red. Candidate isolation then disproved QueryClient settlement as the transport
+boundary and identified direct fetch-signal forwarding ahead of SSE reader cleanup.
+The authoring lifecycle loop carries the same direct-signal pattern outside
+TanStack. `S16` installs the shared two-phase stream cancellation contract across
+all three owners; `S15` remains the real-engine integration gate that must clear
+before `S10`. No Step authorizes diagnostic suppression, retry, timeout inflation,
+mocking, or assertion weakening.
 
 ## Steps
 
@@ -68,7 +72,8 @@ suppression, retry, timeout inflation, mocking, or assertion weakening.
 - [x] `S12` - Remove the destructive per-test happy-dom abort path and its obsolete helper and guard while preserving RTL unmount and Vitest-owned file teardown; `frontend/src/testing/happyDOMAbort.ts, frontend/src/testing/happyDOMAbort.guard.test.ts, frontend/src/testing/liveSetup.ts, frontend/src/testing/rtlCleanup.ts, frontend/vite.config.ts`.
 - [x] `S13` - Add a cross-test lifecycle guard proving the harness never calls happy-dom abort between cases and demonstrate it red with the removed hook restored; `frontend/src/testing/perTestWindowLifecycle.guard.test.ts`.
 - [x] `S14` - Record the first exact eight-file prefix as a completed diagnostic enumeration even though the zero-diagnostic barrier is red, preserve its log, and route the attributed AgentPanel cluster plus smaller unassigned reset cluster to S15 without an unchanged rerun; `frontend/dev/tooling/scan-design-system.test.ts, frontend/dev/tooling/scan-localization.test.ts, frontend/src/app/agent/Composer.render.test.tsx, frontend/src/app/palette/DocumentSearchSurface.localization.test.tsx, frontend/src/app/stage/GraphControls.render.test.tsx, frontend/src/app/agent/AgentPanel.render.test.tsx, frontend/dev/tooling/token-drift-check.test.ts, frontend/src/stores/server/authoring.happyPath.live.test.ts`.
-- [ ] `S15` - Run AgentPanel and Composer once each in isolation to mechanically attribute both reset clusters, repair only the demonstrated async owner, then require the exact eight-file prefix and full frontend lint to pass; `frontend/src/app/agent/AgentPanel.render.test.tsx, frontend/src/app/agent/Composer.render.test.tsx, frontend/src/app/agent/AgentPanel.tsx, frontend/src/app/agent/Composer.tsx, frontend/src/stores/server/agent/index.ts, frontend/src/stores/server/agent/a2aTeam.ts, frontend/src/stores/server/authoring/index.ts, frontend/src/stores/server/queryClient.ts`.
+- [ ] `S16` - Implement and mutation-prove a shared two-phase SSE cancellation contract that aborts only pending response acquisition, then gracefully cancels the response reader, and route engine, A2A, and authoring lifecycle streams through it; `frontend/src/stores/server/queries/sse.ts, frontend/src/stores/server/queries/streams.ts, frontend/src/stores/server/queries/streams.test.ts, frontend/src/stores/server/agent/a2aTeam.ts, frontend/src/stores/server/authoring/index.ts, frontend/src/stores/server/authoring.test.ts`.
+- [ ] `S15` - Verify corrected stream cancellation once in AgentPanel and Composer separately, then require the exact eight-file prefix and full frontend lint to pass; stop for an in-place amendment before any residual-owner repair; `frontend/src/app/agent/AgentPanel.render.test.tsx, frontend/src/app/agent/Composer.render.test.tsx, frontend/dev/tooling/scan-design-system.test.ts, frontend/dev/tooling/scan-localization.test.ts, frontend/src/app/palette/DocumentSearchSurface.localization.test.tsx, frontend/src/app/stage/GraphControls.render.test.tsx, frontend/dev/tooling/token-drift-check.test.ts, frontend/src/stores/server/authoring.happyPath.live.test.ts`.
 - [ ] `S10` - Run one timing-enabled serialized full frontend suite and one ordinary serialized confirmation suite, recording timing and failure classification; `frontend`.
 
 ## Parallelization
@@ -79,16 +84,18 @@ record the awaited-abort hypothesis and its focused evidence. The failed first
 `S10` attempt authorizes no retry. `S12` removes the disproved ownership path,
 `S13` mutation-tests the replacement boundary, and `S14` records one exact
 early-file diagnostic run. `S14` may close on that evidence even while its
-zero-diagnostic outcome is red. `S15` then runs AgentPanel and Composer once each
-in isolation, assigns both clusters only from direct output, repairs only the
-demonstrated owner, and confirms the bounded gate. Only after corrective
-implementation is `S10` re-entered as the final timing-enabled and ordinary
-full-suite gate; no execution is a blind rerun of unchanged state.
+zero-diagnostic outcome is red. The first `S15` isolation reached its required
+amendment boundary with both candidate files restored. `S16` now implements and
+mutation-proves the shared acquisition-versus-reader cancellation owner. `S15`
+then verifies AgentPanel and Composer separately, the exact prefix, and lint. Only
+after that corrective sequence is `S10` re-entered as the final timing-enabled and
+ordinary full-suite gate; no execution is a blind rerun of unchanged state.
 
 The suite runs online against one spawned engine with mutable fixture state, so
 files remain serial and no sibling worker or separate full/live-engine run may
-overlap `S14`, `S15`, or `S10`. Performance comes from removing dead teardown
-time and destructive cancellation, never from unsafe file concurrency.
+overlap `S14`, `S16`, `S15`, or `S10`. `S16` completes before any `S15`
+integration run. Performance comes from removing dead teardown time and destructive
+cancellation, never from unsafe file concurrency.
 
 ## Verification
 
@@ -108,15 +115,28 @@ swallowing, retries, timeout increases, mocks, and assertion weakening are
 forbidden.
 
 Checking `S14` records its one exact command, preserved output, and diagnostic
-classification; it does not satisfy the prefix gate above. `S15` begins with one
-fresh-engine AgentPanel-only run and one fresh-engine Composer-only run, executed
-sequentially before repair. The dominant cluster stays assigned to AgentPanel; the
-smaller cluster stays unassigned unless the Composer run mechanically reproduces
-it. If either candidate result is inconclusive, execution stops for an in-place
-plan amendment rather than widening scope. After the narrow repair, each changed
-owner runs once, followed by one exact eight-file prefix and full frontend lint.
-Each must pass its applicable assertion and zero-diagnostic gate. No identical
-unchanged invocation is repeated as a retry.
+classification; it does not satisfy the prefix gate above. `S16` proves one shared
+two-phase contract with native ReadableStreams: an already-aborted owner opens no
+request; pre-header abort cancels only the private pending-request controller;
+headers detach that bridge before reader ownership; and post-header abort awaits
+reader cancellation without aborting the resolved request. All paths remove their
+listeners. In the header/abort race, abort observed first selects request
+cancellation; response settlement observed first removes the bridge, checks the
+owner before reading, and selects reader cancellation. Owner cancellation completes
+normally and exactly once. Natural EOF and non-owner read failure retain
+`StreamLostError`; reader-cancellation failure retains its original visible error.
+
+The S16 suite is demonstrated red when the post-header owner signal is forwarded
+directly to fetch and when reader cancellation is removed. It guards the general
+engine, A2A, and authoring lifecycle consumers through the shared helper. The
+authoring behavioral test uses the public subscription boundary with a native
+Response and ReadableStream; after headers, unsubscribe must cancel the reader
+exactly once without aborting the resolved request signal, and restoring direct
+signal forwarding must make it fail. After S16, `S15` runs AgentPanel once,
+Composer once, one exact eight-file prefix, and full frontend lint, in that order
+and against fresh sequential engines where applicable. Every test run must pass
+assertions and the zero-diagnostic gate. Any residual owner stops for an in-place
+amendment before repair; no identical unchanged invocation is repeated as a retry.
 
 All five files that failed in the interrupted design-system phase run must pass
 focused execution. `just lint frontend` must exit zero. Then one timing-enabled

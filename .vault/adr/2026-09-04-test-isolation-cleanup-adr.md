@@ -5,7 +5,7 @@ tags:
 date: '2026-09-04'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:b45dd1ccaf99b4e88867c5be712910d441dd20853a169c4dd0bdbe223792ec2b'
+body_hash: 'sha256:067e5bcb0e7718ffa1a1fb50f5073074ae7326d09ab4ddeceda8549b558bd8dd'
 related:
   - "[[2026-09-04-test-isolation-cleanup-research]]"
 ---
@@ -106,6 +106,22 @@ For asynchronous happy-dom settlement:
   files share one mutable live engine; file serialization remains the determinism
   boundary.
 
+For cancellation of a streamed response:
+
+- **Treat an empty QueryClient as transport settlement.** REJECTED AFTER
+  EXECUTION. Awaited cancellation and cache clearing reached zero fetching and
+  retained queries while Happy DOM still owned sockets and an asynchronous task.
+- **Await every request to finish naturally.** REJECTED. It is clean for a finite
+  request but unbounded for the intentionally long-lived A2A relay.
+- **Forward the owner signal directly to fetch for the response lifetime.**
+  REJECTED AFTER EXECUTION. On post-header cancellation the fetch listener
+  destroys the socket before the SSE generator's reader cleanup runs.
+- **Separate response acquisition from response consumption.** CHOSEN. A private
+  request controller follows the owner only until headers arrive; after that,
+  cancellation is owned and awaited by the response reader. This contract is
+  shared by the general engine stream, the A2A relay, and the authoring lifecycle
+  subscription.
+
 ## Constraints
 
 No frontier or maturity risk. Every dependency is pinned and already in the
@@ -162,6 +178,33 @@ candidate files execute once each in isolation, only the mechanically demonstrat
 owner is repaired, and the exact prefix must then satisfy the zero-diagnostic
 threshold. An inconclusive candidate run stops for a plan amendment rather than
 expanding the repair scope ad hoc.
+
+Stream cancellation has two explicit phases. A shared helper owns response
+acquisition with a private AbortController. If the owner is already aborted, no
+request opens. If it aborts before headers, the private controller cancels the
+pending request and owner cancellation completes normally. When headers arrive,
+the helper removes that bridge before entering the reader phase, including the
+headers-versus-abort race. Abort observed before response settlement selects the
+request controller; response settlement observed first removes the bridge, checks
+the owner signal before the first read, and selects reader cancellation.
+
+During response consumption, the owner signal never aborts the resolved fetch
+request directly. It causes the SSE iterator to await `reader.cancel()` and then
+complete normally. Every listener is removed on success, cancellation, and error;
+late abort cannot revisit either phase. Natural EOF and non-owner read failures
+remain `StreamLostError`, while reader-cancellation failure keeps its original error
+and is not swallowed. The general engine-stream query, A2A run relay, and authoring
+lifecycle loop use this one helper rather than hand-rolling either phase.
+
+Native ReadableStream tests prove the already-aborted, pre-header, post-header,
+and headers/abort-race paths. Mutation checks prove that post-header cancellation
+reaches the reader before transport destruction, the acquisition signal remains
+unaborted after headers, cancellation completes normally exactly once, late abort
+has no effect, and genuine EOF/read failures retain `StreamLostError`.
+An authoring behavioral test drives the public subscribe/unsubscribe boundary over
+a native Response and ReadableStream: after headers, last-subscriber removal must
+cancel the reader exactly once without aborting the resolved request signal. The
+test is demonstrated red when the authoring loop restores direct signal forwarding.
 
 Files remain serial against the one shared engine. Configuration states that
 truth directly: retain `fileParallelism: false` and set `maxWorkers: 1`, removing
@@ -232,6 +275,13 @@ An evidence-producing Step may close with a red gate when its stated output is t
 failure enumeration that authorizes the next repair Step. That closure never
 changes the acceptance state: `S15` owns clearing the bounded zero-diagnostic
 barrier before `S10` can begin.
+
+The shared SSE helper becomes a production lifecycle boundary, not test harness
+machinery. It prevents abrupt socket destruction for ordinary unmount, scope
+change, cache cancellation, and authoring last-subscriber removal in the shipped
+application as well as in tests. The added complexity is bounded to
+acquisition/reader handoff and is guarded against listener leaks and error
+reclassification.
 
 A deterministic pure-test failure is never classified as an engine-port failure
 merely because the engine also died during the run. Infrastructure classification
