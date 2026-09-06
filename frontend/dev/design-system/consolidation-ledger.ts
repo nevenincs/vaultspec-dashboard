@@ -450,6 +450,26 @@ export const NATIVE_CONTROL_LEDGER = [
   },
   {
     source: {
+      path: "frontend/src/app/kit/TextField.tsx",
+      owner: "TextField",
+      slot: "input-root",
+    },
+    element: "input",
+    disposition: "canonical-owner",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/TextField.tsx",
+      name: "TextField",
+      status: "existing",
+    },
+    rationale: {
+      summary: "TextField owns the ordinary single-line text input.",
+      ownership:
+        "The native text input defines the kit's accessible naming, semantic density, focus-visible, invalid, disabled, and read-only contract while preserving native value and event propagation.",
+    },
+  },
+  {
+    source: {
       path: "frontend/src/app/settings/controls/EnumControl.tsx",
       owner: "EnumControl",
       slot: "enum-option",
@@ -532,14 +552,14 @@ export const NATIVE_CONTROL_LEDGER = [
       layer: "app-kit",
       path: "frontend/src/app/kit/TextField.tsx",
       name: "TextField",
-      status: "planned",
+      status: "existing",
     },
     rationale: {
-      summary: "TextControl is a direct candidate for the planned ordinary TextField.",
+      summary: "TextControl is a direct candidate for the canonical TextField.",
       equivalence:
         "The settings control needs the ordinary single-line text contract: controlled value, label, placeholder, disabled state, length cap, and change propagation.",
       replacement:
-        "Compose TextField after its canonical contract lands while retaining schema-derived maximum length and raw string commits.",
+        "Compose TextField while retaining schema-derived maximum length and raw string commits.",
       deletion:
         "Remove the native input and store-provided field class recipe in the settings migration.",
     },
@@ -556,12 +576,12 @@ export const NATIVE_CONTROL_LEDGER = [
       layer: "app-kit",
       path: "frontend/src/app/kit/TextField.tsx",
       name: "TextField",
-      status: "planned",
+      status: "existing",
     },
     rationale: {
       summary: "AddProjectDialog uses an ordinary single-line project-path field.",
       equivalence:
-        "The field needs the planned TextField contract for a controlled value, accessible label, placeholder, disabled state, and focus treatment; path parsing remains dialog behavior.",
+        "The field needs the TextField contract for a controlled value, accessible label, placeholder, disabled state, and focus treatment; path parsing remains dialog behavior.",
       replacement:
         "Compose TextField while retaining the monospaced presentation, spellcheck policy, debounced path resolution, Enter handling, and registration flow.",
       deletion:
@@ -580,12 +600,12 @@ export const NATIVE_CONTROL_LEDGER = [
       layer: "app-kit",
       path: "frontend/src/app/kit/TextField.tsx",
       name: "TextField",
-      status: "planned",
+      status: "existing",
     },
     rationale: {
       summary: "DocumentStage uses an ordinary single-line document-title field.",
       equivalence:
-        "The field needs the planned TextField contract for a controlled value, visible and accessible labeling, placeholder, and focus treatment.",
+        "The field needs the TextField contract for a controlled value, visible and accessible labeling, placeholder, and focus treatment.",
       replacement:
         "Compose TextField while retaining create-draft updates and the dialog-specific Enter-to-submit behavior.",
       deletion:
@@ -604,13 +624,13 @@ export const NATIVE_CONTROL_LEDGER = [
       layer: "app-kit",
       path: "frontend/src/app/kit/TextField.tsx",
       name: "TextField",
-      status: "planned",
+      status: "existing",
     },
     rationale: {
       summary:
         "ClarificationCard uses an ordinary single-line field for a choice outside the offered options.",
       equivalence:
-        "The field needs the planned TextField contract for a controlled bounded value, accessible label, placeholder, and focus treatment.",
+        "The field needs the TextField contract for a controlled bounded value, accessible label, placeholder, and focus treatment.",
       replacement:
         "Compose TextField while retaining choice-versus-free-text draft derivation, maximum length, and Enter submission semantics.",
       deletion:
@@ -629,13 +649,13 @@ export const NATIVE_CONTROL_LEDGER = [
       layer: "app-kit",
       path: "frontend/src/app/kit/TextField.tsx",
       name: "TextField",
-      status: "planned",
+      status: "existing",
     },
     rationale: {
       summary:
         "ClarificationCard uses an ordinary single-line field for bounded text answers.",
       equivalence:
-        "The field needs the planned TextField contract for a controlled bounded value, accessible label, placeholder, and focus treatment.",
+        "The field needs the TextField contract for a controlled bounded value, accessible label, placeholder, and focus treatment.",
       replacement:
         "Compose TextField while retaining the engine-required single-line answer contract, maximum length, draft updates, and submission gating.",
       deletion:
@@ -654,12 +674,12 @@ export const NATIVE_CONTROL_LEDGER = [
       layer: "app-kit",
       path: "frontend/src/app/kit/TextField.tsx",
       name: "TextField",
-      status: "planned",
+      status: "existing",
     },
     rationale: {
       summary: "PropertiesPopover uses an ordinary single-line document-name field.",
       equivalence:
-        "The field needs the planned TextField contract for a controlled value, accessible label, spellcheck policy, compact sizing, and focus treatment.",
+        "The field needs the TextField contract for a controlled value, accessible label, spellcheck policy, compact sizing, and focus treatment.",
       replacement:
         "Compose TextField while retaining rename-draft updates, save eligibility, and the adjacent rename action.",
       deletion:
@@ -678,7 +698,7 @@ export const NATIVE_CONTROL_LEDGER = [
       layer: "app-kit",
       path: "frontend/src/app/kit/TextField.tsx",
       name: "TextField",
-      status: "planned",
+      status: "existing",
     },
     rationale: {
       summary: "PropertiesPopover uses an ordinary text field for date metadata.",
@@ -5605,11 +5625,11 @@ export const NAMING_DEBT_LEDGER = [
       layer: "app-kit",
       path: "frontend/src/app/kit/TextField.tsx",
       name: "TextField",
-      status: "planned",
+      status: "existing",
     },
     rationale: {
       summary:
-        "TextField is the campaign's code-side name for the planned ordinary single-line field primitive.",
+        "TextField is the campaign's code-side name for the ordinary single-line field primitive.",
       unresolvedBinding:
         "The accepted research supports the primitive's behavior and reuse, but this no-Figma campaign does not establish a matching design-system node name or alias.",
       reconciliation:

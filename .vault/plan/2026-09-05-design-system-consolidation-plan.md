@@ -10,7 +10,7 @@ related:
   - '[[2026-09-05-design-system-consolidation-shipped-frontend-blueprint-reference]]'
 modified: '2026-09-06'
 body_schema: body-v2
-body_hash: 'sha256:72d6658add65a5ec91288961a0676aaa8de9a8afb51d57a474faff9952fb1421'
+body_hash: 'sha256:1f71e420ee904d9e86d597f02aa16a088216ad5c9ce4b5de20090f3f980f6fce'
 ---
 
 <!-- RETIRED: S02, S03, S95, S96, S158 -->
@@ -78,7 +78,7 @@ Land the reusable field, textarea, option-row, icon-action, and activity contrac
 
 Create only narrow primitives supported by repeated equivalent behavior and ledger every code-only naming exception.
 
-- [ ] `W02.P03.S12` - Implement the ordinary TextField contract with accessible labeling, focus, disabled, size, and theme behavior; `frontend/src/app/kit/TextField.tsx`.
+- [x] `W02.P03.S12` - Implement the ordinary TextField contract with accessible labeling, focus, disabled, size, and theme behavior; `frontend/src/app/kit/TextField.tsx`.
 - [ ] `W02.P03.S13` - Verify TextField semantics, labeling, state treatment, ref forwarding, and value propagation; `frontend/src/app/kit/TextField.render.test.tsx`.
 - [ ] `W02.P03.S14` - Implement the ordinary TextArea contract without absorbing editor or composer semantics; `frontend/src/app/kit/TextArea.tsx`.
 - [ ] `W02.P03.S15` - Verify TextArea semantics, labeling, resize policy, focus, disabled, and value propagation; `frontend/src/app/kit/TextArea.render.test.tsx`.

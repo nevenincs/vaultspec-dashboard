@@ -140,7 +140,7 @@ describe("design-system scanner", () => {
       schema: REPORT_SCHEMA,
       status: "clean",
       summary: {
-        nativeControls: 125,
+        nativeControls: 126,
         relativeExecutableSites: 100,
         relativeClassifiedExceptions: 6,
         pendingAppKitDeepImports: 12,
@@ -234,7 +234,7 @@ describe("design-system scanner", () => {
       checkSceneFingerprint: false,
       expectedNativeElementCounts: {
         button: 99,
-        input: 19,
+        input: 20,
         select: 1,
         textarea: 5,
       },

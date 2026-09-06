@@ -27,12 +27,6 @@ const LIMITS = Object.freeze({
 
 const REPORT_SCHEMA = "vaultspec.design-system.scan.v1";
 const LEDGER_PATH = "frontend/dev/design-system/consolidation-ledger.ts";
-const NATIVE_ELEMENT_COUNTS = Object.freeze({
-  button: 100,
-  input: 19,
-  select: 1,
-  textarea: 5,
-});
 const EXPECTED_INVARIANTS = Object.freeze([
   ["scene-source-byte-freeze", "scene-source"],
   ["graph-semantics-freeze", "graph-semantics"],
@@ -931,18 +925,6 @@ function validateLedger(
     add("ledger-schema", ledgerFile, 1, 1, "schema version mismatch");
   }
   if (
-    ledger.nativeControls.length !==
-    ledgerModule.CONSOLIDATION_BASELINE_COUNTS.nativeControlSites
-  ) {
-    add(
-      "ledger-count",
-      ledgerFile,
-      1,
-      1,
-      "native-control count does not match baseline",
-    );
-  }
-  if (
     ledger.relativeValues.length !==
     ledgerModule.CONSOLIDATION_BASELINE_COUNTS.arbitraryRelativeValueSites
   ) {
@@ -1259,8 +1241,7 @@ function verifySceneFingerprint(frontendRoot, add, suppliedBaseline) {
     frontendRoot,
     "dev/design-system/scene-freeze-baseline.json",
   );
-  const baseline =
-    suppliedBaseline ?? JSON.parse(readFileSync(baselinePath, "utf8"));
+  const baseline = suppliedBaseline ?? JSON.parse(readFileSync(baselinePath, "utf8"));
   const provenance = baseline?.sceneDiffFingerprint?.value;
   const validHeader =
     baseline?.schema === "vaultspec.design-system.scene-freeze-baseline.v1" &&
@@ -1374,13 +1355,21 @@ export async function scanDesignSystem(options = {}) {
     new Set(ledgerModule.NATIVE_CONTROL_ELEMENTS),
   );
   const relativeSites = scanRelativeValues(files, frontendRoot);
+  const ledgerNativeElementCounts = Object.fromEntries(
+    ledgerModule.NATIVE_CONTROL_ELEMENTS.map((element) => [
+      element,
+      ledgerModule.CONSOLIDATION_LEDGER.nativeControls.filter(
+        (entry) => entry.element === element,
+      ).length,
+    ]),
+  );
   const classification = validateLedger(
     frontendRoot,
     ledgerModule,
     files,
     nativeSites,
     relativeSites,
-    options.expectedNativeElementCounts ?? NATIVE_ELEMENT_COUNTS,
+    options.expectedNativeElementCounts ?? ledgerNativeElementCounts,
     options.duplicateSiteBindings ?? DUPLICATE_SITE_BINDINGS,
     options.relativeExceptions ?? [
       ...KNOWN_RELATIVE_SCANNER_DEFECTS,

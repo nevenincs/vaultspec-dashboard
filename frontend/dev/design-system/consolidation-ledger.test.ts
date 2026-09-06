@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { extname, relative, resolve } from "node:path";
 
@@ -151,7 +151,7 @@ const CAMPAIGN_COMPONENT_NAMING_DEBT = [
     name: "TextField",
     debtKind: "code-only-name",
     layer: "app-kit",
-    status: "planned",
+    status: "existing",
   },
   {
     path: "frontend/src/app/kit/TextArea.tsx",
@@ -760,18 +760,18 @@ describe("design-system consolidation native-control ledger", () => {
   const files = productionSourceFiles();
   const executable = scanExecutableControls(files);
 
-  it("pins the syntax-aware executable baseline and excludes the three prose hits", () => {
-    expect(executable).toHaveLength(125);
+  it("preserves the frozen baseline while tracking the current executable inventory", () => {
+    expect(executable).toHaveLength(126);
     expect(elementCounts(executable)).toEqual({
       button: 100,
-      input: 19,
+      input: 20,
       select: 1,
       textarea: 5,
     });
     expect(CONSOLIDATION_BASELINE_COUNTS.nativeControlSites).toBe(125);
 
     const raw = scanRawControlLexemes(files);
-    expect(raw).toHaveLength(128);
+    expect(raw).toHaveLength(129);
     const executableOffsets = new Set(
       executable.map(({ path, offset }) => JSON.stringify([path, offset])),
     );
@@ -802,11 +802,11 @@ describe("design-system consolidation native-control ledger", () => {
   });
 
   it("matches every executable site to the ledger with no missing, stale, or duplicate identity", () => {
-    expect(NATIVE_CONTROL_LEDGER).toHaveLength(125);
+    expect(NATIVE_CONTROL_LEDGER).toHaveLength(126);
     const stableKeys = NATIVE_CONTROL_LEDGER.map(({ source }) =>
       ledgerSourceKey(source),
     );
-    expect(new Set(stableKeys).size).toBe(125);
+    expect(new Set(stableKeys).size).toBe(126);
 
     const sourceIdentities = new Set(sourceStructuralIdentityKeys(executable));
     const ledgerIdentities = new Set(
@@ -815,7 +815,7 @@ describe("design-system consolidation native-control ledger", () => {
     const missing = [...sourceIdentities].filter((key) => !ledgerIdentities.has(key));
     const stale = [...ledgerIdentities].filter((key) => !sourceIdentities.has(key));
     expect({ missing, stale }).toEqual({ missing: [], stale: [] });
-    expect(ledgerIdentities.size).toBe(125);
+    expect(ledgerIdentities.size).toBe(126);
   });
 
   it("enforces the current schema, disposition, owner, and rationale contracts", () => {
@@ -1087,10 +1087,9 @@ describe("design-system consolidation naming-debt ledger", () => {
       ).values(),
     ].map(({ path, name }) => ({ path, name }));
     expect(plannedPrimitiveOwners).toEqual(
-      CAMPAIGN_COMPONENT_NAMING_DEBT.slice(0, 3).map(({ path, name }) => ({
-        path,
-        name,
-      })),
+      CAMPAIGN_COMPONENT_NAMING_DEBT.filter(
+        ({ layer, status }) => layer === "app-kit" && status === "planned",
+      ).map(({ path, name }) => ({ path, name })),
     );
   });
 
@@ -1198,6 +1197,14 @@ describe("design-system consolidation campaign invariants", () => {
       schema: string;
       sceneDiffFingerprint: { algorithm: string; value: string };
       sceneControllerContract: { path: string; worktreeSha256: string };
+      files: Array<{
+        path: string;
+        worktree: {
+          byteLength: number;
+          sha256: string;
+          preimageBase64: string;
+        } | null;
+      }>;
     };
     expect(baseline.schema).toBe("vaultspec.design-system.scene-freeze-baseline.v1");
     expect(baseline.sceneControllerContract.path).toBe(
@@ -1205,19 +1212,41 @@ describe("design-system consolidation campaign invariants", () => {
     );
     expect(baseline.sceneControllerContract.worktreeSha256).toMatch(/^[a-f0-9]{64}$/);
 
-    const sceneDiff = spawnSync("git", ["diff", "--", "frontend/src/scene"], {
-      cwd: REPOSITORY_ROOT,
-      encoding: "buffer",
-    });
-    expect(sceneDiff.status).toBe(0);
-    const fingerprint = spawnSync("git", ["hash-object", "--stdin"], {
-      cwd: REPOSITORY_ROOT,
-      input: sceneDiff.stdout,
-      encoding: "utf8",
-    });
-    expect(fingerprint.status).toBe(0);
     expect(baseline.sceneDiffFingerprint.algorithm).toBe("git-blob-sha1");
-    expect(fingerprint.stdout.trim()).toBe(baseline.sceneDiffFingerprint.value);
+    expect(baseline.sceneDiffFingerprint.value).toBe(
+      "30817224d9b653c7858a39d9a7458252dbca682f",
+    );
+
+    const expectedPaths = new Set<string>();
+    for (const entry of baseline.files) {
+      expect(entry.worktree, entry.path).not.toBeNull();
+      if (entry.worktree === null) continue;
+      expectedPaths.add(entry.path);
+      const bytes = readFileSync(resolve(REPOSITORY_ROOT, entry.path));
+      expect(bytes.length, entry.path).toBe(entry.worktree.byteLength);
+      expect(createHash("sha256").update(bytes).digest("hex"), entry.path).toBe(
+        entry.worktree.sha256,
+      );
+      expect(bytes.toString("base64"), entry.path).toBe(entry.worktree.preimageBase64);
+    }
+
+    const currentPaths = new Set(
+      (() => {
+        const paths: string[] = [];
+        const visit = (directory: string) => {
+          for (const entry of readdirSync(directory, { withFileTypes: true })) {
+            const path = resolve(directory, entry.name);
+            if (entry.isDirectory()) visit(path);
+            else if ([".ts", ".tsx"].includes(extname(path))) {
+              paths.push(repositoryPath(path));
+            }
+          }
+        };
+        visit(resolve(FRONTEND_ROOT, "src/scene"));
+        return paths;
+      })(),
+    );
+    expect(currentPaths).toEqual(expectedPaths);
 
     const sceneInvariant = CONSOLIDATION_INVARIANTS.find(
       ({ boundary }) => boundary === "scene-source",
