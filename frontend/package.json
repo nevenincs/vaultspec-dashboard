@@ -17,6 +17,7 @@
     "lint:px": "node dev/tooling/scan-px.mjs",
     "lint:domains": "node dev/tooling/scan-domains.mjs",
     "lint:modules": "node dev/tooling/scan-module-size.mjs",
+    "lint:design-system": "node dev/tooling/scan-design-system.mjs",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"dev/**/*.{ts,tsx,css}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\" \"dev/**/*.{ts,tsx,css}\"",
     "typecheck": "tsc -b",
