@@ -125,7 +125,7 @@ type RelativeValueDisposition = Exclude<
   "retain-semantic-seam" | "track-parity-debt"
 >;
 
-export const RELATIVE_VALUE_UNITS = ["rem", "em", "vw", "vh", "%"] as const;
+export const RELATIVE_VALUE_UNITS = ["rem", "em", "vw", "vh", "cqw", "%"] as const;
 
 export type RelativeValueUnit = (typeof RELATIVE_VALUE_UNITS)[number];
 
@@ -3791,9 +3791,586 @@ export const CHROME_AND_SHELL_RELATIVE_VALUE_LEDGER = [
   },
 ] as const satisfies readonly RelativeValueLedgerEntry[];
 
+export const VIEWER_RELATIVE_VALUE_LEDGER = [
+  {
+    source: {
+      path: "frontend/src/app/viewer/AutocompleteCombobox.tsx",
+      owner: "AutocompleteCombobox",
+      slot: "empty-option-type-size",
+    },
+    expression: "text-[0.6875rem]",
+    units: ["rem"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-foundation",
+      path: "frontend/tokens/type.tokens.json",
+      name: "type.role.caption.size",
+      status: "existing",
+    },
+    rationale: {
+      summary: "The empty-option message uses the existing caption type size.",
+      equivalence:
+        "0.6875rem exactly equals type.role.caption.size and serves dense supporting copy.",
+      replacement:
+        "Bind the size to the caption metric without changing padding or option behavior.",
+      deletion: "Remove text-[0.6875rem] after direct canonical consumption.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/viewer/AutocompleteCombobox.tsx",
+      owner: "AutocompleteCombobox",
+      slot: "option-coarse-target",
+    },
+    expression: "min-h-[2.75rem]",
+    units: ["rem"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-component",
+      path: "frontend/tokens/components.tokens.json",
+      name: "component.control.coarse-target",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "Autocomplete options use the shared 2.75rem coarse-pointer target floor.",
+      equivalence:
+        "The planned role preserves exactly 2.75rem and the existing pointer-conditional application.",
+      replacement:
+        "Consume the generated coarse-target minimum height on coarse pointers.",
+      deletion: "Remove min-h-[2.75rem] only after direct component-token consumption.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/viewer/AutocompleteCombobox.tsx",
+      owner: "AutocompleteCombobox",
+      slot: "option-primary-type-size",
+    },
+    expression: "text-[0.75rem]",
+    units: ["rem"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-foundation",
+      path: "frontend/tokens/type.tokens.json",
+      name: "type.role.meta.size",
+      status: "existing",
+    },
+    rationale: {
+      summary: "Autocomplete primary option text uses the existing meta type size.",
+      equivalence:
+        "0.75rem exactly equals type.role.meta.size and preserves the current compact hierarchy.",
+      replacement: "Bind only the font size to the existing meta metric.",
+      deletion: "Remove text-[0.75rem] after direct canonical consumption.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/viewer/AutocompleteCombobox.tsx",
+      owner: "AutocompleteCombobox",
+      slot: "option-secondary-type-size",
+    },
+    expression: "text-[0.6875rem]",
+    units: ["rem"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-foundation",
+      path: "frontend/tokens/type.tokens.json",
+      name: "type.role.caption.size",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "Autocomplete secondary option text uses the existing caption type size.",
+      equivalence:
+        "0.6875rem exactly equals type.role.caption.size and fits secondary metadata semantics.",
+      replacement: "Bind only the font size to the existing caption metric.",
+      deletion: "Remove text-[0.6875rem] after direct canonical consumption.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/viewer/CodeViewer.tsx",
+      owner: "CodeLines",
+      slot: "removed-line-tick-geometry",
+    },
+    expression: "h-[0.125rem] w-[0.375rem]",
+    units: ["rem"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/viewer/CodeViewer.tsx",
+      name: "CodeLines",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "The removed-line tick is exact renderer-coordinated code gutter geometry.",
+      constraint:
+        "Its 0.125rem by 0.375rem silhouette distinguishes deletion ticks from full-height change bars.",
+      exactValue:
+        "Retain both dimensions inside CodeLines without treating them as spacing roles.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/viewer/CodeViewer.tsx",
+      owner: "CodeLines",
+      slot: "changed-line-bar-width",
+    },
+    expression: "w-[0.1875rem]",
+    units: ["rem"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/viewer/CodeViewer.tsx",
+      name: "CodeLines",
+      status: "existing",
+    },
+    rationale: {
+      summary: "The changed-line bar width is exact code-gutter marker geometry.",
+      constraint:
+        "The 0.1875rem bar coordinates with line layout and the distinct removal tick.",
+      exactValue: "Retain w-[0.1875rem] under CodeLines.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/viewer/CodeViewer.tsx",
+      owner: "CodeViewer",
+      slot: "file-identity-inline-gap",
+    },
+    expression: "gap-[0.625rem]",
+    units: ["rem"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-component",
+      path: "frontend/tokens/components.tokens.json",
+      name: "component.code-viewer.header-gap",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "The repeated 0.625rem code-viewer header gap is one component-owned layout role.",
+      equivalence:
+        "The planned role preserves exactly 0.625rem for both header clusters.",
+      replacement: "Generate and consume the exact code-viewer header-gap binding.",
+      deletion: "Remove gap-[0.625rem] after direct component-role consumption.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/viewer/CodeViewer.tsx",
+      owner: "CodeViewer",
+      slot: "header-actions-inline-gap",
+    },
+    expression: "gap-[0.625rem]",
+    units: ["rem"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-component",
+      path: "frontend/tokens/components.tokens.json",
+      name: "component.code-viewer.header-gap",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "The header action cluster shares CodeViewer's exact 0.625rem header gap.",
+      equivalence:
+        "The planned role preserves exactly 0.625rem across both component-owned header clusters.",
+      replacement: "Consume the generated code-viewer header-gap binding.",
+      deletion: "Remove gap-[0.625rem] after direct component-role consumption.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/viewer/CommentThreadPanel.tsx",
+      owner: "CommentThreadPanel",
+      slot: "thread-panel-viewport-bounds",
+    },
+    expression: "max-h-[24rem] max-w-[calc(100cqw-1.5rem)]",
+    units: ["rem", "cqw"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/viewer/CommentThreadPanel.tsx",
+      name: "CommentThreadPanel",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "The thread panel's height and container-relative width are exact embedded-viewer geometry.",
+      constraint:
+        "The 24rem cap and calc(100cqw - 1.5rem) guard coordinate with its containing reader rather than a global overlay.",
+      exactValue: "Retain both viewport bounds under CommentThreadPanel.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/viewer/DocChrome.tsx",
+      owner: "DocChrome",
+      slot: "document-toolbar-insets",
+    },
+    expression: "py-[0.8125rem] pl-[1.25rem] pr-[0.875rem]",
+    units: ["rem"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "shared-chrome",
+      path: "frontend/src/app/viewer/DocChrome.tsx",
+      name: "DocChrome",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "DocChrome's asymmetric toolbar insets are exact document-workspace composition geometry.",
+      constraint:
+        "The three values align identity, actions, and the adjacent document edge; replacing them independently would alter balance.",
+      exactValue: "Retain all three insets together under DocChrome.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/viewer/HighlightedCode.tsx",
+      owner: "ChangeMarker",
+      slot: "removed-marker-geometry",
+    },
+    expression: "left-[-0.9rem] h-[0.125rem] w-[0.5rem]",
+    units: ["rem"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/viewer/HighlightedCode.tsx",
+      name: "ChangeMarker",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "The removal tick's inset, height, and width are exact highlighted-code marker geometry.",
+      constraint:
+        "These values coordinate the tick with editor padding and distinguish it from full-height bars.",
+      exactValue: "Retain the complete three-value marker recipe under ChangeMarker.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/viewer/HighlightedCode.tsx",
+      owner: "ChangeMarker",
+      slot: "changed-marker-geometry",
+    },
+    expression: "left-[-0.9rem] w-[0.1875rem]",
+    units: ["rem"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/viewer/HighlightedCode.tsx",
+      name: "ChangeMarker",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "The change bar's negative inset and width are exact editor-overlay geometry.",
+      constraint:
+        "The values keep the bar inside reserved editor padding and aligned with removal ticks.",
+      exactValue: "Retain both values under ChangeMarker.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/viewer/HighlightedCode.tsx",
+      owner: "ChangeMarker",
+      slot: "unseen-agent-dot-geometry",
+    },
+    expression: "left-[-1.15rem] top-[0.35em] h-[0.375rem] w-[0.375rem]",
+    units: ["rem", "em"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/viewer/HighlightedCode.tsx",
+      name: "ChangeMarker",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "The unseen-agent dot uses exact mixed rem/em geometry tied to the rendered code line.",
+      constraint:
+        "Its negative inset, font-relative vertical offset, and diameter coordinate with wrapping line metrics.",
+      exactValue: "Retain the complete four-value dot recipe under ChangeMarker.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/viewer/HighlightedCode.tsx",
+      owner: "HighlightedTextLines",
+      slot: "empty-line-height-floor",
+    },
+    expression: "min-h-[1em]",
+    units: ["em"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/viewer/HighlightedCode.tsx",
+      name: "HighlightedTextLines",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "Each highlighted source line retains a one-em height floor tied to its own font metrics.",
+      constraint:
+        "The font-relative floor preserves empty-line rhythm and marker coordination through soft wrapping.",
+      exactValue: "Retain min-h-[1em] as renderer-owned line geometry.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/viewer/MarkdownReader.tsx",
+      owner: "DocHeaderBlock",
+      slot: "editorial-header-block-gap",
+    },
+    expression: "gap-[0.6875rem]",
+    units: ["rem"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/viewer/MarkdownReader.tsx",
+      name: "DocHeaderBlock",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "The editorial header's 0.6875rem block rhythm is exact reader composition geometry.",
+      constraint:
+        "Its coincidence with the caption font size does not give it typography or foundation spacing semantics.",
+      exactValue: "Retain gap-[0.6875rem] under DocHeaderBlock.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/viewer/MarkdownReader.tsx",
+      owner: "DocHeaderBlock",
+      slot: "eyebrow-cluster-gap",
+    },
+    expression: "gap-[0.4375rem]",
+    units: ["rem"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-component",
+      path: "frontend/tokens/components.tokens.json",
+      name: "component.reader.inline-cluster-gap",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "The repeated 0.4375rem reader inline-cluster gap is a reusable reader role.",
+      equivalence:
+        "The exact value is shared by the eyebrow and footer tag clusters without a nearby-token substitution.",
+      replacement: "Generate and consume the exact reader inline-cluster-gap role.",
+      deletion: "Remove gap-[0.4375rem] after direct component-role consumption.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/viewer/MarkdownReader.tsx",
+      owner: "ReaderFooter",
+      slot: "footer-responsive-insets",
+    },
+    expression: "pb-[1.875rem] pt-[1.375rem] @3xl:px-[3rem] @5xl:px-[4.5rem]",
+    units: ["rem"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-component",
+      path: "frontend/tokens/components.tokens.json",
+      name: "component.reader.footer-insets",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "ReaderFooter's exact vertical and responsive horizontal insets form a reusable footer role.",
+      equivalence:
+        "The planned binding preserves all four shipped rem values and viewport variants.",
+      replacement:
+        "Generate exact reader footer inset bindings and consume them as one component recipe.",
+      deletion:
+        "Remove the four arbitrary utilities only after direct component-role consumption.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/viewer/MarkdownReader.tsx",
+      owner: "ReaderFooter",
+      slot: "tag-cluster-gap",
+    },
+    expression: "gap-[0.4375rem]",
+    units: ["rem"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-component",
+      path: "frontend/tokens/components.tokens.json",
+      name: "component.reader.inline-cluster-gap",
+      status: "planned",
+    },
+    rationale: {
+      summary: "The tag cluster shares the reader's exact 0.4375rem inline gap role.",
+      equivalence:
+        "The value exactly matches the editorial eyebrow cluster and is not snapped to the spacing scale.",
+      replacement: "Consume the generated reader inline-cluster-gap role.",
+      deletion: "Remove gap-[0.4375rem] after direct component-role consumption.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/viewer/MarkdownReader.tsx",
+      owner: "ReaderFooter",
+      slot: "tag-chip-metrics",
+    },
+    expression: "px-[0.625rem] text-[0.6875rem]",
+    units: ["rem"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-component",
+      path: "frontend/tokens/components.tokens.json",
+      name: "component.reader.tag-chip-metrics",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "Reader tag chips pair exact 0.625rem padding with the caption-size metric as one component recipe.",
+      equivalence:
+        "The planned role preserves 0.625rem padding and 0.6875rem type exactly; the latter equals the existing caption size.",
+      replacement:
+        "Generate the exact reader tag-chip metric bindings and consume them together.",
+      deletion:
+        "Remove both arbitrary utilities only after direct component-role consumption.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/viewer/MarkdownReader.tsx",
+      owner: "ReaderFooter",
+      slot: "related-link-type-size",
+    },
+    expression: "text-[0.84375rem]",
+    units: ["rem"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-component",
+      path: "frontend/tokens/components.tokens.json",
+      name: "component.reader.related-link-size",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "Related-document links need an explicit reader-owned type metric rather than a loose utility.",
+      equivalence:
+        "The planned role preserves exactly 0.84375rem and does not snap to neighboring foundation type steps.",
+      replacement: "Generate and consume the exact reader related-link size binding.",
+      deletion: "Remove text-[0.84375rem] only after exact component-role consumption.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/viewer/MarkdownReader.tsx",
+      owner: "MarkdownBody",
+      slot: "body-responsive-insets",
+    },
+    expression: "pb-[0.625rem] pt-[1.875rem] @3xl:px-[3rem] @5xl:px-[4.5rem]",
+    units: ["rem"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-component",
+      path: "frontend/tokens/components.tokens.json",
+      name: "component.reader.body-insets",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "MarkdownBody's exact vertical and responsive horizontal insets form a reusable reader role.",
+      equivalence:
+        "The planned binding preserves all four shipped values and viewport variants without snapping.",
+      replacement:
+        "Generate exact reader body inset bindings and consume them as one component recipe.",
+      deletion:
+        "Remove the four arbitrary utilities only after direct component-role consumption.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/viewer/MarkdownReader.tsx",
+      owner: "MarkdownReader",
+      slot: "metadata-responsive-gutter",
+    },
+    expression: "@3xl:px-[3rem] @5xl:px-[4.5rem]",
+    units: ["rem"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-component",
+      path: "frontend/tokens/components.tokens.json",
+      name: "component.reader.responsive-gutter",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "Reader metadata shares the exact 3rem and 4.5rem wide-viewport gutter role.",
+      equivalence:
+        "The planned role preserves both responsive values also used by body, footer, and orphan-note chrome.",
+      replacement: "Generate and consume the exact reader responsive-gutter bindings.",
+      deletion:
+        "Remove both arbitrary responsive utilities after direct component-role consumption.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/viewer/MarkdownReader.tsx",
+      owner: "OrphanedNotesBar",
+      slot: "orphan-notes-responsive-gutter",
+    },
+    expression: "@3xl:px-[3rem] @5xl:px-[4.5rem]",
+    units: ["rem"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-component",
+      path: "frontend/tokens/components.tokens.json",
+      name: "component.reader.responsive-gutter",
+      status: "planned",
+    },
+    rationale: {
+      summary: "OrphanedNotesBar shares the reader's exact wide-viewport gutter role.",
+      equivalence:
+        "The planned role preserves 3rem and 4.5rem at the same responsive variants as the reader body and metadata.",
+      replacement: "Consume the generated reader responsive-gutter bindings.",
+      deletion:
+        "Remove both arbitrary responsive utilities after direct component-role consumption.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/viewer/RelatedDocPicker.tsx",
+      owner: "RelatedDocPicker",
+      slot: "selected-array-scan-false-positive",
+    },
+    expression: "[...selected, stem]",
+    units: ["em"],
+    disposition: "repair-local-defect",
+    canonicalOwner: {
+      layer: "platform-mechanism",
+      path: "frontend/dev/tooling/scan-design-system.mjs",
+      name: "scanRelativeValueSites",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "The raw baseline mistakes an ordinary selected-stem array expression for an em-valued styling site.",
+      defect:
+        "The textual matcher reads the identifier suffix stem as unit em although the bracket is TypeScript, not a class utility.",
+      correction:
+        "Keep the dated identity in the 106-line ledger, then exclude it with the planned syntax-aware scanner without changing viewer behavior.",
+    },
+  },
+] as const satisfies readonly RelativeValueLedgerEntry[];
+
 export const RELATIVE_VALUE_LEDGER: readonly RelativeValueLedgerEntry[] = [
   ...KIT_RELATIVE_VALUE_LEDGER,
   ...CHROME_AND_SHELL_RELATIVE_VALUE_LEDGER,
+  ...VIEWER_RELATIVE_VALUE_LEDGER,
 ];
 export const NAMING_DEBT_LEDGER: readonly NamingDebtLedgerEntry[] = [];
 export const CONSOLIDATION_INVARIANTS: readonly ConsolidationInvariant[] = [];
