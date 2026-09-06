@@ -52,9 +52,13 @@ const toRgb = converter("rgb");
  * gamut-clamped to sRGB. An unresolvable value (a `var(...)` left by an
  * @theme-inline self-cycle, or empty) falls back rather than mis-painting.
  */
-export function cssColorNumber(varName: string, fallback: number): number {
+export function cssColorNumber(
+  varName: string,
+  fallback: number,
+  root?: CSSStyleDeclaration,
+): number {
   if (typeof document === "undefined") return fallback;
-  const raw = getComputedStyle(document.documentElement)
+  const raw = (root ?? getComputedStyle(document.documentElement))
     .getPropertyValue(varName)
     .trim();
   if (!raw) return fallback;
@@ -66,6 +70,22 @@ export function cssColorNumber(varName: string, fallback: number): number {
   const ch = (x: number | undefined): number =>
     Math.max(0, Math.min(255, Math.round((x ?? 0) * 255)));
   return (ch(rgb.r) << 16) | (ch(rgb.g) << 8) | ch(rgb.b);
+}
+
+export type ColorNumberReader = (varName: string, fallback: number) => number;
+
+/** One short-lived palette per synchronous build. Never retain across theme changes. */
+export function createColorNumberReader(): ColorNumberReader {
+  if (typeof document === "undefined") return (_name, fallback) => fallback;
+  const root = getComputedStyle(document.documentElement);
+  const values = new Map<string, { fallback: number; color: number }>();
+  return (name, fallback) => {
+    const cached = values.get(name);
+    if (cached && cached.fallback === fallback) return cached.color;
+    const color = cssColorNumber(name, fallback, root);
+    values.set(name, { fallback, color });
+    return color;
+  };
 }
 
 /**

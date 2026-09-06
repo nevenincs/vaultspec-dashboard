@@ -193,6 +193,9 @@ async fn run_gh(dir: &FsPath, args: &[&str]) -> Result<Value, String> {
                 eprintln!("vaultspec serve: awaiting gh exit failed: {error}");
                 "gh did not exit cleanly".to_string()
             }
+            BoundedFault::AtCapacity => {
+                "the bounded process-group capacity is exhausted".to_string()
+            }
         })?;
     if !run.success {
         // Non-zero gh exit: no remote, not authenticated, rate-limited, offline.

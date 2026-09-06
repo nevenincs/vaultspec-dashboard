@@ -47,7 +47,7 @@ import {
   type RelayTranscriptState,
 } from "../liveAdapters/a2aRelay";
 import { StreamLostError } from "../../../platform/policy/failurePolicy";
-import { sseChunks } from "../queries/streams";
+import { acquireSseChunks, type StreamChunk } from "../queries/streams";
 import { asBool, asStr, asTiers, isRec, type Rec } from "../authoring";
 import {
   adaptProviderCatalog,
@@ -1203,13 +1203,13 @@ export function useCancelTeamRun() {
 
 // --- the run-progress relay + bounded polling fallback --------------------------
 
-/** Adapt an SSE Response into a bounded stream of transcript frames. */
+/** Adapt decoded SSE chunks into a bounded stream of transcript frames. */
 export async function* relayFrames(
-  response: Response,
+  chunks: AsyncIterable<StreamChunk>,
 ): AsyncGenerator<RelayTranscriptFrame, void, unknown> {
   let terminalObserved = false;
   try {
-    for await (const chunk of sseChunks(response)) {
+    for await (const chunk of chunks) {
       const frame = adaptRelayFrame({ channel: chunk.channel, data: chunk.data });
       terminalObserved ||= relayFrameIsTerminal(frame);
       yield frame;
@@ -1261,11 +1261,11 @@ export function useRunRelay(
     queryKey: a2aKeys.runRelay(runId ?? ""),
     enabled: !!runId,
     queryFn: streamedQuery({
-      streamFn: async (context) =>
+      streamFn: (context) =>
         relayFrames(
-          await a2aTeamClient.openRunStream(
-            runId ?? "",
-            resume.current.since,
+          acquireSseChunks(
+            (signal) =>
+              a2aTeamClient.openRunStream(runId ?? "", resume.current.since, signal),
             context.signal,
           ),
         ),

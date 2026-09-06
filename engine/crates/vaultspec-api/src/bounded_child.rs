@@ -14,10 +14,13 @@
 //! policy, and interpret the raw [`BoundedOutcome`] themselves — the exit-code
 //! and envelope semantics differ per route and stay at the call site.
 
+use std::collections::HashMap;
 use std::process::Stdio;
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 
+use command_group::{AsyncCommandGroup as _, AsyncGroupChild};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 
 /// The two bounds every spawned child carries.
@@ -86,6 +89,180 @@ pub(crate) enum BoundedFault {
     OverCap,
     /// The child could not be reaped.
     Wait(std::io::Error),
+    /// The engine already owns the maximum number of live process groups.
+    AtCapacity,
+}
+
+const MAX_OWNED_GROUPS: usize = 64;
+static GROUP_PERMITS: LazyLock<Arc<tokio::sync::Semaphore>> =
+    LazyLock::new(|| Arc::new(tokio::sync::Semaphore::new(MAX_OWNED_GROUPS)));
+static REAP_TASKS: LazyLock<Mutex<HashMap<u64, tokio::task::JoinHandle<()>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+static REAP_SEQ: AtomicU64 = AtomicU64::new(1);
+static REAP_UNRESOLVED: AtomicBool = AtomicBool::new(false);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ReapFault {
+    DeadlineExceeded,
+    GroupWaitUnresolved,
+}
+
+impl std::fmt::Display for ReapFault {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::DeadlineExceeded => "process-group shutdown deadline exceeded",
+            Self::GroupWaitUnresolved => "a process group could not be observed empty",
+        })
+    }
+}
+
+/// Owns one process group until it has been observed empty. Cancellation of
+/// `run_bounded` drops this guard, synchronously sends the tree kill, and moves
+/// the group handle into a retained async waiter. Serve shutdown drains those
+/// waiters before returning.
+struct OwnedGroup {
+    child: Option<AsyncGroupChild>,
+    permit: Option<tokio::sync::OwnedSemaphorePermit>,
+}
+
+impl OwnedGroup {
+    fn new(child: AsyncGroupChild, permit: tokio::sync::OwnedSemaphorePermit) -> Self {
+        Self {
+            child: Some(child),
+            permit: Some(permit),
+        }
+    }
+
+    fn inner(&mut self) -> &mut tokio::process::Child {
+        self.child.as_mut().expect("owned process group").inner()
+    }
+
+    async fn terminate_and_wait(&mut self) -> std::io::Result<()> {
+        let child = self.child.as_mut().expect("owned process group");
+        match child.start_kill() {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::InvalidInput => {}
+            Err(error) => return Err(error),
+        }
+        child.wait().await?;
+        self.child.take();
+        Ok(())
+    }
+
+    async fn wait(&mut self) -> std::io::Result<std::process::ExitStatus> {
+        let status = self
+            .child
+            .as_mut()
+            .expect("owned process group")
+            .wait()
+            .await?;
+        self.child.take();
+        Ok(status)
+    }
+}
+
+impl Drop for OwnedGroup {
+    fn drop(&mut self) {
+        let Some(mut child) = self.child.take() else {
+            return;
+        };
+        let permit = self.permit.take().expect("owned process-group permit");
+        let initial_kill = child.start_kill();
+        if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+            let id = REAP_SEQ.fetch_add(1, Ordering::Relaxed);
+            let (start_tx, start_rx) = tokio::sync::oneshot::channel();
+            let waiter = runtime.spawn(async move {
+                let _ = start_rx.await;
+                let result = async {
+                    if let Err(error) = initial_kill
+                        && error.kind() != std::io::ErrorKind::InvalidInput
+                    {
+                        child.start_kill()?;
+                    }
+                    child.wait().await.map(|_| ())
+                }
+                .await;
+                if result.is_err() {
+                    REAP_UNRESOLVED.store(true, Ordering::Release);
+                }
+                drop(permit);
+                REAP_TASKS
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner())
+                    .remove(&id);
+            });
+            let mut waiters = REAP_TASKS.lock().unwrap_or_else(|error| error.into_inner());
+            debug_assert!(waiters.len() < MAX_OWNED_GROUPS);
+            waiters.insert(id, waiter);
+            drop(waiters);
+            let _ = start_tx.send(());
+        }
+    }
+}
+
+/// Wait for every process group whose runner future was cancelled under one
+/// aggregate deadline. Exhaustion is typed unresolved; shutdown never reports
+/// definitive cleanup or waits forever without observing group-empty.
+pub(crate) async fn reap_terminated_groups(deadline: Duration) -> Result<(), ReapFault> {
+    let shutdown_deadline = tokio::time::Instant::now() + deadline;
+    loop {
+        let waiters: Vec<_> = REAP_TASKS
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .drain()
+            .map(|(_, waiter)| waiter)
+            .collect();
+        if waiters.is_empty() {
+            return if REAP_UNRESOLVED.swap(false, Ordering::AcqRel) {
+                Err(ReapFault::GroupWaitUnresolved)
+            } else {
+                Ok(())
+            };
+        }
+        let joined = async {
+            for waiter in waiters {
+                if waiter.await.is_err() {
+                    REAP_UNRESOLVED.store(true, Ordering::Release);
+                }
+            }
+        };
+        let Some(remaining) = shutdown_deadline.checked_duration_since(tokio::time::Instant::now())
+        else {
+            return Err(ReapFault::DeadlineExceeded);
+        };
+        if tokio::time::timeout(remaining, joined).await.is_err() {
+            return Err(ReapFault::DeadlineExceeded);
+        }
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn test_reaper_count() -> usize {
+    REAP_TASKS
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .len()
+}
+
+#[cfg(test)]
+pub(crate) fn test_register_wedged_reaper() {
+    let id = REAP_SEQ.fetch_add(1, Ordering::Relaxed);
+    let waiter = tokio::spawn(std::future::pending());
+    REAP_TASKS
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .insert(id, waiter);
+}
+
+#[cfg(test)]
+pub(crate) fn test_reserve_all_group_slots() -> Vec<tokio::sync::OwnedSemaphorePermit> {
+    (0..MAX_OWNED_GROUPS)
+        .map(|_| {
+            Arc::clone(&GROUP_PERMITS)
+                .try_acquire_owned()
+                .expect("reserve process-group test slot")
+        })
+        .collect()
 }
 
 /// Run `command` to completion under both bounds, draining stdout and stderr
@@ -103,6 +280,9 @@ pub(crate) async fn run_bounded(
     limits: BoundedLimits,
     cap_policy: CapPolicy,
 ) -> Result<BoundedOutcome, BoundedFault> {
+    let permit = Arc::clone(&GROUP_PERMITS)
+        .try_acquire_owned()
+        .map_err(|_| BoundedFault::AtCapacity)?;
     command
         .stdin(if stdin_body.is_some() {
             Stdio::piped()
@@ -111,11 +291,18 @@ pub(crate) async fn run_bounded(
         })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    let mut child = command.spawn().map_err(BoundedFault::Spawn)?;
+    // Every child is a process-tree root. On Windows command-group creates the
+    // process suspended, assigns it to a Job Object, and only then resumes it,
+    // closing the spawn/assignment race. The local ownership guard provides
+    // the cross-platform cancellation path because the builder's
+    // `kill_on_drop` setting is not implemented by its Unix backend.
+    let mut group = command.group();
+    group.kill_on_drop(true);
+    let mut child = OwnedGroup::new(group.spawn().map_err(BoundedFault::Spawn)?, permit);
 
-    let stdin = child.stdin.take();
-    let stdout = child.stdout.take().expect("piped stdout");
-    let stderr = child.stderr.take().expect("piped stderr");
+    let stdin = child.inner().stdin.take();
+    let stdout = child.inner().stdout.take().expect("piped stdout");
+    let stderr = child.inner().stderr.take().expect("piped stderr");
 
     let body = stdin_body.map(str::to_owned);
     let feed = async move {
@@ -157,7 +344,10 @@ pub(crate) async fn run_bounded(
         Ok(reads) => reads,
         Err(_) => {
             // Timed out: kill the child so it cannot linger as a zombie.
-            child.kill().await.map_err(BoundedFault::Wait)?;
+            child
+                .terminate_and_wait()
+                .await
+                .map_err(BoundedFault::Wait)?;
             return Err(BoundedFault::Timeout);
         }
     };
@@ -168,7 +358,10 @@ pub(crate) async fn run_bounded(
 
     let at_cap = stdout.len() as u64 >= limits.cap || stderr.len() as u64 >= limits.cap;
     if at_cap {
-        child.kill().await.map_err(BoundedFault::Wait)?;
+        child
+            .terminate_and_wait()
+            .await
+            .map_err(BoundedFault::Wait)?;
         return match cap_policy {
             CapPolicy::Refuse => Err(BoundedFault::OverCap),
             CapPolicy::KeepPartial => Ok(BoundedOutcome {

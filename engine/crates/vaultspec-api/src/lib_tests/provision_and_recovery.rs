@@ -251,6 +251,91 @@ async fn provision_run_is_job_shaped_and_pollable() {
 }
 
 #[tokio::test]
+async fn concurrent_setup_requests_atomically_share_one_job_id() {
+    let (_dir, state) = fixture_state();
+    let token = state.bearer.clone();
+    let router = build_router(state);
+    let barrier = Arc::new(tokio::sync::Barrier::new(2));
+    let request = |router: Router, barrier: Arc<tokio::sync::Barrier>, token: String| async move {
+        barrier.wait().await;
+        post_json_with_token(
+            router,
+            "/provision/run",
+            json!({"action":"setup"}),
+            Some(&token),
+        )
+        .await
+    };
+    let (left, right) = tokio::join!(
+        request(router.clone(), barrier.clone(), token.clone()),
+        request(router, barrier, token),
+    );
+    assert_eq!(left.0, StatusCode::OK, "left: {}", left.1);
+    assert_eq!(right.0, StatusCode::OK, "right: {}", right.1);
+    assert_eq!(left.1["data"]["job"]["id"], right.1["data"]["job"]["id"]);
+    let attached = [
+        left.1["data"]["attached"].as_bool(),
+        right.1["data"]["attached"].as_bool(),
+    ];
+    assert!(
+        attached.contains(&Some(false)) && attached.contains(&Some(true)),
+        "one reserve and one attach: {attached:?}"
+    );
+}
+
+#[tokio::test]
+async fn concurrent_safe_and_force_setup_admits_one_and_returns_one_typed_conflict() {
+    let (_dir, state) = fixture_state();
+    let token = state.bearer.clone();
+    let router = build_router(state);
+    let barrier = Arc::new(tokio::sync::Barrier::new(2));
+    let request = |router: Router,
+                   barrier: Arc<tokio::sync::Barrier>,
+                   token: String,
+                   body: Value| async move {
+        barrier.wait().await;
+        post_json_with_token(router, "/provision/run", body, Some(&token)).await
+    };
+    let (safe, force) = tokio::join!(
+        request(
+            router.clone(),
+            barrier.clone(),
+            token.clone(),
+            json!({"action":"setup"}),
+        ),
+        request(
+            router,
+            barrier,
+            token,
+            json!({"action":"setup","force":true,"confirm":"confirm-force"}),
+        ),
+    );
+    let (winner, conflict) = if safe.0 == StatusCode::OK {
+        (&safe, &force)
+    } else {
+        (&force, &safe)
+    };
+    assert_eq!(winner.0, StatusCode::OK, "winner: {}", winner.1);
+    assert_eq!(conflict.0, StatusCode::CONFLICT, "conflict: {}", conflict.1);
+    assert_eq!(conflict.1["error_kind"], "setup_posture_conflict");
+    let job_id = winner.1["data"]["job"]["id"]
+        .as_str()
+        .expect("winner job id");
+    assert!(
+        conflict.1["error"]
+            .as_str()
+            .is_some_and(|message| message.contains(job_id)),
+        "typed conflict names the admitted job: {}",
+        conflict.1
+    );
+    assert_eq!(
+        crate::routes::provision::test_job_and_task_counts(job_id),
+        (1, 1),
+        "one aggregate and one owned child-sequence task"
+    );
+}
+
+#[tokio::test]
 async fn a_poisoned_lock_degrades_instead_of_cascading_into_a_permanent_outage() {
     // Robustness H2 regression: a panic while a lock guard is held poisons
     // that lock. WITHOUT poison recovery, every later `.lock()/.read()`

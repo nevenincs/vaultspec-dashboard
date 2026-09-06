@@ -39,6 +39,7 @@ const EXPECTED_DEFAULTS: Record<string, number | string | boolean> = {
   warmStartAlpha: 0.3,
   prewarmMaxTicks: 300,
   prewarmBudgetMs: 260,
+  simFrameBudgetMs: 8,
   annealAlpha: 0.3,
   annealSettleSpeed: 0.12,
   annealSettleTicks: 30,

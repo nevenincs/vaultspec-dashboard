@@ -9,6 +9,7 @@ import { ThreeField } from "./threeField";
 class CpuField extends ThreeField {
   readonly events: SceneEvent[] = [];
   readonly element = document.createElement("div");
+  uploads = 0;
 
   constructor() {
     super();
@@ -78,6 +79,15 @@ class CpuField extends ThreeField {
 
   get hasPendingPaint(): boolean {
     return this.needsRender;
+  }
+
+  get performanceSnapshot() {
+    return { ...this.framePerformance };
+  }
+
+  protected override uploadPositions(): void {
+    this.uploads++;
+    super.uploadPositions();
   }
 
   pointer(kind: string, x: number, y: number, pointerId = 1): void {
@@ -272,5 +282,27 @@ describe("ThreeField energy and gesture lifecycle", () => {
     expect(value.snapshot).toEqual(before);
     value.advance(60_020);
     expect(value.snapshot.alpha).toBeLessThan(before.alpha!);
+  });
+
+  it("skips zero-tick uploads but continues easing after a physics step", () => {
+    const value = field(false);
+    value.advance(0);
+    const before = value.uploads;
+    value.advance(5);
+    expect(value.uploads).toBe(before);
+    expect(value.performanceSnapshot.executedTicks).toBe(0);
+    expect(value.performanceSnapshot.solverMs).toBe(0);
+    value.advance(17);
+    expect(value.uploads).toBe(before + 1);
+    expect(value.performanceSnapshot.executedTicks).toBe(1);
+    const positions = value.displayedPositions;
+    value.advance(22);
+    expect(value.performanceSnapshot.executedTicks).toBe(0);
+    expect(value.uploads).toBe(before + 2);
+    expect(value.displayedPositions).not.toEqual(positions);
+    expect(value.performanceSnapshot.callbackMs).toBeGreaterThanOrEqual(
+      value.performanceSnapshot.solverMs,
+    );
+    expect(value.performanceSnapshot.renderMs).toBe(0);
   });
 });

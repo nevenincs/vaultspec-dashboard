@@ -20,12 +20,9 @@
 // unmounting a mounted root, so it is an inert no-op in the node-environment
 // files that never render.
 //
-// ORDERING: vitest's `sequence.hooks` defaults to `"stack"`, so afterEach hooks
-// run in REVERSE registration order. This file is listed after `liveSetup.ts`
-// in `test.setupFiles`, so this hook runs BEFORE liveSetup's happy-dom drain —
-// which is the order teardown needs: unmount first, so the effect cleanups an
-// unmount triggers (aborted fetches, closed streams) are still drained by
-// `waitUntilComplete` before the window is aborted.
+// This is the only global per-test lifecycle barrier. Component effect cleanups
+// own cancellation of the work they started; happy-dom window destruction stays
+// exclusively with Vitest's awaited environment teardown at the file boundary.
 
 import { cleanup } from "@testing-library/react";
 import { afterEach } from "vitest";

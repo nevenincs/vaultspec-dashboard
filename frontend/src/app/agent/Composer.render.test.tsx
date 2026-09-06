@@ -14,14 +14,15 @@
 // mutations invalidate that client, and the mid-run assertions depend on the
 // session snapshot refreshing through the real invalidation path.
 
-import { QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { I18nextProvider } from "react-i18next";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { en } from "../../locales/en";
 import { createTestLocalizationRuntime } from "../../localization/testing";
 import { liveScope, liveTransport } from "../../testing/liveClient";
+import { createLiveRenderQueryTeardown } from "../../testing/queryTeardown";
 import { AuthoringClient, ensureActorToken } from "../../stores/server/authoring";
 import { AgentClient } from "../../stores/server/agent";
 import { queryClient } from "../../stores/server/queryClient";
@@ -36,6 +37,17 @@ import { Composer, composerEligibleCommands, isMentionTrigger } from "./Composer
 const run = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 
 const liveAgent = new AgentClient({ baseUrl: "", fetchImpl: liveTransport });
+const liveRenderTeardown = createLiveRenderQueryTeardown();
+const COMPOSER_SCOPE_QUERY_PREFIXES = [
+  ["engine", "dashboard-state"],
+  ["engine", "filters"],
+  ["engine", "vault-tree"],
+] as const;
+const COMPOSER_SESSION_QUERY_PREFIXES = [
+  ["agent", "sessions", "detail"],
+  ["authoring", "operation-mode"],
+  ["authoring", "proposals"],
+] as const;
 
 function resetStores(): void {
   useAgentPanel.setState({ currentSessionId: null });
@@ -45,12 +57,11 @@ function resetStores(): void {
   });
 }
 
-beforeEach(resetStores);
-afterEach(() => {
-  cleanup();
+beforeEach(() => {
   resetStores();
-  queryClient.clear();
+  liveRenderTeardown.enroll(queryClient);
 });
+afterEach(() => liveRenderTeardown.run(resetStores));
 
 function renderComposer() {
   const runtime = createTestLocalizationRuntime();
@@ -61,6 +72,35 @@ function renderComposer() {
       </QueryClientProvider>
     </I18nextProvider>,
   );
+}
+
+function awaitFiniteReads(
+  client: QueryClient,
+  prefixes: ReadonlyArray<readonly unknown[]>,
+): Promise<void> {
+  const remaining = new Set(prefixes);
+  const inspect = () => {
+    for (const query of client.getQueryCache().getAll()) {
+      for (const prefix of remaining) {
+        if (
+          prefix.every((part, index) => query.queryKey[index] === part) &&
+          query.state.fetchStatus === "idle" &&
+          query.state.status !== "pending"
+        ) {
+          remaining.delete(prefix);
+        }
+      }
+    }
+    return remaining.size === 0;
+  };
+  if (inspect()) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    const unsubscribe = client.getQueryCache().subscribe(() => {
+      if (!inspect()) return;
+      unsubscribe();
+      resolve();
+    });
+  });
 }
 
 function input(): HTMLTextAreaElement {
@@ -129,6 +169,7 @@ describe("Composer keyboard contract", () => {
     expect(snapshot.turns).toHaveLength(1);
     expect(snapshot.turns[0]!.prompt_text).toBe("hello there");
     await waitFor(() => expect(input().value).toBe(""));
+    await awaitFiniteReads(queryClient, COMPOSER_SESSION_QUERY_PREFIXES);
   });
 
   it("stages a comment as the shared chip and delivers it WITH the typed message", async () => {
@@ -193,6 +234,10 @@ describe("Composer keyboard contract", () => {
       { timeout: 15_000 },
     );
     expect(useAgentPanel.getState().currentSessionId).toBe(sessionId);
+    await awaitFiniteReads(queryClient, [
+      ["agent", "sessions", "detail"],
+      ["authoring", "proposals"],
+    ]);
   });
 });
 
@@ -240,6 +285,7 @@ describe("Composer slash commands (one command plane)", () => {
       fireEvent.keyDown(input(), { key: "Escape" });
       expect(document.querySelector("[data-composer-slash]")).toBeNull();
       expect(input().value).toBe("/needs");
+      await awaitFiniteReads(queryClient, COMPOSER_SCOPE_QUERY_PREFIXES);
     } finally {
       dispose();
     }

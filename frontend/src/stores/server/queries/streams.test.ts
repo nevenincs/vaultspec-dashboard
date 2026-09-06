@@ -1,12 +1,13 @@
 // @vitest-environment happy-dom
 // Split from queries.test.ts.
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { StreamLostError } from "../../../platform/policy/failurePolicy";
 import { assertBounded, syntheticGraphDeltas } from "../../../testing/adverse";
 import { liveTransport } from "../../../testing/liveClient";
 import { engineClient } from "../engine";
 import {
+  acquireSseChunks,
   MAX_SSE_INCOMPLETE_BYTES,
   STREAM_RETENTION,
   engineKeys,
@@ -142,6 +143,21 @@ describe("sseChunks stream failure handling", () => {
     }).rejects.toBeInstanceOf(StreamLostError);
   });
 
+  it("keeps a non-owner AbortError classified as stream loss", async () => {
+    const failingBody = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.error(new DOMException("foreign abort", "AbortError"));
+      },
+    });
+    await expect(async () => {
+      for await (const _chunk of sseChunks(
+        new Response(failingBody, { status: 200 }),
+      )) {
+        void _chunk;
+      }
+    }).rejects.toBeInstanceOf(StreamLostError);
+  });
+
   it("throws StreamLostError on clean EOF so a mounted query reconnects", async () => {
     const response = new Response(
       new ReadableStream<Uint8Array>({
@@ -202,6 +218,251 @@ describe("sseChunks stream failure handling", () => {
     }).rejects.toBeInstanceOf(StreamLostError);
     expect(seen).toHaveLength(512);
     expect(seen.at(-1)).toBe(511);
+  });
+});
+
+describe("two-phase SSE cancellation", () => {
+  it("does not acquire a response for an already-aborted owner", async () => {
+    const owner = new AbortController();
+    owner.abort();
+    let acquisitions = 0;
+
+    const iterator = acquireSseChunks(async () => {
+      acquisitions += 1;
+      return new Response();
+    }, owner.signal);
+
+    await expect(iterator.next()).resolves.toEqual({ done: true, value: undefined });
+    expect(acquisitions).toBe(0);
+  });
+
+  it("aborts pending response acquisition and completes owner cancellation normally", async () => {
+    const owner = new AbortController();
+    let requestSignal: AbortSignal | undefined;
+    const iterator = acquireSseChunks((signal) => {
+      requestSignal = signal;
+      return new Promise<Response>((_resolve, reject) => {
+        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+      });
+    }, owner.signal);
+
+    const pending = iterator.next();
+    await Promise.resolve();
+    owner.abort();
+
+    await expect(pending).resolves.toEqual({ done: true, value: undefined });
+    expect(requestSignal?.aborted).toBe(true);
+  });
+
+  it("hands post-header cancellation to the reader exactly once", async () => {
+    const owner = new AbortController();
+    let requestSignal: AbortSignal | undefined;
+    let cancellations = 0;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          new TextEncoder().encode('event: graph\ndata: {"seq":1}\n\n'),
+        );
+      },
+      cancel() {
+        cancellations += 1;
+      },
+    });
+    const iterator = acquireSseChunks(async (signal) => {
+      requestSignal = signal;
+      return new Response(body, { status: 200 });
+    }, owner.signal);
+
+    await expect(iterator.next()).resolves.toEqual({
+      done: false,
+      value: { channel: "graph", data: { seq: 1 } },
+    });
+    owner.abort();
+    await expect(iterator.next()).resolves.toEqual({ done: true, value: undefined });
+    await expect(iterator.return()).resolves.toEqual({ done: true, value: undefined });
+
+    expect(requestSignal?.aborted).toBe(false);
+    expect(cancellations).toBe(1);
+  });
+
+  it("does not yield buffered frames after owner cancellation", async () => {
+    const owner = new AbortController();
+    let cancellations = 0;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          new TextEncoder().encode(
+            'event: graph\ndata: {"seq":1}\n\nevent: graph\ndata: {"seq":2}\n\n',
+          ),
+        );
+      },
+      cancel() {
+        cancellations += 1;
+      },
+    });
+    const iterator = acquireSseChunks(
+      async () => new Response(body, { status: 200 }),
+      owner.signal,
+    );
+
+    await expect(iterator.next()).resolves.toEqual({
+      done: false,
+      value: { channel: "graph", data: { seq: 1 } },
+    });
+    owner.abort();
+
+    await expect(iterator.next()).resolves.toEqual({ done: true, value: undefined });
+    expect(cancellations).toBe(1);
+  });
+
+  it("removes the owner listener after an early consumer return", async () => {
+    const owner = new AbortController();
+    const addListener = vi.spyOn(owner.signal, "addEventListener");
+    const removeListener = vi.spyOn(owner.signal, "removeEventListener");
+    let cancellations = 0;
+    const iterator = acquireSseChunks(
+      async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                new TextEncoder().encode('event: graph\ndata: {"seq":1}\n\n'),
+              );
+            },
+            cancel() {
+              cancellations += 1;
+            },
+          }),
+          { status: 200 },
+        ),
+      owner.signal,
+    );
+
+    await iterator.next();
+    await iterator.return();
+    expect(cancellations).toBe(1);
+    const abortListeners = addListener.mock.calls
+      .filter(([type]) => type === "abort")
+      .map(([, listener]) => listener);
+    expect(abortListeners).toHaveLength(2);
+    for (const listener of abortListeners) {
+      expect(removeListener).toHaveBeenCalledWith("abort", listener);
+    }
+    owner.abort();
+    await Promise.resolve();
+    expect(cancellations).toBe(1);
+  });
+
+  it("keeps cancellation bookkeeping constant across a long stream", async () => {
+    const owner = new AbortController();
+    const encoder = new TextEncoder();
+    let cancellations = 0;
+    let sequence = 0;
+    let cancelled = false;
+    const reader = {
+      async read(): Promise<ReadableStreamReadResult<Uint8Array>> {
+        if (cancelled) return { done: true, value: undefined };
+        sequence += 1;
+        return {
+          done: false,
+          value: encoder.encode(`event: graph\ndata: {"seq":${sequence}}\n\n`),
+        };
+      },
+      async cancel() {
+        cancelled = true;
+        cancellations += 1;
+      },
+    };
+    const response = {
+      ok: true,
+      status: 200,
+      body: { getReader: () => reader },
+    } as unknown as Response;
+    const iterator = acquireSseChunks(async () => response, owner.signal);
+    const raceDescriptor = Object.getOwnPropertyDescriptor(Promise, "race");
+    const nativeRace = Promise.race.bind(Promise);
+    let cancellationRaces = 0;
+    let consumed = 0;
+    Object.defineProperty(Promise, "race", {
+      ...raceDescriptor,
+      value: <T>(values: Iterable<T | PromiseLike<T>>) => {
+        cancellationRaces += 1;
+        return nativeRace(values);
+      },
+    });
+
+    try {
+      for (let index = 0; index < 1_024; index++) {
+        const result = await iterator.next();
+        if (!result.done) consumed += 1;
+      }
+      owner.abort();
+      await iterator.next();
+    } finally {
+      Object.defineProperty(Promise, "race", raceDescriptor!);
+    }
+
+    expect(consumed).toBe(1_024);
+    expect(sequence).toBe(1_024);
+    expect(cancellations).toBe(1);
+    expect(cancellationRaces).toBe(0);
+  });
+
+  it("resolves a headers-then-abort race through reader cancellation", async () => {
+    const owner = new AbortController();
+    let settleResponse: ((response: Response) => void) | undefined;
+    let requestSignal: AbortSignal | undefined;
+    let cancellations = 0;
+    const iterator = acquireSseChunks((signal) => {
+      requestSignal = signal;
+      return new Promise<Response>((resolve) => {
+        settleResponse = resolve;
+      });
+    }, owner.signal);
+    const pending = iterator.next();
+    await Promise.resolve();
+    settleResponse?.(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          cancel() {
+            cancellations += 1;
+          },
+        }),
+        { status: 200 },
+      ),
+    );
+    await Promise.resolve();
+    owner.abort();
+
+    await expect(pending).resolves.toEqual({ done: true, value: undefined });
+    expect(requestSignal?.aborted).toBe(false);
+    expect(cancellations).toBe(1);
+  });
+
+  it("surfaces reader cancellation failure and removes the owner listener", async () => {
+    const owner = new AbortController();
+    const cancellationFailure = new Error("reader cancellation failed");
+    let cancellations = 0;
+    const iterator = acquireSseChunks(
+      async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            cancel() {
+              cancellations += 1;
+              throw cancellationFailure;
+            },
+          }),
+          { status: 200 },
+        ),
+      owner.signal,
+    );
+    const pending = iterator.next();
+    await Promise.resolve();
+    owner.abort();
+
+    await expect(pending).rejects.toBe(cancellationFailure);
+    await expect(iterator.return()).resolves.toEqual({ done: true, value: undefined });
+    expect(cancellations).toBe(1);
   });
 });
 

@@ -142,6 +142,16 @@ export abstract class ThreeFieldState {
 
   protected readonly simulationClock = new SimulationClock();
 
+  // Latest callback only: no retained trace and no conflation of solver work,
+  // total main-thread callback cost, and CPU render submission/overlay cost.
+  protected readonly framePerformance = {
+    solverMs: 0,
+    renderMs: 0,
+    callbackMs: 0,
+    executedTicks: 0,
+    discardedTicks: 0,
+  };
+
   // interaction state
   protected hoveredId: string | null = null;
 

@@ -4,14 +4,13 @@ tags:
   - '#project-provisioning'
 date: '2026-07-07'
 modified: '2026-09-06'
-body_hash: 'sha256:26876cad4350680b6dfd3ae4479a100d66dbf281ead933fa470729df4410778b'
+body_hash: 'sha256:b3b944b005e5f793bde9bdae154a859e766aeae3deca7ca9f2b7a61b2044934c'
 related:
   - "[[2026-07-07-project-provisioning-research]]"
   - "[[2026-07-04-dashboard-packaging-adr]]"
   - "[[2026-06-14-dashboard-workspace-registry-adr]]"
   - "[[2026-06-26-rag-service-management-adr]]"
 ---
-
 # `project-provisioning` adr: `operator-invoked framework acquisition and provisioning plane` | (**status:** `accepted`)
 
 ## Problem Statement
@@ -297,3 +296,116 @@ current doctor projection. A separate unsupported-membership fixture returned
 `manifest_membership_disagreement` with zero child spawns and an unchanged
 manifest. These observations extend the live evidence set whose lifecycle home
 is the cited review audit; this ADR records only the resulting contract.
+## Amendment - bounded current-only evidence and owned process settlement (2026-09-06, owner auto-approved correction)
+
+This amendment resolves the output-boundary contradiction and the process,
+capacity, and target-confinement gaps found by
+`2026-09-06-agent-panel-no-legacy-curation-audit`. It refines D4 and D9 without
+changing the fixed current-provider set, operation order, or safe/force setup
+postures.
+
+**D4a - the aggregate owns the complete process tree.** Every setup Doctor,
+preview, and install child runs inside an aggregate-owned process-tree boundary.
+On Windows this is a Job Object configured to terminate all associated
+processes when the owning handle closes; the runner must wait until the tree is
+empty before reporting definitive cancellation. Timeout or output-cap handling,
+server shutdown, task abort, and dropped aggregate ownership all invoke the same
+full-tree termination and reap path. `timeout_cancelled` is permitted only when
+that path proves the tree has exited. If ownership or reap proof is unavailable,
+the aggregate remains `indeterminate`, retains its single-flight exclusion, and
+requires authoritative reconciliation before any retry can mutate the target.
+The server retains ownership of each aggregate task through shutdown rather than
+detaching it.
+
+**D4b - reservation capacity is hard.** `MAX_JOBS` is a hard bound over running
+and completed registry entries. Atomic admission first resolves an identical
+attach or different-posture conflict for the same setup identity. For a distinct
+identity it prunes expired completed entries and evicts a safe completed victim;
+if no slot is available, it returns a typed capacity refusal and spawns no task
+or child. Terminal pruning may later admit the refused identity.
+
+**D9d - producer output is transient; wire evidence is closed and current-only.**
+Exact bounded Core stdout is consumed only while validating its one JSON object
+and computing its SHA-256 digest. Dashboard does not persist or return raw Core
+stdout. The setup receipt instead publishes a bounded typed install projection
+containing only schema, accepted status, accepted action, canonical target,
+command-bound current provider identity, and validated item path/label tuples,
+plus the digest of the exact bounded stdout. Unknown fields and unrelated
+provider metadata are discarded and cannot cross the Dashboard wire. This
+supersedes D9a and D8b/D8d only where they said the exact stdout itself was
+retained or returned; strict validation of all named current fields still
+stands.
+
+Doctor evidence follows the same rule. Each ordinal receipt and final
+reconciliation publishes the digest of the exact bounded Doctor stdout and a
+typed projection containing only `vaultspec.spec.doctor.v1`, status
+`unchanged`, the validated framework state, and the command-bound current
+provider's required manifest, directory, config, and managed-content facts.
+Core has no provider-entry projection. Claude, antigravity, and codex each carry
+only their own validated entry. Unknown top-level fields, unknown provider
+entries, and unrelated metadata are ignored during open-world producer decoding
+and are never stored or served.
+
+**D9e - declared item paths are canonically confined.** Dashboard first applies
+the D9a lexical relative-path checks, then canonicalizes the resolved setup
+target and every existing producer-declared item. Every canonical item must be
+the target itself or remain below that canonical target. A missing item and an
+item that escapes through a symlink, junction, or other filesystem indirection
+are distinct validation failures. Preview evidence may authorize
+`reconciled_existing` or a missing-component install only after applying the
+same canonical containment rule to every item that exists; an escaping item is
+always disagreement and never permission to mutate.
+
+**D9f - missing-state evidence is fully typed.** A safe ordinal may be classified
+missing only after a successful, exit-zero Doctor envelope with schema
+`vaultspec.spec.doctor.v1`, status `unchanged`, and the exact framework state
+appropriate to that ordinal. Core requires framework `missing`. A non-core
+ordinal requires framework `present` and a selected current-provider object
+whose required fields have the exact string/object types and the mutually
+consistent values `manifest_entry: not_installed` and `dir_state: missing`.
+Absent entries, wrong types, failed status, missing or wrong framework, and
+contradictory fields are `indeterminate` and authorize no install.
+
+Preflight retains the typed bounded termination cause. Definitively reaped tree
+timeout becomes `timeout_cancelled`; output cap, read/wait failure, malformed
+evidence, or cancellation without full-tree proof remains `indeterminate` with
+its specific reason. Later ordinals do not mutate after either terminal shape.
+## Amendment - confined missing paths and exact clean-core evidence (2026-09-06, owner auto-approved correction)
+
+This correction resolves the two HIGH findings in architecture review audit
+`7ced01aea83a1e0d1480266aecd8094ae14865d1`. D4a/b and D9d stand. The D9e and
+D9f clauses are replaced where refined below.
+
+**D9e - existing and missing declared paths are canonically confined before
+mutation.** After lexical relative-path validation, Dashboard canonicalizes the
+resolved setup target. For every existing declared item it canonicalizes the item
+and requires the result to equal the target or remain below it. For every missing
+declared item, Dashboard walks toward the target until it finds the nearest
+existing ancestor, canonicalizes that ancestor, and applies the same containment
+test. Encountering an existing symlink, Windows junction, or other redirecting
+ancestor whose canonical result escapes the target is disagreement and cannot
+authorize mutation. A normal missing descendant whose nearest existing ancestor
+is confined may contribute to authoritative missing state. Post-install
+validation still canonicalizes and confines every now-existing declared item.
+The discriminating contract covers missing file and directory children below
+escaping indirections, a normal in-target missing ancestor, existing escaping
+items, and normal in-target controls.
+
+**D9f - Core missing has one exact negative envelope; provider missing remains
+successful Doctor evidence.** For the core ordinal only, an unmanaged clean
+target is authoritative missing evidence when the process exits exactly 2 and
+stdout is exactly one JSON object with schema `vaultspec.spec.doctor.v1`, status
+`failed`, `data.framework` exactly `missing`, and `data.providers` exactly an
+empty object. Dashboard projects only those selected fields and the exact stdout
+digest. Every other exit, status, framework value, providers shape or membership,
+missing required field, wrong type, or malformed object is indeterminate. This
+narrow current-producer exception does not accept arbitrary failed Doctor output.
+
+For claude, antigravity, and codex, authoritative missing evidence still requires
+exit 0, schema `vaultspec.spec.doctor.v1`, status `unchanged`, framework
+`present`, and the command-bound provider object with exact required types and
+mutually consistent `manifest_entry: not_installed` and `dir_state: missing`
+facts. Failed status, absent or wrong framework, absent selected entry, wrong
+field types, and contradictory fields remain indeterminate and authorize no
+install. Unrelated Doctor metadata is discarded in both positive and negative
+forms and never crosses the Dashboard wire.

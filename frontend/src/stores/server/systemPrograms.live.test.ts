@@ -79,13 +79,34 @@ describe("the served status envelope carries what the system-status console show
     const rag = record(record(body.backends).rag);
     const status = adaptStatus(body);
 
-    if (rag.available === true) {
+    if (rag.state === "running") {
+      expect(rag.available).toBe(true);
+      expect(typeof rag.port).toBe("number");
+      expect(typeof rag.pid).toBe("number");
       expect(status.rag?.port).toBe(rag.port);
       expect(status.rag?.pid).toBe(rag.pid);
       return;
     }
 
-    // Nothing served, nothing to carry - and the adapter must not invent one.
+    expect(rag.available).toBe(false);
+    if (rag.state === "crashed") {
+      // Discovery can retain the crashed service's last-known port, but there is
+      // no live process id. The adapter preserves exactly that partial identity.
+      if (rag.port == null) {
+        expect(status.rag?.port).toBeUndefined();
+      } else {
+        expect(typeof rag.port).toBe("number");
+        expect(status.rag?.port).toBe(rag.port);
+      }
+      expect(rag.pid).toBeUndefined();
+      expect(status.rag?.pid).toBeUndefined();
+      return;
+    }
+
+    expect(rag.state).toBe("absent");
+    // A genuinely absent service has no identity for the adapter to carry.
+    expect(rag.port).toBeUndefined();
+    expect(rag.pid).toBeUndefined();
     expect(status.rag?.port).toBeUndefined();
     expect(status.rag?.pid).toBeUndefined();
   });

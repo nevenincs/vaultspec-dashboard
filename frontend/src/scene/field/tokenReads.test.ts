@@ -12,11 +12,11 @@
 // on. If the token file's scene-read hex changes, this test must change with
 // it - that coupling is the point: it pins mock-vs-live token fidelity.
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { groupColor } from "./edgeStyle";
 import { stateColor } from "./nodeVisualEncoding";
-import { cssColorNumber } from "./tokenReads";
+import { createColorNumberReader, cssColorNumber } from "./tokenReads";
 
 // Node-category scene-read hex (Figma-canonical, light theme). These drive the
 // headline graph node-category colouring and are emitted as LITERAL HEX per
@@ -83,6 +83,7 @@ describe("scene getComputedStyle reads resolve from the rebuilt token layer", ()
   });
   afterEach(() => {
     document.documentElement.removeAttribute("style");
+    vi.restoreAllMocks();
   });
 
   it("edgeMeshes.groupColor reads the uniform scene-rule grey for EVERY tier", () => {
@@ -141,6 +142,27 @@ describe("scene getComputedStyle reads resolve from the rebuilt token layer", ()
   it("also parses an rgb() resolved value", () => {
     document.documentElement.style.setProperty("--probe", "rgb(10, 20, 30)");
     expect(cssColorNumber("--probe", -1)).toBe((10 << 16) | (20 << 8) | 30);
+  });
+
+  it("build-scoped numeric palettes preserve parsing and caller-specific fallback", () => {
+    applyTokens(CATEGORY_TOKENS);
+    document.documentElement.style.setProperty("--accent-probe", "oklch(0.7 0.09 150)");
+    const expected = cssColorNumber("--accent-probe", -1);
+    const styles = vi.spyOn(globalThis, "getComputedStyle");
+    const read = createColorNumberReader();
+    for (let i = 0; i < 100; i++) {
+      expect(read("--color-scene-category-plan", -1)).toBe(0x3f8457);
+      expect(read("--accent-probe", -1)).toBe(expected);
+      expect(read("--missing-probe", 1)).toBe(1);
+      expect(read("--missing-probe", 2)).toBe(2);
+    }
+    expect(styles).toHaveBeenCalledTimes(1);
+    document.documentElement.style.setProperty(
+      "--color-scene-category-plan",
+      "#123456",
+    );
+    expect(createColorNumberReader()("--color-scene-category-plan", -1)).toBe(0x123456);
+    expect(styles).toHaveBeenCalledTimes(2);
   });
 
   it("falls back on an unresolvable value (self-cycle var / garbage / absent)", () => {

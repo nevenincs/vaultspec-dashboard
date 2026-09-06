@@ -248,6 +248,16 @@ export const GRAPH_CONTROL_SCHEMA = [
     exposure: [],
   },
   {
+    id: "simFrameBudgetMs",
+    group: "simulation",
+    type: "number",
+    min: 1,
+    max: 16,
+    step: 1,
+    default: 8,
+    exposure: [],
+  },
+  {
     id: "annealAlpha",
     group: "simulation",
     type: "number",

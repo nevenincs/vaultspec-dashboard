@@ -16,7 +16,7 @@
 // hex read goes through the shared `tokenReads` seam (`cssColorNumber`), the one
 // home for the getComputedStyle hex-or-fallback discipline.
 
-import { cssColorNumber } from "./tokenReads";
+import { cssColorNumber, type ColorNumberReader } from "./tokenReads";
 
 /** The sanctioned node categories (Figma graph/Node-items 83:2), plus `reference`
  *  and `code`.
@@ -114,7 +114,10 @@ const CATEGORY_FALLBACK: Record<NodeCategory, number> = {
  * Reads `--color-scene-category-<category>` as literal hex for the active theme
  * via getComputedStyle; falls back to the light-theme value in the node test env.
  */
-export function categoryColor(kind: string): number {
+export function categoryColor(
+  kind: string,
+  read: ColorNumberReader = cssColorNumber,
+): number {
   const cat = nodeCategory(kind);
-  return cssColorNumber(`--color-scene-category-${cat}`, CATEGORY_FALLBACK[cat]);
+  return read(`--color-scene-category-${cat}`, CATEGORY_FALLBACK[cat]);
 }

@@ -10,6 +10,7 @@
 // error and throws loudly rather than silently falling back to a fake.
 
 import { EngineClient, type FetchLike } from "../stores/server/engine";
+import { nodeHttpTransport } from "./nodeHttpTransport";
 
 const BASE_URL = process.env["ENGINE_BASE_URL"];
 const TOKEN = process.env["ENGINE_TOKEN"];
@@ -28,7 +29,7 @@ export const LIVE_BASE_URL: string = BASE_URL;
  * the app-wide client's relative `/api/...` paths onto the live origin, so the
  * SAME client code that runs in the browser runs here against the real engine.
  */
-export const liveTransport: FetchLike = (input, init) => {
+export const liveTransport: FetchLike = async (input, init) => {
   const headers = new Headers(init?.headers);
   if (TOKEN && !headers.has("authorization")) {
     headers.set("Authorization", `Bearer ${TOKEN}`);
@@ -36,7 +37,7 @@ export const liveTransport: FetchLike = (input, init) => {
   const url = input.startsWith("http")
     ? input
     : `${BASE_URL}${input.replace(/^\/api/, "")}`;
-  return fetch(url, { ...init, headers });
+  return await nodeHttpTransport(url, { ...init, headers });
 };
 
 /** A fresh typed client bound to the live engine. */

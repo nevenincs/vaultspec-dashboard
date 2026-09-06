@@ -18,6 +18,7 @@ import {
   type Texture,
 } from "three";
 import { type SceneEdgeData, type SceneNodeData } from "../../sceneController";
+import { createColorNumberReader } from "../../field/tokenReads";
 import {
   canvasBackground,
   edgeAppearance,
@@ -313,11 +314,12 @@ export abstract class ThreeFieldGpuResources extends ThreeFieldState {
     const aDim = new Float32Array(n);
     const aHidden = new Float32Array(n);
     const tmp = new Color();
+    const readColor = createColorNumberReader();
     this.nodeColors = new Array<number>(n);
     nodes.forEach((node, i) => {
       aIndex[i] = i;
       aSize[i] = nodeWorldRadius(node, this.appearance);
-      const col = nodeColorNumber(node, this.appearance);
+      const col = nodeColorNumber(node, this.appearance, readColor);
       this.nodeColors[i] = col;
       tmp.set(col);
       aColor[i * 3] = tmp.r;
@@ -341,7 +343,7 @@ export abstract class ThreeFieldGpuResources extends ThreeFieldState {
     // The node de-emphasis recede target is the canvas BACKGROUND (an established palette
     // token, theme-adaptive): a non-focus node mixes toward it (the eased aDim recede) so it
     // recedes into the paper a touch, at full alpha. No adhoc colour.
-    const dim = new Color(canvasBackground());
+    const dim = new Color(canvasBackground(readColor));
     this.nodeMaterial = new ShaderMaterial({
       uniforms: {
         uPositions: { value: null as Texture | null },
@@ -545,6 +547,102 @@ export abstract class ThreeFieldGpuResources extends ThreeFieldState {
     this.edgeMesh.frustumCulled = false;
     this.edgeMesh.renderOrder = 0;
     this.scene.add(this.edgeMesh);
+  }
+
+  /** Update attributes without replacing compatible geometry or material handles. */
+  protected refreshGraphAttributes(
+    nodes: SceneNodeData[],
+    edges: SceneEdgeData[],
+  ): void {
+    if (!this.nodeMesh) return;
+    const readColor = createColorNumberReader();
+    const color = this.nodeMesh.geometry.getAttribute("aColor");
+    const glyphColor = this.glyphMesh?.geometry.getAttribute("aColor");
+    const glyphCell = this.glyphMesh?.geometry.getAttribute("aCell");
+    const tmp = new Color();
+    let colorsChanged = false;
+    let cellsChanged = false;
+    for (let i = 0; i < nodes.length; i++) {
+      const next = nodeColorNumber(nodes[i], this.appearance, readColor);
+      if (next !== this.nodeColors[i]) {
+        this.nodeColors[i] = next;
+        tmp.set(next);
+        color.setXYZ(i, tmp.r, tmp.g, tmp.b);
+        glyphColor?.setXYZ(i, tmp.r, tmp.g, tmp.b);
+        colorsChanged = true;
+      }
+      if (glyphCell && this.glyphAtlas) {
+        const cell = this.glyphAtlas.cellOf(glyphKeyForNode(nodes[i]));
+        if (glyphCell.getX(i) !== cell) {
+          glyphCell.setX(i, cell);
+          cellsChanged = true;
+        }
+      }
+    }
+    if (colorsChanged) {
+      color.needsUpdate = true;
+      if (glyphColor) glyphColor.needsUpdate = true;
+    }
+    if (cellsChanged && glyphCell) glyphCell.needsUpdate = true;
+
+    // set-data clears the old visibility/hover presentation, even when no buffers
+    // are replaced. Durable selection and spotlight are re-applied by the host.
+    for (const mesh of [this.nodeMesh, this.glyphMesh]) {
+      if (!mesh) continue;
+      for (const name of ["aHidden", "aDim"]) {
+        const attr = mesh.geometry.getAttribute(name);
+        let changed = false;
+        for (let i = 0; i < attr.count; i++) {
+          if (attr.getX(i) !== 0) {
+            attr.setX(i, 0);
+            changed = true;
+          }
+        }
+        if (changed) attr.needsUpdate = true;
+      }
+    }
+    this.edgeData = edges;
+    if (!this.edgeMesh) return;
+    const width = this.edgeMesh.geometry.getAttribute("aWidthPx");
+    const edgeColor = this.edgeMesh.geometry.getAttribute("aColor");
+    const alpha = this.edgeMesh.geometry.getAttribute("aAlpha");
+    const target = new Color();
+    let widthsChanged = false;
+    let alphasChanged = false;
+    for (let i = 0; i < edges.length; i++) {
+      const appearance = edgeAppearance(edges[i], this.appearance);
+      this.edgeBaseAlpha[i] = appearance.alpha;
+      const baseAlpha = this.edgeBaseAlpha[i];
+      const baseWidth = Math.fround(appearance.width);
+      const edge = this.builtEdges[i];
+      if (colorsChanged) {
+        const ends = edgeEndColors(
+          this.appearance.edgeColorMode,
+          this.nodeColors[edge.a],
+          this.nodeColors[edge.b],
+        );
+        tmp.set(ends.a);
+        target.set(ends.b);
+      }
+      for (let k = 0; k < 4; k++) {
+        const v = i * 4 + k;
+        if (width.getX(v) !== baseWidth) {
+          width.setX(v, baseWidth);
+          widthsChanged = true;
+        }
+        if (alpha.getX(v) !== baseAlpha) {
+          alpha.setX(v, baseAlpha);
+          alphasChanged = true;
+        }
+        if (colorsChanged) {
+          const col = k < 2 ? tmp : target;
+          edgeColor.setXYZ(v, col.r, col.g, col.b);
+        }
+      }
+    }
+    if (widthsChanged) width.needsUpdate = true;
+    if (alphasChanged) alpha.needsUpdate = true;
+    if (colorsChanged) edgeColor.needsUpdate = true;
   }
 
   protected disposeGraph(): void {

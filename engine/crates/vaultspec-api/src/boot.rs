@@ -482,7 +482,7 @@ pub async fn serve(port: Option<u16>, scope: Option<String>, no_seat: bool) -> s
             tokio::time::sleep(SHUTDOWN_DRAIN_GRACE).await;
         }
     };
-    let result = tokio::select! {
+    let mut result = tokio::select! {
         served = &mut serving => served.map_err(std::io::Error::other),
         () = drain_deadline => {
             eprintln!(
@@ -492,6 +492,16 @@ pub async fn serve(port: Option<u16>, scope: Option<String>, no_seat: bool) -> s
             Ok(())
         }
     };
+    // Provisioning aggregates own mutating process trees. The shutdown latch
+    // cancels their active phase, and this bounded join keeps the task ownership
+    // alive until each drop guard has terminated its group.
+    routes::provision::shutdown_jobs().await;
+    if let Err(error) = crate::bounded_child::reap_terminated_groups(Duration::from_secs(10)).await
+    {
+        result = Err(std::io::Error::other(format!(
+            "provisioning process-group cleanup failed: {error}"
+        )));
+    }
     // Terminate the owned A2A gateway tree within a bound
     // BEFORE releasing the seat, so a clean
     // exit never orphans a gateway this dashboard started. A no-op when nothing

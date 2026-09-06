@@ -3,9 +3,9 @@ tags:
   - '#research'
   - '#test-isolation-cleanup'
 date: '2026-09-04'
-modified: '2026-09-04'
+modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:c28562cc425b9e330c9984107fa92c423996a40ee03874fea24ff46259d8dc1b'
+body_hash: 'sha256:1ff911d273f136d9f387a6b778104ab78d5e3f1c2d7b7963aa1c2b48a201cbc7'
 related: []
 ---
 
@@ -118,6 +118,250 @@ each refuted by a measured counter rather than by argument. Notably the
 `abort()` explanation had a 100% deterministic standalone reproduction and still
 was not what fired in situ; proving a mechanism exists is not proving it fires.
 
+### The adjacent happy-dom barrier drops an asynchronous teardown
+
+The installed happy-dom 20.10.2 contract declares `DetachedWindowAPI.abort()` as
+returning `Promise<void>`. Its async-task manager aborts pending work and waits for
+the resulting microtasks before that promise resolves, and Vitest's own happy-dom
+environment teardown awaits the operation. `frontend/src/testing/liveSetup.ts`,
+however, narrows `abort` to `() => void`, waits up to one second on
+`waitUntilComplete()`, and then drops the abort promise. This creates a real
+ordering gap after the global RTL unmount barrier: abort-triggered fetch cleanup,
+rejections, and socket destruction can escape the test that owns them and surface
+during a later case or file.
+
+The fixed drain also scales with happy-dom test cases rather than files. The
+current frontend contains 234 happy-dom files and roughly 1,901 happy-dom cases,
+so the one-second race can add as much as 1,901 seconds of serial wait. Native
+abort already performs cancellation and microtask settlement, so the pre-abort
+timer adds no settlement guarantee. This finding did not establish that
+window-wide abort itself was safe between tests; the timing run below disproved
+that hypothesis.
+
+### The suite is file-serial despite its four-worker setting
+
+Vitest forces one worker when `fileParallelism` is false. The current
+`vite.config.ts` keeps files serial because they share one mutable live engine,
+so its adjacent `maxWorkers: 4` setting and performance explanation do not
+describe the execution that occurs: `fileParallelism: false` makes execution
+file-serial and renders `maxWorkers: 4` ineffective.
+
+### A crashed service can retain known process identity
+
+The served system-program contract can report an unavailable or crashed service
+while retaining an optional discovered port; it reports no process id for that
+state. The tolerant frontend adapter intentionally preserves the served optional
+identity: running carries port and process id, crashed may carry port only, and
+absent carries neither. A test that equates `available: false` with absent identity
+contradicts the wire contract.
+
+### Awaited window abort is destructive cancellation, not per-test settlement
+
+The first timing-enabled `S10` run disproved the awaited-abort hypothesis before
+the suite reached a verdict. It was stopped after 110.772 seconds with eight files
+and 84 tests passing, but its output already contained 111 `socket hang up` or
+`ECONNRESET` lines and 71 synchronous `AbortError` stacks. Every AbortError stack
+terminated at `abortHappyDOM` in the global `liveSetup` afterEach hook. The run
+reported no Vitest unhandled-error section, worker exit, or unexpected engine exit,
+so those process-level failure classes do not explain the observed burst.
+
+The installed happy-dom implementation establishes the mechanism. Its async-task
+manager invokes every registered task abort handler synchronously. The fetch abort
+handler marks the request and response aborted, destroys any live Node request and
+response with an `AbortError`, and cancels the response body. Awaiting the manager's
+promise waits for its cleanup microtasks; it does not make the socket destruction
+benign or convert the resulting network events into ordinary request completion.
+
+Vitest uses this same window-wide abort only while tearing down the happy-dom
+environment at file end. Calling it after every test therefore changes a file-end
+destruction primitive into repeated mid-file cancellation. The existing RTL cleanup
+hook already provides the per-test component-unmount boundary. Any asynchronous work
+that legitimately must finish or cancel after unmount has a narrower owner in the
+component, query client, transport, or test that created it; the timing run provides
+no evidence that a second window-wide lifecycle owner is safe between cases.
+
+Because the destructive diagnostics appeared without an unhandled-error section or
+process exit, exit status and process-level checks alone cannot prove the correction.
+Both serialized full-suite runs must also be free of synchronous `AbortError` stacks
+and `socket hang up` or `ECONNRESET` diagnostics, in addition to reporting no
+unhandled-error section, worker exit, or unexpected engine exit.
+
+### Runner-owned file teardown exposes narrower async owners
+
+After removal of the per-test abort hook, the first and only exact `S14` eight-file
+prefix completed in 178.97 seconds with all eight files and all 84 assertions
+passing. It still emitted 147 paired `socket hang up`/`ECONNRESET` diagnostics and
+two synchronous `AbortError` stacks. Both stacks terminate in Vitest's
+`teardownWindow`; none traverses `liveSetup`. The log contains no unhandled-error
+section, worker exit, or unexpected engine exit.
+
+This changes the attribution, not the acceptance threshold. The absence of a
+`liveSetup` frame confirms the application-owned window lifecycle hook is gone.
+Vitest's file teardown is instead revealing requests that their narrower owner left
+active at the end of a file. Run segmentation assigns the dominant 144-reset
+cluster to `AgentPanel.render.test.tsx`. The remaining three-reset cluster is
+adjacent to `Composer.render.test.tsx`, but the combined log does not mechanically
+identify its file owner, so it remains unassigned until isolated execution proves
+or disproves that candidate.
+
+`S14` was written to run this exact prefix and enumerate residual leakage. Its
+completed diagnostic action may therefore be recorded even though the plan-wide
+zero-diagnostic barrier is still red. That red barrier routes to `S15`; it is not
+waived, reclassified as success, or grounds for an unchanged repeat of `S14`.
+
+### Query settlement does not own a live response body
+
+The mandated `S15` isolation restored both candidate files byte-for-byte after
+each probe and left no source diff. AgentPanel's direct test-harness candidate was
+disproved: cleanup followed by awaited `cancelQueries()` over every retained client
+and then `clear()` still produced 114 reset pairs and six file-teardown AbortError
+stacks. After that exact sequence, TanStack reported zero fetching queries and zero
+retained queries while Happy DOM still reported seven sockets and one asynchronous
+task. Query-cache settlement is therefore not proof that a live response body has
+closed.
+
+Natural settlement was clean for one finite AgentPanel case, but applying that
+strategy to the whole file is unbounded because `a2a/run-relay/*` is a deliberately
+long-lived SSE query. Waiting for every request to finish would turn an owned
+cancellation problem into a hang and is not an admissible suite barrier.
+
+The remaining ordering defect is below TanStack. The general engine stream and the
+A2A relay pass TanStack's owner `AbortSignal` directly into `fetch`, then consume
+the response through `sseChunks`. The authoring lifecycle loop has the same shape
+outside TanStack: its subscription controller opens the event stream with that
+signal, `sseChunks` consumes the response, and last-subscriber removal aborts the
+controller. The reader's `finally` already awaits `reader.cancel()`, but on owner
+cancellation the fetch listener runs first and destroys the socket before generator
+cleanup can cancel the response body. All three production consumers require the
+same correction; an A2A-only or test-only patch is incomplete.
+
+The smallest complete boundary is two-phase stream ownership. While response
+headers are pending, a private request controller follows the owner signal so an
+already-aborted owner does not open a request and a pre-header cancellation settles
+the pending fetch. Once headers arrive, that bridge is removed before consumption;
+the response reader then owns cancellation and is awaited. A post-header owner
+cancellation completes the iterator normally after `reader.cancel()` and does not
+abort the resolved fetch request first. Natural EOF and non-owner read failure
+remain `StreamLostError`, and cancellation/listener failures remain visible.
+If header settlement and owner abort race, the state observed first selects the
+phase: abort-before-response cancels acquisition; response-before-abort removes the
+bridge, checks the owner before the first read, and cancels the reader. There is no
+handoff interval in which both controllers own the response.
+
+### Stream ownership does not settle finite test work
+
+The first and only AgentPanel integration run after committed `S16` passed all 28
+assertions in 48.23 seconds, but still emitted 111 `socket hang up` diagnostics,
+111 matching `ECONNRESET` lines, and two synchronous `AbortError` stacks. Both
+stacks remained in Vitest file teardown; the run reported no unhandled-error
+section, worker exit, or unexpected engine exit. Execution stopped before Composer,
+the eight-file prefix, lint, or any source edit.
+
+This does not disprove the two-phase stream contract. Earlier probes established
+two distinct classes in the same test owner: one finite-query case reaches zero
+diagnostics when its promise settles naturally, while waiting for the entire file
+never completes because `engine/stream/*` and `a2a/run-relay/*` are intentionally
+long-lived. S16 gives those structural streams a graceful cancellation path, but
+it does not decide when the test owner should await finite response bodies.
+
+The bounded policy therefore follows ownership order rather than a timer. Every
+QueryClient used by AgentPanel or Composer is explicitly enrolled. While the React
+tree is still mounted, the owner snapshots and awaits all active finite-query
+promises, excluding only the two structural stream key families. It takes one
+post-settlement snapshot and fails if new finite work is active; it does not poll
+until quiet. It then snapshots active long-lived promises, runs RTL cleanup, awaits
+the S16-driven stream settlements and the authoring lifecycle loop's separately
+exposed stop settlement, and only then clears clients and resets stores.
+
+TanStack query errors remain in query state for their owning assertions. Observing
+promise settlement does not convert a rejected query into success, filter console
+output, or swallow a cancellation failure. The authoring subscription's public
+release remains `() => void`, which is required by both React effect callers. On
+last-subscriber release it synchronously initiates stop and retains the original
+loop-settlement promise behind
+`getAuthoringLifecycleStopSettlement(): Promise<void>`. A platform-logger
+rejection observer is attached to that original promise without replacing it with
+the observer's fulfilled derived promise, so production sees the failure and the
+test accessor still rejects with the same cause.
+
+Normal owner cancellation fulfills the retained stop settlement. If reader
+cancellation fails after stop begins, the stopped-loop branch rethrows that error
+instead of treating `stopped` as success or scheduling another retry; the separate
+observer supplies the production report.
+React cleanup therefore remains synchronous, while direct test ownership can await
+the separate settlement seam. No Happy DOM task count, timer, timeout, or global
+drain participates.
+
+### Complete owner settlement leaves Happy DOM transport bookkeeping
+
+The next exact S17 command ran the teardown helper, authoring contract, AgentPanel,
+and Composer together. All four files and all 92 assertions passed in 122.06
+seconds. Every QueryClient was enrolled, direct clients and finite work settled,
+the one post-settlement check passed, RTL cleanup ran, structural streams and the
+original authoring stop promise settled, and the clients cleared. The run still
+printed 19 `socket hang up` errors, each paired with `ECONNRESET`; it printed no
+`AbortError`, unhandled-error section, worker exit, or unexpected engine exit.
+
+Those remaining errors have no unsettled query, stream, or authoring promise to
+own them. Happy DOM reports them from its Node request error path after its fetch
+task and Response have already resolved. `liveTransport` currently calls the
+ambient global `fetch`, so a happy-dom file silently selects Happy DOM's request
+implementation while a node-environment file selects Node's. This makes the same
+test-only transport depend on its document environment and lets late Happy DOM
+bookkeeping outlive the application promises that S17 can observe.
+
+The durable transport boundary can stay entirely inside `frontend/src/testing`.
+A Node `http`/`https` FetchLike can keep the tests on the real loopback wire while
+owning one non-pooled socket per call. It can resolve a standard Response at
+headers, expose a backpressured ReadableStream for finite and SSE bodies, and delay
+body completion or reader-cancel completion until the underlying response and
+dedicated socket close. The same boundary can forward method, headers, body, and
+AbortSignal without a retry, timeout, buffer-all step, or Happy DOM task.
+
+The existing call surface is narrower than RequestInit. Live-client callers use
+only GET, POST, PUT, PATCH, and DELETE with HeadersInit, optional JSON string body,
+and optional AbortSignal. They do not use browser cache, credentials, mode,
+keepalive, redirect, referrer, integrity, priority, or window controls, nor Blob,
+FormData, URLSearchParams, or streaming request bodies. HEAD is the only additional
+method needed to prove null-body response semantics. A fail-closed subset can
+therefore preserve every current call without pretending to implement browser
+fetch. Unsupported inputs can reject their returned Promise with a TypeError naming
+the field or body kind before any socket exists; they need not throw synchronously.
+
+Backpressure must be behavioral in both directions. When a string-body
+`ClientRequest.write()` returns false, request completion cannot call `end()` until
+the real request emits `drain`. On the response side, the IncomingMessage starts
+paused, pauses again whenever a Web-stream enqueue makes `desiredSize <= 0`, and
+resumes only from the Web stream's `pull`. Wrapping the actual Node methods while
+delegating to them unchanged lets a local real server prove the write-false,
+drain-before-end and pause-before-pull, resume-on-pull order without a socket mock.
+
+HEAD, 204, and 304 cannot be passed to the Response constructor with a body. With
+no reader to own their terminal state, the transport's fetch promise must drain the
+Node response and await the dedicated socket close before returning
+`Response(null, ...)`. Redirects need equally explicit semantics: the live engine
+does not redirect, so 3xx remains an ordinary unfollowed Response and any explicit
+RequestInit redirect policy is rejected before a socket opens.
+
+Abort propagation also has an identity choice. Preserving `signal.reason` exactly
+keeps caller-owned cancellation distinguishable from transport faults; only an
+aborted signal with no reason needs a synthesized AbortError. The same reason owns
+pre-header rejection and post-header body error, and the abort listener must leave
+on every terminal path.
+
+The alternatives do not close the demonstrated lifecycle gap. More query-owner
+waiting has no remaining promise to await. A Happy DOM task drain or file-teardown
+patch would restore environment-wide lifecycle ownership and depend on private
+bookkeeping. Selecting the ambient global fetch only in node-environment files
+would leave two transports behind the same live-client contract. Adding another
+fetch package is unnecessary when the pinned Node runtime already supplies the
+HTTP, HTTPS, Web Response, and Web Stream primitives required by the live engine.
+
+The raw global-fetch checks in `engineConformance.test.ts` are a separate contract:
+they deliberately exercise Node's platform fetch directly against the spawned
+engine. They need no routing through `liveClient` and provide an independent guard
+that the new shared live transport does not replace every fetch surface.
+
 ### Option space
 
 Three shapes, with the trade-off that distinguishes them:
@@ -162,6 +406,12 @@ with its own blast radius and belongs in its own record.
 
 ## Sources
 
+- `C:\Users\hello\AppData\Local\Temp\vaultspec-s14-eight-file-prefix.log` — first and only exact S14 prefix output
+- `C:\Users\hello\AppData\Local\Temp\vaultspec-s15-agentpanel-post-repair.log` — disproved cleanup/cancelQueries/clear candidate
+- `C:\Users\hello\AppData\Local\Temp\vaultspec-s15-agentpanel-post-cancel-state.log` — settled QueryClient and retained Happy DOM state
+- `C:\Users\hello\AppData\Local\Temp\vaultspec-s15-agentpanel-minimal-natural-settle.log` — finite natural-settlement control
+- `C:\Users\hello\AppData\Local\Temp\vaultspec-s15-agent-panel-integration.log` — first post-S16 AgentPanel integration output
+- orchestration exec session `59956`, final chunk `c800b0` — first complete S17 four-file run, 92 passing assertions and 19 reset pairs
 - `node_modules/@testing-library/react/dist/index.js:26` — the `typeof afterEach` guard
 - `node_modules/@testing-library/react/dist/index.js:41` — the act-environment guard
 - `node_modules/@testing-library/react/dist/act-compat.js:41` — `withGlobalActEnvironment`
@@ -170,5 +420,37 @@ with its own blast radius and belongs in its own record.
 - `node_modules/@vitest/runner/dist/chunk-artifact.js:2568` — reverse ordering for `afterEach`
 - `frontend/vite.config.ts:117` — the vitest `test` block
 - `frontend/src/testing/liveSetup.ts:53` — the existing imported-`afterEach` teardown
+- `node_modules/happy-dom/lib/window/DetachedWindowAPI.js:50` — asynchronous window abort
+- `node_modules/happy-dom/lib/async-task-manager/AsyncTaskManager.js:269` — synchronous task-abort dispatch and settlement
+- `node_modules/happy-dom/lib/fetch/Fetch.js:545` — request and response destruction during async-task abort
+- `node_modules/vitest/dist/chunks/index.1_nbEjJY.js:1164` — Vitest awaits happy-dom abort
+- `frontend/src/testing/happyDOMAbort.ts:10` — the per-test abort call reached by all 71 S10 AbortError stacks
+- `frontend/src/app/agent/AgentPanel.render.test.tsx:67` — candidate test-owned teardown and per-render query-client boundary
+- `frontend/src/app/agent/Composer.render.test.tsx:49` — candidate module query-client teardown boundary
+- `frontend/src/stores/server/authoring/index.ts:869` — lifecycle-stream controller and owner cleanup
+- `frontend/src/stores/server/agent/index.ts:484` — signal-aware AgentPanel query owner
+- `frontend/src/stores/server/agent/a2aTeam.ts:1059` — signal-aware Composer/team query owner
+- `frontend/src/stores/server/queryClient.ts:12` — shared QueryClient lifecycle policy
+- `frontend/src/stores/server/queries/sse.ts:65` — reader loop and awaited reader cancellation
+- `frontend/src/stores/server/queries/streams.ts:78` — general engine stream forwards the owner signal into fetch
+- `frontend/src/stores/server/agent/a2aTeam.ts:1263` — A2A streamed query forwards the owner signal into fetch
+- `frontend/src/stores/server/authoring/index.ts:894` — lifecycle unsubscribe controller is forwarded through fetch into SSE consumption
+- `frontend/src/stores/server/authoring.test.ts:1` — authoring store behavioral-test home
+- `frontend/src/stores/server/queries/comments.ts:77` — React effect directly returns the synchronous public authoring release
+- `frontend/src/platform/logger/logger.ts:231` — application-wide structured reporting spine for stop-settlement rejection
+- `frontend/src/testing/liveClient.ts:31` — ambient global fetch selected by the current shared live transport
+- `frontend/src/testing/engineConformance.test.ts:28` — intentional direct raw-fetch conformance path
+- `frontend/src/stores/server/engine/client.ts:173` — FetchLike string-input Response contract
+- `frontend/src/stores/server/engine/client.ts:921` — current GET/POST/PUT/PATCH RequestInit usage
+- `frontend/src/stores/server/authoring/index.ts:622` — current POST/PATCH/DELETE JSON-string request usage
+- `frontend/src/stores/server/agent/a2aTeam.ts:855` — current method/header/string-body/signal usage
+- `frontend/node_modules/happy-dom/lib/fetch/Fetch.js:416` — Happy DOM task and Node request ownership
+- `frontend/node_modules/happy-dom/lib/fetch/Fetch.js:448` — fetch-task completion and Response resolution
+- `frontend/node_modules/happy-dom/lib/fetch/Fetch.js:537` — late Node request error logging
+- `frontend/node_modules/@tanstack/query-core/src/query.ts:199` — active query promise observability
+- `frontend/src/stores/server/queries/internal.ts:173` — structural engine-stream key
+- `frontend/src/stores/server/agent/a2aTeam.ts:997` — structural A2A run-relay key
+- `frontend/src/stores/server/systemPrograms.live.test.ts:82` — stale unavailable-identity assertion
+- `engine/crates/vaultspec-api/src/routes/stream.rs:52` — crashed-service identity contract
 - `frontend/src/app/chrome/useReducedMotion.test.tsx` — the single suite fixed in `55b5e7a41b`
-- `@testing-library/react@16.3.2`, `vitest@4.1.8`
+- `@testing-library/react@16.3.2`, `vitest@5`, `happy-dom@20.10.2`

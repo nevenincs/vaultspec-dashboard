@@ -29,26 +29,59 @@ export function symmetricManyBody(
   let size = new Float64Array(0);
   let forceX = new Float64Array(0);
   let forceY = new Float64Array(0);
+  let movable = new Uint8Array(0);
+  let movableCount = new Int32Array(0);
+  let hasFixed = false;
+  let safeCoefficient = false;
   let cells = 0;
   let chargeAlpha = 0;
   let impulseX = 0;
   let impulseY = 0;
   const minimum = Math.abs(distanceMin);
+  const minimum2 = minimum * minimum;
   const maximum = Math.abs(distanceMax);
   const maximum2 = maximum * maximum;
+  // Near the cutoff, retain the original distance comparison's rounding.
+  const insideMaximum2 = maximum2 * (1 - 4 * Number.EPSILON);
+  const outsideMaximum2 = maximum2 * (1 + 4 * Number.EPSILON);
+  const minimumNormal = Number.MIN_VALUE / Number.EPSILON;
+  const finiteSquaredRange =
+    minimum2 > 0 && Number.isFinite(maximum2) && minimum2 < insideMaximum2;
   const accuracy = Math.abs(theta);
   const accuracy2 = accuracy * accuracy;
 
   const apply: Force<D3Node, undefined> = (alpha) => {
     if (nodes.length < 2 || charge === 0 || alpha === 0 || maximum === 0) return;
     chargeAlpha = charge * alpha;
+    // Prove the entire ordinary distance range once per tick. Subnormal or
+    // overflowing coefficients still use unit-direction arithmetic below.
+    const magnitude = Math.abs(chargeAlpha);
+    safeCoefficient =
+      finiteSquaredRange &&
+      magnitude / maximum2 >= minimumNormal &&
+      Number.isFinite(magnitude / minimum2);
+    hasFixed = false;
     for (let i = 0; i < nodes.length; i++) {
       order[i] = i;
       x[i] = nodes[i].x ?? 0;
       y[i] = nodes[i].y ?? 0;
+      movable[i] = nodes[i].fx == null || nodes[i].fy == null ? 1 : 0;
+      if (!movable[i]) hasFixed = true;
     }
     cells = 0;
     build(0, nodes.length, 0);
+    if (hasFixed) {
+      // Count mobility bottom-up without rescanning every internal cell's nodes.
+      for (let c = cells - 1; c >= 0; c--) {
+        let count = 0;
+        if (left[c] >= 0) {
+          count = movableCount[left[c]] + movableCount[right[c]];
+        } else {
+          for (let i = start[c]; i < end[c]; i++) count += movable[order[i]];
+        }
+        movableCount[c] = count;
+      }
+    }
     visit(0, 0);
     // Build order guarantees that parents precede both children.
     for (let c = 0; c < cells; c++) {
@@ -115,6 +148,16 @@ export function symmetricManyBody(
   }
 
   function visit(a: number, b: number): void {
+    // Keep source geometry and traversal order. Disjoint fixed regions cannot
+    // contain coincident pairs, so pruning them also preserves the shared RNG.
+    if (
+      hasFixed &&
+      movableCount[a] === 0 &&
+      movableCount[b] === 0 &&
+      (maxX[a] < minX[b] || maxX[b] < minX[a] || maxY[a] < minY[b] || maxY[b] < minY[a])
+    ) {
+      return;
+    }
     if (a === b) {
       if (left[a] >= 0) {
         visit(left[a], left[a]);
@@ -128,37 +171,38 @@ export function symmetricManyBody(
       return;
     }
 
-    let whollyInside = true;
     if (maximum !== Infinity) {
       const gapX = Math.max(0, minX[a] - maxX[b], minX[b] - maxX[a]);
       const gapY = Math.max(0, minY[a] - maxY[b], minY[b] - maxY[a]);
-      const farX = Math.max(Math.abs(maxX[a] - minX[b]), Math.abs(minX[a] - maxX[b]));
-      const farY = Math.max(Math.abs(maxY[a] - minY[b]), Math.abs(minY[a] - maxY[b]));
       if (Number.isFinite(maximum2) && maximum2 > 0) {
         if (gapX * gapX + gapY * gapY >= maximum2) return;
-        whollyInside = farX * farX + farY * farY < maximum2;
       } else {
         if (Math.hypot(gapX, gapY) >= maximum) return;
-        whollyInside = Math.hypot(farX, farY) < maximum;
       }
     }
 
     const dx = centerX[b] - centerX[a];
     const dy = centerY[b] - centerY[a];
     const width = size[a] + size[b];
-    if (
-      whollyInside &&
-      accuracy > 0 &&
-      width * width < accuracy2 * (dx * dx + dy * dy) &&
-      impulse(dx, dy)
-    ) {
-      // Each member receives the opposite cell's charge. The two total
-      // impulses cancel, even when cells contain different numbers of nodes.
-      forceX[a] += impulseX * (end[b] - start[b]);
-      forceY[a] += impulseY * (end[b] - start[b]);
-      forceX[b] -= impulseX * (end[a] - start[a]);
-      forceY[b] -= impulseY * (end[a] - start[a]);
-      return;
+    if (accuracy > 0 && width * width < accuracy2 * (dx * dx + dy * dy)) {
+      let whollyInside = true;
+      if (maximum !== Infinity) {
+        const farX = Math.max(Math.abs(maxX[a] - minX[b]), Math.abs(minX[a] - maxX[b]));
+        const farY = Math.max(Math.abs(maxY[a] - minY[b]), Math.abs(minY[a] - maxY[b]));
+        whollyInside =
+          Number.isFinite(maximum2) && maximum2 > 0
+            ? farX * farX + farY * farY < maximum2
+            : Math.hypot(farX, farY) < maximum;
+      }
+      if (whollyInside && impulse(dx, dy)) {
+        // Each member receives the opposite cell's charge. The two total
+        // impulses cancel, even when cells contain different numbers of nodes.
+        forceX[a] += impulseX * (end[b] - start[b]);
+        forceY[a] += impulseY * (end[b] - start[b]);
+        forceX[b] -= impulseX * (end[a] - start[a]);
+        forceY[b] -= impulseY * (end[a] - start[a]);
+        return;
+      }
     }
     if (left[a] < 0 && left[b] < 0) {
       for (let i = start[a]; i < end[a]; i++) {
@@ -175,6 +219,13 @@ export function symmetricManyBody(
 
   function impulse(dx: number, dy: number): boolean {
     const squared = dx * dx + dy * dy;
+    if (safeCoefficient && squared >= minimum2 && squared < insideMaximum2) {
+      const coefficient = chargeAlpha / squared;
+      impulseX = dx * coefficient;
+      impulseY = dy * coefficient;
+      return true;
+    }
+    if (squared > outsideMaximum2) return false;
     let distance =
       squared > 0 && Number.isFinite(squared) ? Math.sqrt(squared) : Math.hypot(dx, dy);
     if (distance >= maximum || !Number.isFinite(distance)) return false;
@@ -195,6 +246,8 @@ export function symmetricManyBody(
   }
 
   function pair(i: number, j: number): void {
+    if (hasFixed && !movable[i] && !movable[j] && (x[i] !== x[j] || y[i] !== y[j]))
+      return;
     if (!impulse(x[j] - x[i], y[j] - y[i])) return;
     const a = nodes[i];
     const b = nodes[j];
@@ -211,6 +264,8 @@ export function symmetricManyBody(
     order = new Int32Array(nodes.length);
     x = new Float64Array(nodes.length);
     y = new Float64Array(nodes.length);
+    movable = new Uint8Array(nodes.length);
+    movableCount = new Int32Array(capacity);
     start = new Int32Array(capacity);
     end = new Int32Array(capacity);
     left = new Int32Array(capacity);

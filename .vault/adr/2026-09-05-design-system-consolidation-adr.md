@@ -3,9 +3,9 @@ tags:
   - '#adr'
   - '#design-system-consolidation'
 date: '2026-09-05'
-modified: '2026-09-05'
+modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:9eb14df0270ca9c3a97c4022f623a0fb2517daa01c3cb8dfd4c8e906c9e4e21a'
+body_hash: 'sha256:561748bc5882ffa3e9b54088a893c006338dd4fb480ca3116d00e10040b99c45'
 related:
   - "[[2026-09-05-design-system-consolidation-horizontal-polish-research]]"
   - "[[2026-09-05-design-system-consolidation-shipped-frontend-blueprint-reference]]"
@@ -19,15 +19,17 @@ related:
   - '[[2026-07-31-visual-review-authored-states-adr]]'
 ---
 
-# `design-system-consolidation` adr: `behavior-preserving horizontal design-system consolidation` | (**status:** `accepted`)
+# `design-system-consolidation` adr: `critical-foundation consolidation with ledgered follow-on debt` | (**status:** `accepted`)
 
 ## Problem Statement
 
 Vaultspec Dashboard already has an accepted visual language, generated token foundation, centralized React kit, shared state treatments, responsive shell, and production verification surfaces. The remaining problem is fragmented ownership across those foundations: reusable controls and visual recipes are still implemented in settings wrappers, stores, chrome, platform fallbacks, and feature surfaces; valid relative values do not always resolve to a shared semantic role; and the review tooling does not yet support the bounded completion claim this campaign needs.
 
-This ADR authorizes a behavior-preserving horizontal consolidation of the shipped frontend. It establishes one canonical owner for each reusable value, primitive, composite, and presentation responsibility; migrates consumers directly to those owners; removes the implementations they replace; and verifies the result across supported themes, states, and viewport classes.
+This ADR authorizes a behavior-preserving consolidation of the frontend's critical ownership foundations. Campaign completion is limited to the enforceable inventory and ratchet, the already-established field and textarea contracts, the public kit boundary, settings-control ownership, correction of store-to-kit dependency inversion, separation of platform error containment from app presentation, truthful review documentation, and bounded closeout evidence.
 
-This is not a redesign. It does not reopen the accepted palette, typography, density, information architecture, graph language, theme model, or product semantics. Figma capture, parity, and reconciliation are outside this campaign. Shipped code and runtime behavior form the bounded migration baseline, while Figma remains design authority. The campaign may extract, centralize, or alias shipped values and behavior; it may not invent visual values, states, or semantics. Any required design choice stops this campaign and moves to a separately authorized, Figma-backed decision.
+The classified inventory remains the authoritative account of broader adoption and value-centralization opportunities, but classification does not make every candidate a prerequisite for this campaign's completion. Consumer migrations outside settings, speculative primitive expansion, token promotion, modal-infrastructure deduplication, and exhaustive review-harness coverage remain explicit follow-on debt unless separately authorized.
+
+This is not a redesign. It does not reopen the accepted palette, typography, density, information architecture, graph language, theme model, or product semantics. Figma capture, parity, and reconciliation are outside this campaign. Shipped code and runtime behavior form the bounded migration baseline, while Figma remains design authority. The campaign may centralize only the critical ownership boundaries named above; it may not invent visual values, states, or semantics.
 
 ## Considerations
 
@@ -39,13 +41,16 @@ This is not a redesign. It does not reopen the accepted palette, typography, den
 - Canonical-home remediation requires direct consumption and same-change deletion; aliases, wrappers, and compatibility facades perpetuate split ownership. Grounding: `2026-08-01-code-deduplication-adr`.
 - The authored-state review desk proves appearance, not live-wire reachability, and its state model does not itself provide a viewport axis. Completion needs authored-state evidence and separate runtime evidence. Grounding: `2026-07-31-visual-review-authored-states-adr`.
 - The concrete ownership gaps, candidate migration families, layer leak, and verification gaps are grounded in `2026-09-05-design-system-consolidation-horizontal-polish-research` and `2026-09-05-design-system-consolidation-shipped-frontend-blueprint-reference`.
+- The native-control and relative-value inventories classify candidates rather than proving that every candidate is a present defect. Their durable value is truthful ownership and debt tracking, not a zero-native-control or zero-local-value target. Grounding: `2026-09-05-design-system-consolidation-horizontal-polish-research`, `2026-09-05-design-system-consolidation-shipped-frontend-blueprint-reference`.
+- Completion evidence must be proportional to the production boundaries changed. A bounded runtime pass can establish the settings, kit-boundary, and error-fallback result without requiring a permanent exhaustive matrix or migration of unrelated surfaces.
 
 ## Considered options
 
-1. **Token-only cleanup.** Normalize values while leaving duplicate React primitives and interaction behavior in place. This has a small blast radius but does not resolve split control ownership, store-owned styling, or surface drift. Rejected.
-2. **Independent surface polish.** Improve each screen locally and consolidate only when duplication becomes inconvenient. This can produce fast local gains, but it keeps base-element ownership ambiguous and repeats accessibility, state, and theme work. Rejected.
-3. **Behavior-preserving horizontal consolidation.** Establish canonical owners, migrate equivalent families in bounded waves, delete replaced implementations, and verify both authored appearance and live behavior. Chosen.
-4. **Visual redesign or Figma-parity campaign.** Reconcile every surface against external design artifacts and permit broader visual or behavioral change. This exceeds the requested scope and would reopen settled decisions without a demonstrated foundation defect. Rejected for this campaign.
+1. **Token-only cleanup.** Normalize values while leaving the known settings, import-boundary, store-layer, and platform-presentation violations in place. This does not resolve the critical ownership defects. Rejected.
+2. **Complete every classified migration before closure.** Execute all ordinary-field, textarea, option-row, icon-action, token-promotion, modal, and review-harness work in one campaign. This maximizes adoption but treats classified opportunities as mandatory defects, expands regression surface without a demonstrated foundation need, and encourages work for completion-count rather than product value. Rejected as the campaign completion criterion.
+3. **Critical-foundation consolidation with ledgered follow-on debt.** Complete the enforceable ownership substrate, base public contracts, settings migration, import and layer correction, platform/app error separation, and bounded closeout evidence; retain the broader inventory as explicit follow-on debt. Chosen.
+4. **Independent surface polish.** Improve screens locally without enforcing canonical ownership. This preserves the fragmentation the campaign exists to correct. Rejected.
+5. **Visual redesign or Figma-parity campaign.** Reconcile surfaces against external design artifacts and permit broader visual or behavioral change. This exceeds scope and reopens settled decisions. Rejected for this campaign.
 
 ## Constraints
 
@@ -59,6 +64,8 @@ All DOM styling remains relative-unit compliant. Consolidation must preserve exa
 
 A migration is incomplete until consumers import the canonical owner directly and the superseded implementation, alias, style recipe, and migration-only comment are removed in the same wave. Compatibility facades, forwarding wrappers, parallel primitives, and surface-specific theme forks are prohibited.
 
+That rule binds every migration this campaign actually executes; it does not convert every classified candidate into a completion prerequisite. Deferred candidates remain truthful ledger entries with their intended canonical owner and rationale. They are neither marked migrated nor reclassified as intentional seams merely to obtain a clean closeout.
+
 Figma is not consulted for capture, inspection, parity comparison, reconciliation, or acceptance evidence in this campaign. This scope fence does not supersede prior authority records; it limits what this ADR claims and what its execution may use as proof. Every code-only token or component structure without a confirmed design-system name or node is recorded as campaign-scoped parity debt for later reconciliation.
 
 ## Implementation
@@ -70,6 +77,15 @@ The canonical ownership map is:
 3. **Shared chrome owns shell composites and interaction infrastructure.** Dialog and sheet framing, focus-zone behavior, overlay dismissal and placement, shell regions, responsive chrome, coarse-pointer policy, and other application-level composites live in shared chrome when they are not general-purpose primitives. Chrome composes kit primitives and owns no competing base-element vocabulary.
 4. **Surfaces own feature composition.** Feature surfaces arrange canonical primitives and composites around feature-specific data and intent. A native element may remain inside a canonical semantic composite when the element is integral to that composite's behavior and no existing primitive expresses it. Such a seam is classified and retained intentionally; it is not used as precedent for parallel base styling.
 5. **Stores own state and value policy.** Stores expose stable semantic data, schema interpretation, selection, and wire conversion. They do not return class strings, visual tone types, or app-kit contracts. The existing facet-tone dependency is corrected by keeping semantic filter state below the app boundary and mapping it to `FacetDotTone` in app composition.
+
+The ownership map is normative beyond this campaign, but the completion boundary is narrower than universal adoption. This campaign completes only:
+
+1. The classified ledger, frozen scene baseline, enforcement scanner, fixtures, and lint integration.
+2. The already-landed `TextField` and `TextArea` contracts, a pinned shipped `ActivityIndicator` contract, the required naming-debt entries, and the public kit barrel.
+3. Direct settings composition from `Switch`, `Slider`, `SegmentedToggle`, `Segment`, and `TextField`, with CSS recipes removed from stores while wire-value policy remains unchanged.
+4. Production import normalization through the kit barrel and removal of all lower-layer dependencies on app-kit presentation contracts.
+5. App-owned localized error presentation composed from kit primitives, with platform retaining only containment, diagnostics, reset, retry coordination, and injected rendering.
+6. Correction of the authored-review command's false viewport claim, followed by ledger reconciliation, ratchet tightening, bounded runtime evidence, final audit, and byte-for-byte scene-contract proof.
 
 Values and patterns are promoted by semantic ownership, not frequency alone:
 
@@ -86,30 +102,30 @@ Shell dimensions, touch targets, and overlay infrastructure are centralized acco
 
 `ErrorBoundary` remains a platform containment mechanism responsible for catching, reporting, resetting, and retry coordination. Product presentation moves to an app-owned boundary wrapper that injects a fallback renderer composed from kit primitives and localized app copy. Every production boundary uses that wrapper or supplies an app-owned renderer explicitly. Platform does not import the kit and does not retain a parallel styled fallback.
 
-The migration proceeds in bounded waves: first settings controls and store-owned visual recipes; then ordinary fields, textareas, option rows, and icon actions; then import normalization and layer-leak correction; then value classification and token promotion; then platform fallback composition and shared chrome; then review-harness coverage and documentation. Specialized search, code-editing overlays, graph controls, timeline handles, tree rows, checkboxes, date controls, and other semantic composites are inspected individually and migrate only when their contracts exactly match a canonical owner.
+Ordinary field and textarea adoption outside settings, a new `OptionRow`, new `IconButton` variants, broad menu and icon-action migrations, reusable motion or dimension promotion into DTCG, stylesheet restructuring, modal-surface consolidation, exhaustive authored-specimen completion, and a permanent automated theme-by-viewport matrix are follow-on work. The ledger preserves these opportunities and their intended owners; this ADR does not claim they were implemented or that their remaining duplication was eliminated.
 
 Stylesheet organization may be split along generator, reader, integration, accessibility, or infrastructure ownership seams only when the public token surface, import order, Tailwind discovery, generated markers, and computed cascade are proven unchanged. File splitting is not itself a success criterion.
 
 Every green wave runs full `just lint frontend`, its touched type, unit, accessibility, and interaction tests, and an ownership scan proving removal of the replaced path. Full `just test frontend` runs before each phase review and final acceptance; full Vitest suites are never run concurrently. Visual verification covers authored normal, loading, empty, and degraded states where applicable in light, dark, and high-contrast themes. Separate runtime passes cover representative wide and intermediate widths within the supported `regular` viewport class plus a representative `compact` width, including keyboard navigation, focus visibility, pointer and coarse-pointer affordances, overlay placement and dismissal, and live-wire behavior. Only `regular` and `compact` are supported viewport classes; this ADR authorizes neither a new responsive mode nor a visual-review-desk viewport axis.
 
-Final acceptance requires full `just lint frontend` and `just test frontend`, token and relative-unit guards, domain and module boundary checks, review-specimen completeness checks, exact computed-value evidence for token changes across all three themes, a final native-control and arbitrary-value classification scan, bounded runtime evidence for all supported themes and both viewport classes, a ledger of naming/parity debt, and an evidence-backed audit that distinguishes authored appearance from live reachability.
+Final acceptance requires all critical-boundary work to be independently reviewed and closed; a truthful ledger and ratchet covering both completed work and deferred debt; zero production kit-submodule imports; zero store or platform dependencies on app kit; settings stores free of CSS recipes; generic platform error containment with app-owned production presentation; corrected review documentation; full `just lint frontend`; one serialized full `just test frontend`; a bounded runtime pass in light, dark, and high-contrast at representative regular-wide, regular-intermediate, and compact widths; byte-for-byte equality of frozen scene sources and the `SceneController` contract; and a final audit with no CRITICAL or HIGH findings inside the accepted boundary.
+
+The runtime pass covers changed settings controls, keyboard operation, visible focus, app and region error fallbacks, retry and reload actions, and responsive reachability. It records commands, exact widths, themes, responsive classes, and outcomes in a durable receipt. Permanent exhaustive automation, a confirmation pass, token-computed-value evidence where no token changed, and Figma-parity evidence are not completion requirements.
 
 ## Rationale
 
-Behavior-preserving horizontal consolidation is the only option that closes the ownership defects without reopening a settled visual system or increasing architectural blast radius. It applies the canonical-home and same-wave-deletion discipline from `2026-08-01-code-deduplication-adr` to frontend presentation, while preserving the theme, token, relative-unit, state-mode, and scene compatibility decisions already accepted.
+The narrowed boundary wins because it closes the defects that weaken future work: unenforced ownership, an incomplete public kit contract, settings-owned primitive duplication, stores emitting presentation, production deep imports, and platform-owned product styling. Once those are corrected, the remaining inventory is visible, classified, and prevented from worsening.
 
-The ownership map gives every reusable concern one place to evolve. DTCG governs values, the kit governs base controls, chrome governs shell-level interaction infrastructure, surfaces govern feature composition, and stores remain free of visual implementation. The promotion rule avoids both failure extremes: repeated magic values and controls do not remain scattered, while singular geometry and semantic composites are not distorted merely to satisfy a token or primitive count.
+Requiring every classified migration would confuse an opportunity ledger with a defect list. Broad field, option-row, icon-action, token, modal, and review-harness work carries meaningful regression and maintenance cost but is not necessary to establish the canonical foundation. Deferring it preserves the accepted direction without manufacturing implementation work merely to close rows.
 
-Injected app fallbacks resolve the platform error-boundary conflict without reversing layer direction or creating a second visual kit. Direct migration with same-wave deletion prevents the consolidation campaign from leaving transitional APIs as permanent authorities.
-
-The combined verification model matches the evidence each mechanism can honestly provide: authored specimens prove appearance, live-wire tests prove reachability and behavior, and bounded runtime passes prove responsive and interaction quality. The no-Figma fence keeps that claim precise while leaving prior long-term authority decisions untouched.
+The bounded verification model is sufficient for the changed boundary: focused tests establish contracts, the full frontend gates catch integration regressions, runtime evidence exercises the affected user paths across supported themes and widths, and the immutable scene comparison proves non-interference.
 
 ## Consequences
 
-The frontend gains one enforceable ownership model for variables, CSS roles, primitives, shell composites, and surface composition. Settings and feature surfaces inherit consistent focus, disabled, keyboard, pointer, theme, and accessibility behavior. Store and platform boundaries become clearer, and future visual changes have fewer independent implementation sites.
+The frontend gains an enforceable ownership substrate, a complete public base-kit boundary for the primitives established by the critical campaign, settings controls composed from canonical owners, corrected app/store dependency direction, and a clean platform/app error-presentation boundary. Future work can adopt these owners without first solving foundational ambiguity.
 
-The work has broad but controlled reach. Direct migration may alter component APIs, snapshots, and test fixtures even though user-visible behavior is frozen. Token promotion and stylesheet extraction require cascade-sensitive review. Some apparent duplication will remain intentionally where semantic composites differ, so the final state is a classified system rather than a zero-native-element or zero-local-value target.
+The campaign deliberately leaves adoption debt. `TextField` and `TextArea` may remain public before broad consumer migration. Option and icon-action duplication remains. Exact motion and dimension values remain hand-authored but ledgered. Dialog and sheet interaction mechanics remain duplicated. Authored-review completeness remains informative rather than globally gating. These are accepted follow-on risks, not claims of completed consolidation.
 
-The campaign incurs ongoing maintenance obligations: new primitives must enter through the kit, reusable values through DTCG, chrome infrastructure through shared chrome, and exceptions must remain narrow and reviewable. Review-specimen coverage and runtime viewport evidence become part of frontend completion rather than optional polish.
+The ledger must continue to report deferred candidates truthfully. Closeout may not erase migration intent, relabel duplication as a semantic seam without evidence, or claim zero native controls, zero arbitrary values, exhaustive visual coverage, token centralization, modal consolidation, or Figma parity.
 
-No Figma parity conclusion follows from this work. Any future reconciliation against external design artifacts is a separate authorized campaign with its own evidence and decision record.
+No further critical foundation work is required once the acceptance conditions pass. Remaining work is optional follow-on product or maintenance investment and should proceed only when its value justifies the regression surface.

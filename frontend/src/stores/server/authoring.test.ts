@@ -11,6 +11,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { EngineError, type TiersBlock } from "./engine";
+import { logger, type LogRecord } from "../../platform/logger/logger";
+import { liveTransport } from "../../testing/liveClient";
 import {
   AUTHORING_STORE_UNAVAILABLE_KIND,
   adaptAuthoringRecovery,
@@ -23,16 +25,20 @@ import {
   adaptProposalSnapshot,
   advanceAuthoringStreamSeq,
   applyAuthoringRecovery,
+  authoringClient,
   authoringKeys,
   directWriteWirePayload,
   getAuthoringStreamCursor,
+  getAuthoringLifecycleStopSettlement,
   handleAuthoringStreamChunk,
   interpretCommandOutcome,
   lastSeqBefore,
   newIdempotencyKey,
+  onAuthoringLifecycleEvent,
   proposalsQueryOptions,
   readAuthoringDegradation,
   resetAuthoringStreamCursor,
+  subscribeAuthoringLifecycle,
 } from "./authoring";
 import { queryClient } from "./queryClient";
 
@@ -51,6 +57,7 @@ beforeEach(() => {
 afterEach(() => {
   resetAuthoringStreamCursor();
   queryClient.clear();
+  authoringClient.useTransport(liveTransport);
 });
 
 describe("adaptAuthoringStatus", () => {
@@ -355,6 +362,119 @@ describe("authoring lifecycle stream adapters", () => {
     expect(lastSeqBefore(1)).toBe(0);
     expect(lastSeqBefore(13)).toBe(12);
     expect(lastSeqBefore(Number.POSITIVE_INFINITY)).toBe(0);
+  });
+});
+
+describe("authoring lifecycle stream ownership", () => {
+  it("cancels the response reader without aborting the settled request when the last subscriber leaves", async () => {
+    let requestSignal: AbortSignal | undefined;
+    let resolveFrameObserved: (() => void) | undefined;
+    const frameObserved = new Promise<void>((resolve) => {
+      resolveFrameObserved = resolve;
+    });
+    let resolveReaderCancelled: (() => void) | undefined;
+    const readerCancelled = new Promise<void>((resolve) => {
+      resolveReaderCancelled = resolve;
+    });
+    let cancellations = 0;
+    let frameSent = false;
+    const stopObserving = onAuthoringLifecycleEvent(() => resolveFrameObserved?.());
+
+    authoringClient.useTransport(async (_input, init) => {
+      requestSignal = init?.signal ?? undefined;
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          pull(controller) {
+            if (frameSent) return;
+            frameSent = true;
+            controller.enqueue(
+              new TextEncoder().encode(
+                `event: lifecycle\ndata: ${JSON.stringify(lifecycleWire(91))}\n\n`,
+              ),
+            );
+          },
+          cancel() {
+            cancellations += 1;
+            resolveReaderCancelled?.();
+          },
+        }),
+        { status: 200 },
+      );
+    });
+
+    const unsubscribe = subscribeAuthoringLifecycle();
+    await frameObserved;
+    stopObserving();
+    const releaseResult = unsubscribe();
+    const stopSettlement = getAuthoringLifecycleStopSettlement();
+    await readerCancelled;
+    await stopSettlement;
+
+    expect(releaseResult).toBeUndefined();
+    expect(getAuthoringLifecycleStopSettlement()).toBe(stopSettlement);
+    expect(requestSignal?.aborted).toBe(false);
+    expect(cancellations).toBe(1);
+  });
+
+  it("reports and preserves the original reader-cancel rejection without retrying", async () => {
+    const cancellationFailure = new Error("authoring reader cancellation failed");
+    const records: LogRecord[] = [];
+    const sink = { write: (record: LogRecord) => records.push(record) };
+    logger.addSink(sink);
+    let resolveFrameObserved: (() => void) | undefined;
+    const frameObserved = new Promise<void>((resolve) => {
+      resolveFrameObserved = resolve;
+    });
+    let calls = 0;
+    let frameSent = false;
+    const stopObserving = onAuthoringLifecycleEvent(() => resolveFrameObserved?.());
+    authoringClient.useTransport(async () => {
+      calls += 1;
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          pull(controller) {
+            if (frameSent) return;
+            frameSent = true;
+            controller.enqueue(
+              new TextEncoder().encode(
+                `event: lifecycle\ndata: ${JSON.stringify(lifecycleWire(92))}\n\n`,
+              ),
+            );
+          },
+          cancel() {
+            throw cancellationFailure;
+          },
+        }),
+        { status: 200 },
+      );
+    });
+
+    try {
+      const unsubscribe = subscribeAuthoringLifecycle();
+      await frameObserved;
+      stopObserving();
+      expect(unsubscribe()).toBeUndefined();
+      const originalSettlement = getAuthoringLifecycleStopSettlement();
+
+      await expect(originalSettlement).rejects.toBe(cancellationFailure);
+
+      expect(getAuthoringLifecycleStopSettlement()).toBe(originalSettlement);
+      expect(calls).toBe(1);
+      expect(records).toContainEqual(
+        expect.objectContaining({
+          level: "error",
+          namespace: "authoring.lifecycle",
+          message: "authoring lifecycle stop failed",
+          error: expect.objectContaining({
+            name: "Error",
+            message: cancellationFailure.message,
+          }),
+        }),
+      );
+    } finally {
+      stopObserving();
+      logger.removeSink(sink);
+    }
   });
 });
 

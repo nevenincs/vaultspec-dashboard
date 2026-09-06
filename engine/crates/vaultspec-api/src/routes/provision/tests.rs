@@ -1,5 +1,89 @@
 use super::*;
 
+const SHUTDOWN_TREE_ROLE: &str = "VAULTSPEC_PROVISION_SHUTDOWN_TREE_ROLE";
+const SHUTDOWN_TREE_HEARTBEAT: &str = "VAULTSPEC_PROVISION_SHUTDOWN_TREE_HEARTBEAT";
+
+#[test]
+fn provision_shutdown_tree_process() {
+    let Ok(role) = std::env::var(SHUTDOWN_TREE_ROLE) else {
+        return;
+    };
+    let heartbeat =
+        std::env::var_os(SHUTDOWN_TREE_HEARTBEAT).expect("shutdown tree heartbeat path");
+    if role == "wrapper" {
+        let mut descendant = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "routes::provision::tests::provision_shutdown_tree_process",
+                "--exact",
+                "--nocapture",
+                "--test-threads=1",
+            ])
+            .env(SHUTDOWN_TREE_ROLE, "descendant")
+            .env(SHUTDOWN_TREE_HEARTBEAT, &heartbeat)
+            .spawn()
+            .expect("spawn shutdown descendant");
+        descendant.wait().expect("wait shutdown descendant");
+        return;
+    }
+    let mut tick = 0_u64;
+    loop {
+        std::fs::write(&heartbeat, tick.to_le_bytes()).expect("shutdown descendant heartbeat");
+        tick += 1;
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+async fn wait_for_shutdown_heartbeat(path: &FsPath) {
+    for _ in 0..300 {
+        if std::fs::metadata(path).is_ok_and(|metadata| metadata.len() == 8) {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    panic!("shutdown descendant never became observable");
+}
+
+#[tokio::test]
+async fn service_shutdown_aborts_owned_runner_and_awaits_group_empty() {
+    let dir = tempfile::tempdir().expect("shutdown heartbeat directory");
+    let heartbeat = dir.path().join("shutdown-descendant-heartbeat");
+    let mut command = tokio::process::Command::new(std::env::current_exe().unwrap());
+    command
+        .args([
+            "routes::provision::tests::provision_shutdown_tree_process",
+            "--exact",
+            "--nocapture",
+            "--test-threads=1",
+        ])
+        .env(SHUTDOWN_TREE_ROLE, "wrapper")
+        .env(SHUTDOWN_TREE_HEARTBEAT, &heartbeat);
+    let owned = tokio::spawn(async move {
+        let _ = crate::bounded_child::run_bounded(
+            command,
+            None,
+            BoundedLimits {
+                cap: 4 * 1024,
+                timeout: Duration::from_secs(30),
+            },
+            CapPolicy::Refuse,
+        )
+        .await;
+    });
+    wait_for_shutdown_heartbeat(&heartbeat).await;
+    test_register_owned_task("shutdown-tree-proof", owned);
+    shutdown_jobs().await;
+    crate::bounded_child::reap_terminated_groups(Duration::from_secs(5))
+        .await
+        .expect("service shutdown observes every group empty");
+    let stopped = std::fs::read(&heartbeat).expect("read stopped heartbeat");
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    assert_eq!(
+        std::fs::read(&heartbeat).expect("heartbeat remains readable"),
+        stopped,
+        "serve shutdown returned before its descendant process group was empty"
+    );
+}
+
 #[test]
 fn capability_carries_no_wire_deserialize_path() {
     // A capability is only ever CONSTRUCTED from a validated request; the
@@ -65,10 +149,17 @@ fn current_setup_expands_to_exactly_four_fixed_provider_commands() {
             .collect::<Vec<_>>(),
         ["core", "claude", "antigravity", "codex"]
     );
-    for (provider, argv) in commands {
+    for (index, (provider, argv)) in commands.into_iter().enumerate() {
         assert_eq!(argv.iter().filter(|token| *token == "install").count(), 1);
         assert!(argv.contains(&provider.as_arg().to_string()));
         assert!(argv.contains(&"--force".to_string()));
+        assert_eq!(
+            argv.iter().filter(|token| *token == "--skip").count(),
+            usize::from(index > 0)
+        );
+        if index > 0 {
+            assert!(argv.windows(2).any(|pair| pair == ["--skip", "core"]));
+        }
         assert!(!argv.iter().any(|token| token == "all" || token == "gemini"));
     }
 }
@@ -207,101 +298,451 @@ fn outcome_parses_sync_envelope_on_success() {
 fn outcome_failure_on_nonzero_and_breach_is_indeterminate() {
     let (state, _) = outcome_value(Some(1), "boom", RunTermination::Completed);
     assert_eq!(state, JobState::Failed);
-    let (state, out) = outcome_value(None, "killed", RunTermination::Indeterminate);
+    let (state, out) = outcome_value(None, "killed", RunTermination::WaitFailed);
     assert_eq!(state, JobState::Failed);
     assert_eq!(out["outcome_indeterminate"], true);
 }
 
 #[test]
-fn current_setup_receipts_cover_partial_timeout_and_indeterminate_outcomes() {
-    let success = |ordinal, provider| {
+fn current_setup_requires_four_validated_local_receipts() {
+    let receipt = |ordinal, provider, state| {
         setup_receipt(
+            "prov-test",
             ordinal,
             provider,
-            Some(0),
-            r#"{"status":"created"}"#,
-            RunTermination::Completed,
+            state,
+            state == "succeeded",
+            json!({}),
+            "confirmed_current",
         )
     };
-    let mut complete_receipts: Vec<Value> = CURRENT_SETUP_PROVIDERS
-        .iter()
-        .copied()
-        .enumerate()
-        .map(|(index, provider)| success(index + 1, provider))
-        .collect();
-    reconcile_setup_receipts(
-        &mut complete_receipts,
-        &[],
-        &["core", "claude", "antigravity", "codex"],
-    );
-    let (_, complete) = current_setup_outcome(complete_receipts);
+    let complete_receipts = vec![
+        receipt(1, Provider::Core, "reconciled_existing"),
+        receipt(2, Provider::Claude, "succeeded"),
+        receipt(3, Provider::Antigravity, "succeeded"),
+        receipt(4, Provider::Codex, "succeeded"),
+    ];
+    let (_, complete) = current_setup_outcome(complete_receipts.clone());
     assert_eq!(complete["aggregate"]["status"], "complete");
     assert_eq!(
-        complete["aggregate"]["providers"].as_array().unwrap().len(),
-        4
+        complete["aggregate"]["providers"][0]["receipt_authority"],
+        "dashboard-local"
     );
 
-    let failed = setup_receipt(
-        2,
-        Provider::Claude,
-        Some(1),
-        "failed",
-        RunTermination::Completed,
-    );
-    let mut partial_receipts = vec![
-        success(1, Provider::Core),
-        failed,
-        success(3, Provider::Antigravity),
-        success(4, Provider::Codex),
-    ];
-    reconcile_setup_receipts(
-        &mut partial_receipts,
-        &[],
-        &["core", "antigravity", "codex"],
-    );
-    let (_, partial) = current_setup_outcome(partial_receipts);
+    let (_, partial) = current_setup_outcome(vec![
+        complete_receipts[0].clone(),
+        receipt(2, Provider::Claude, "failed"),
+        complete_receipts[2].clone(),
+        complete_receipts[3].clone(),
+    ]);
     assert_eq!(partial["aggregate"]["status"], "partial");
-    assert_eq!(partial["aggregate"]["providers"][0]["provider"], "core");
-    assert_eq!(partial["aggregate"]["providers"][1]["provider"], "claude");
-
-    let timeout = setup_receipt(
-        3,
-        Provider::Antigravity,
-        None,
-        "timed out",
-        RunTermination::TimeoutCancelled,
-    );
-    let mut cancelled_receipts = vec![
-        success(1, Provider::Core),
-        success(2, Provider::Claude),
-        timeout,
-        json!({ "ordinal": 4, "provider": "codex", "attempted": false, "state": "not-run", "outcome": null }),
-    ];
-    reconcile_setup_receipts(&mut cancelled_receipts, &[], &["core", "claude"]);
-    let (_, cancelled) = current_setup_outcome(cancelled_receipts);
-    assert_eq!(cancelled["aggregate"]["status"], "timeout_cancelled");
-    assert_eq!(cancelled["outcome_indeterminate"], true);
-    assert_eq!(cancelled["reconciliation"], "completed");
-    assert_eq!(cancelled["aggregate"]["providers"][3]["state"], "not-run");
-
-    let indeterminate = setup_receipt(
-        2,
-        Provider::Claude,
-        None,
-        "wait failed",
-        RunTermination::Indeterminate,
-    );
-    let mut unknown_receipts = vec![
-        success(1, Provider::Core),
-        indeterminate,
-        json!({ "ordinal": 3, "provider": "antigravity", "attempted": false, "state": "not-run", "outcome": null }),
-        json!({ "ordinal": 4, "provider": "codex", "attempted": false, "state": "not-run", "outcome": null }),
-    ];
-    reconcile_setup_receipts(&mut unknown_receipts, &["claude"], &["core", "claude"]);
-    let (_, unknown) = current_setup_outcome(unknown_receipts);
+    let (_, incomplete) = current_setup_outcome(complete_receipts[..3].to_vec());
+    assert_eq!(incomplete["aggregate"]["status"], "indeterminate");
+    let (_, timeout) = current_setup_outcome(vec![
+        receipt(1, Provider::Core, "timeout_cancelled"),
+        receipt(2, Provider::Claude, "not-run"),
+        receipt(3, Provider::Antigravity, "not-run"),
+        receipt(4, Provider::Codex, "not-run"),
+    ]);
+    assert_eq!(timeout["aggregate"]["status"], "timeout_cancelled");
+    let (_, unknown) = current_setup_outcome(vec![
+        receipt(1, Provider::Core, "indeterminate"),
+        receipt(2, Provider::Claude, "not-run"),
+        receipt(3, Provider::Antigravity, "not-run"),
+        receipt(4, Provider::Codex, "not-run"),
+    ]);
     assert_eq!(unknown["aggregate"]["status"], "indeterminate");
-    assert_eq!(unknown["outcome_indeterminate"], true);
-    assert_eq!(unknown["reconciliation"], "status-required");
+}
+
+#[test]
+fn install_v1_decoder_rejects_malformed_identity_and_missing_items() {
+    let dir = tempfile::tempdir().expect("target");
+    std::fs::create_dir(dir.path().join(".vaultspec")).expect("declared item");
+    let valid = json!({
+        "schema":"vaultspec.install.v1", "status":"created",
+        "data":{"action":"install","path":dir.path(),"providers":[],"items":[[".vaultspec","core"]]}
+    })
+    .to_string();
+    let accepted = validate_install_output(&valid, Provider::Core, dir.path(), false)
+        .expect("valid current install projection");
+    assert_eq!(accepted.projection["provider"], "core");
+    assert!(accepted.projection.get("data").is_none());
+    for bad in [
+        valid.replace("vaultspec.install.v1", "vaultspec.sync.v1"),
+        valid.replace("\"providers\":[]", "\"providers\":[\"claude\"]"),
+        format!("{valid} trailing"),
+        valid.replace(".vaultspec", "../escape"),
+    ] {
+        assert!(validate_install_output(&bad, Provider::Core, dir.path(), false).is_err());
+    }
+}
+
+#[test]
+fn doctor_decoder_admits_only_exact_current_or_provider_bound_missing_evidence() {
+    let core_missing = json!({"schema":"vaultspec.spec.doctor.v1","status":"failed","data":{
+        "framework":"missing","providers":{},"unknown":{"provider":"retired"}
+    }})
+    .to_string();
+    let core = setup::validate_doctor_output(
+        &core_missing,
+        Some(2),
+        Provider::Core,
+        setup::DoctorExpectation::Missing,
+    )
+    .expect("exact clean-Core negative envelope");
+    assert!(core.get("unknown").is_none());
+    assert_eq!(core["provider"], "core");
+    for (code, raw) in [
+        (Some(0), core_missing.clone()),
+        (Some(2), core_missing.replace("\"failed\"", "\"unchanged\"")),
+        (Some(2), core_missing.replace("\"missing\"", "\"present\"")),
+        (
+            Some(2),
+            core_missing.replace("\"providers\":{}", "\"providers\":{\"unknown\":{}}"),
+        ),
+    ] {
+        assert!(
+            setup::validate_doctor_output(
+                &raw,
+                code,
+                Provider::Core,
+                setup::DoctorExpectation::Missing,
+            )
+            .is_err()
+        );
+    }
+
+    let provider_missing = json!({"schema":"vaultspec.spec.doctor.v1","status":"unchanged","data":{
+        "framework":"present","providers":{"claude":{
+            "manifest_entry":"not_installed","dir_state":"missing","config":"ok","content":{},
+            "unknown":"discarded"
+        },"unknown":{"name":"retired"}}
+    }})
+    .to_string();
+    let projection = setup::validate_doctor_output(
+        &provider_missing,
+        Some(0),
+        Provider::Claude,
+        setup::DoctorExpectation::Missing,
+    )
+    .expect("typed current-provider missing evidence");
+    assert_eq!(projection["provider"], "claude");
+    assert!(projection["entry"].get("unknown").is_none());
+    for raw in [
+        provider_missing.replace("\"unchanged\"", "\"failed\""),
+        provider_missing.replace("\"present\"", "\"missing\""),
+        provider_missing.replace("\"claude\":", "\"other\":"),
+        provider_missing.replace("\"dir_state\":\"missing\"", "\"dir_state\":3"),
+        provider_missing.replace(
+            "\"manifest_entry\":\"not_installed\"",
+            "\"manifest_entry\":\"coherent\"",
+        ),
+    ] {
+        assert!(
+            setup::validate_doctor_output(
+                &raw,
+                Some(0),
+                Provider::Claude,
+                setup::DoctorExpectation::Missing,
+            )
+            .is_err()
+        );
+    }
+}
+
+#[test]
+fn declared_items_cannot_escape_through_existing_or_missing_path_ancestors() {
+    let target = tempfile::tempdir().expect("target");
+    let outside = tempfile::tempdir().expect("outside");
+    std::fs::create_dir(target.path().join("inside")).expect("inside");
+    assert!(
+        !setup::declared_item_state(target.path(), "inside/missing.txt").unwrap(),
+        "normal missing descendant is confined by its existing ancestor"
+    );
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::{symlink_dir, symlink_file};
+        let outside_file = outside.path().join("outside.txt");
+        std::fs::write(&outside_file, "outside").expect("outside file");
+        symlink_file(&outside_file, target.path().join("file-link")).expect("file symlink");
+        symlink_dir(outside.path(), target.path().join("dir-link")).expect("directory symlink");
+        symlink_file(
+            outside.path().join("absent-file"),
+            target.path().join("dangling-file-link"),
+        )
+        .expect("dangling file symlink");
+        symlink_dir(
+            outside.path().join("absent-dir"),
+            target.path().join("dangling-dir-link"),
+        )
+        .expect("dangling directory symlink");
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::symlink;
+        let outside_file = outside.path().join("outside.txt");
+        std::fs::write(&outside_file, "outside").expect("outside file");
+        symlink(&outside_file, target.path().join("file-link")).expect("file symlink");
+        symlink(outside.path(), target.path().join("dir-link")).expect("directory symlink");
+        symlink(
+            outside.path().join("absent-file"),
+            target.path().join("dangling-file-link"),
+        )
+        .expect("dangling file symlink");
+        symlink(
+            outside.path().join("absent-dir"),
+            target.path().join("dangling-dir-link"),
+        )
+        .expect("dangling directory symlink");
+    }
+    assert!(
+        setup::declared_item_state(target.path(), "file-link").is_err(),
+        "an existing file indirection cannot escape"
+    );
+    assert!(
+        setup::declared_item_state(target.path(), "dir-link/missing.txt").is_err(),
+        "a missing file below an escaping directory cannot authorize mutation"
+    );
+    assert!(
+        setup::declared_item_state(target.path(), "dir-link/missing-dir/child").is_err(),
+        "a missing directory tree below an escaping ancestor cannot authorize mutation"
+    );
+    assert_eq!(
+        setup::declared_item_state(target.path(), "dangling-file-link"),
+        Err(setup::ValidationFault::ItemUnresolved),
+        "a dangling file indirection is disagreement, not an absent item"
+    );
+    assert_eq!(
+        setup::declared_item_state(target.path(), "dangling-dir-link/child"),
+        Err(setup::ValidationFault::ItemUnresolved),
+        "a dangling directory indirection cannot authorize a child mutation"
+    );
+}
+
+#[test]
+fn manifest_membership_is_closed_to_exact_current_set() {
+    let exact = ManifestState {
+        installed: ["claude", "antigravity", "codex"]
+            .into_iter()
+            .map(str::to_string)
+            .collect(),
+        version: "2.0".into(),
+        serial: 1,
+    };
+    assert!(manifest_is_exact(Some(&exact)));
+    let mut extra = exact.installed.clone();
+    extra.insert("unsupported".into());
+    let extra = ManifestState {
+        installed: extra,
+        version: "2.0".into(),
+        serial: 2,
+    };
+    assert!(manifest_has_unsupported(Some(&extra)));
+    assert!(!manifest_is_exact(Some(&extra)));
+    let refused = setup::terminal_receipts(
+        "refused",
+        "indeterminate",
+        json!({"error_kind":"manifest_membership_disagreement"}),
+        "refused_before_child_spawn",
+    );
+    assert_eq!(
+        refused.len(),
+        4,
+        "terminal refusal retains every current ordinal"
+    );
+    assert!(refused.iter().all(|receipt| receipt["attempted"] == false));
+}
+
+#[test]
+fn per_ordinal_preflight_converges_core_only_partial_and_healthy_states() {
+    for (installed, expected_missing) in [
+        (vec![], vec!["claude", "antigravity", "codex"]),
+        (vec!["claude", "antigravity"], vec!["codex"]),
+        (vec!["claude"], vec!["antigravity", "codex"]),
+        (vec!["claude", "antigravity", "codex"], vec![]),
+    ] {
+        let manifest = ManifestState {
+            installed: installed.iter().map(|name| (*name).to_string()).collect(),
+            version: "2.0".into(),
+            serial: 1,
+        };
+        let mut missing = Vec::new();
+        for provider in CURRENT_SETUP_PROVIDERS {
+            let preview_valid =
+                provider == Provider::Core || installed.contains(&provider.as_arg());
+            let doctor_current = provider == Provider::Core || preview_valid;
+            let doctor_missing = provider != Provider::Core && !preview_valid;
+            match setup::decide_preflight(
+                Some(&manifest),
+                doctor_current,
+                doctor_missing,
+                provider,
+                true,
+                preview_valid,
+            ) {
+                setup::PreflightDecision::InstallMissing => missing.push(provider.as_arg()),
+                setup::PreflightDecision::ReconciledExisting => {}
+                setup::PreflightDecision::Indeterminate => {
+                    panic!("authoritative fixture disagreed")
+                }
+            }
+        }
+        assert_eq!(missing, expected_missing);
+    }
+    let empty = ManifestState {
+        installed: HashSet::new(),
+        version: "2.0".into(),
+        serial: 1,
+    };
+    assert_eq!(
+        setup::decide_preflight(Some(&empty), false, false, Provider::Claude, false, false,),
+        setup::PreflightDecision::Indeterminate,
+        "a malformed or bounded preview cannot authorize a missing-provider mutation"
+    );
+    let claims_claude = ManifestState {
+        installed: ["claude"].into_iter().map(str::to_string).collect(),
+        version: "2.0".into(),
+        serial: 2,
+    };
+    assert_eq!(
+        setup::decide_preflight(
+            Some(&claims_claude),
+            false,
+            true,
+            Provider::Claude,
+            true,
+            true,
+        ),
+        setup::PreflightDecision::Indeterminate,
+        "receipt, manifest, and doctor disagreement cannot become current"
+    );
+}
+
+#[test]
+fn preflight_preserves_timeout_output_cap_and_runner_failure_causes_by_phase() {
+    let capture = |termination| RunCapture {
+        code: None,
+        stdout: String::new(),
+        stderr: String::new(),
+        captured_bytes: 0,
+        termination,
+    };
+    assert_eq!(
+        setup::preflight_failure(&capture(RunTermination::TimeoutCancelled), "doctor"),
+        Some(("timeout_cancelled", "doctor_timeout_cancelled".into()))
+    );
+    assert_eq!(
+        setup::preflight_failure(&capture(RunTermination::OutputCapped), "preview"),
+        Some(("indeterminate", "preview_output_capped".into()))
+    );
+    assert_eq!(
+        setup::preflight_failure(&capture(RunTermination::ReadFailed), "doctor"),
+        Some(("indeterminate", "doctor_read_failed".into()))
+    );
+    assert_eq!(
+        setup::preflight_failure(&capture(RunTermination::AtCapacity), "preview"),
+        Some(("indeterminate", "preview_process_group_at_capacity".into()))
+    );
+    assert_eq!(
+        setup::preflight_failure(&capture(RunTermination::Completed), "preview"),
+        None
+    );
+}
+
+#[test]
+fn nonzero_doctor_and_preview_exits_remain_distinct_from_state_disagreement() {
+    let capture = RunCapture {
+        code: Some(7),
+        stdout: String::new(),
+        stderr: String::new(),
+        captured_bytes: 0,
+        termination: RunTermination::Completed,
+    };
+    let doctor: Result<Value, setup::ValidationFault> =
+        Err(setup::ValidationFault::StateDisagreement);
+    let preview: Result<setup::ValidatedInstall, setup::ValidationFault> =
+        Err(setup::ValidationFault::StateDisagreement);
+    assert_eq!(
+        setup::validation_cause(&capture, &doctor),
+        Some("child_exit_nonzero")
+    );
+    assert_eq!(
+        setup::validation_cause(&capture, &preview),
+        Some("child_exit_nonzero")
+    );
+}
+
+#[test]
+fn production_fault_adapter_preserves_all_six_local_causes() {
+    let limits = BoundedLimits {
+        cap: 17,
+        timeout: Duration::from_secs(3),
+    };
+    let io = || std::io::Error::other("adapter proof");
+    let cases = [
+        (
+            BoundedFault::Spawn(io()),
+            RunTermination::SpawnFailed,
+            "phase_spawn_failed",
+        ),
+        (
+            BoundedFault::Timeout,
+            RunTermination::TimeoutCancelled,
+            "phase_timeout_cancelled",
+        ),
+        (
+            BoundedFault::OverCap,
+            RunTermination::OutputCapped,
+            "phase_output_capped",
+        ),
+        (
+            BoundedFault::Read(io()),
+            RunTermination::ReadFailed,
+            "phase_read_failed",
+        ),
+        (
+            BoundedFault::Wait(io()),
+            RunTermination::WaitFailed,
+            "phase_wait_failed",
+        ),
+        (
+            BoundedFault::AtCapacity,
+            RunTermination::AtCapacity,
+            "phase_process_group_at_capacity",
+        ),
+    ];
+    for (fault, termination, expected_cause) in cases {
+        let capture = capability_fault_capture("proof", limits, fault);
+        assert_eq!(capture.termination, termination);
+        assert_eq!(
+            setup::preflight_failure(&capture, "phase")
+                .expect("fault is terminal")
+                .1,
+            expected_cause
+        );
+    }
+}
+
+#[tokio::test]
+async fn setup_process_group_capacity_exhaustion_is_end_to_end_indeterminate() {
+    let permits = crate::bounded_child::test_reserve_all_group_slots();
+    let target = tempfile::tempdir().expect("capacity target");
+    let (_, outcome) = setup::run_current_setup(
+        "capacity",
+        false,
+        vec![(Provider::Core, vec!["must-not-spawn".into()])],
+        target.path(),
+    )
+    .await;
+    drop(permits);
+    let receipt = &outcome["aggregate"]["providers"][0];
+    assert_eq!(outcome["aggregate"]["status"], "indeterminate");
+    assert_eq!(receipt["state"], "indeterminate");
+    assert_eq!(
+        receipt["evidence"]["error_kind"], "doctor_process_group_at_capacity",
+        "the real safe-setup adapter preserves capacity through preflight wire evidence"
+    );
 }
 
 #[test]
@@ -332,14 +773,34 @@ fn registry_bounds_and_single_flight() {
         created: Instant::now(),
         outcome: None,
     });
-    assert_eq!(
-        reg.running_for("machine:acquire:vaultspec-rag", "standard"),
-        RunningMatch::Attach("run1".into())
-    );
-    assert_eq!(
-        reg.running_for("machine:acquire:vaultspec-core", "standard"),
-        RunningMatch::None
-    );
+    let duplicate = Job {
+        id: "run2".into(),
+        label: "acquire:vaultspec-rag".into(),
+        target: "machine".into(),
+        key: "machine:acquire:vaultspec-rag".into(),
+        posture: "standard",
+        state: JobState::Running,
+        created: Instant::now(),
+        outcome: None,
+    };
+    assert!(matches!(
+        reg.match_or_reserve(duplicate),
+        Reservation::Attach(_)
+    ));
+    let distinct = Job {
+        id: "run3".into(),
+        label: "acquire:vaultspec-core".into(),
+        target: "machine".into(),
+        key: "machine:acquire:vaultspec-core".into(),
+        posture: "standard",
+        state: JobState::Running,
+        created: Instant::now(),
+        outcome: None,
+    };
+    assert!(matches!(
+        reg.match_or_reserve(distinct),
+        Reservation::Reserved(_)
+    ));
 }
 
 #[test]
@@ -360,42 +821,345 @@ fn setup_single_flight_attaches_identical_posture_and_conflicts_different_postur
         created: Instant::now(),
         outcome: None,
     });
-    assert_eq!(
-        reg.running_for(key, safe.posture()),
-        RunningMatch::Attach("setup-1".into())
+    let candidate = |id: &str, posture| Job {
+        id: id.into(),
+        label: "setup:current".into(),
+        target: "/p".into(),
+        key: key.into(),
+        posture,
+        state: JobState::Running,
+        created: Instant::now(),
+        outcome: None,
+    };
+    assert!(matches!(
+        reg.match_or_reserve(candidate("setup-2", safe.posture())),
+        Reservation::Attach(_)
+    ));
+    assert_eq!(reg.jobs.len(), 1, "attach cannot reserve a second job");
+    assert!(
+        matches!(reg.match_or_reserve(candidate("setup-3", force.posture())), Reservation::Conflict(id) if id == "setup-1")
     );
-    assert_eq!(
-        reg.running_for(key, force.posture()),
-        RunningMatch::Conflict("setup-1".into())
-    );
+    assert_eq!(reg.jobs.len(), 1, "conflict cannot reserve a second job");
 }
 
 #[test]
-fn running_jobs_are_never_evicted_by_cap() {
+fn hard_cap_preserves_attach_and_conflict_but_refuses_distinct_running_job() {
     let mut reg = Registry::new();
-    for i in 0..(MAX_JOBS + 5) {
-        reg.insert(Job {
-            id: format!("r{i}"),
-            label: "setup:current".into(),
-            target: "/p".into(),
-            key: format!("k{i}"),
-            posture: "standard",
-            state: JobState::Running,
-            created: Instant::now(),
-            outcome: None,
-        });
+    let candidate = |id: String, key: String, posture| Job {
+        id,
+        label: "setup:current".into(),
+        target: "/p".into(),
+        key,
+        posture,
+        state: JobState::Running,
+        created: Instant::now(),
+        outcome: None,
+    };
+    for i in 0..MAX_JOBS {
+        assert!(matches!(
+            reg.match_or_reserve(candidate(format!("r{i}"), format!("k{i}"), "standard")),
+            Reservation::Reserved(_)
+        ));
     }
-    // All running: the cap cannot shed them, so every one survives.
-    assert_eq!(reg.jobs.len(), MAX_JOBS + 5);
+    assert_eq!(reg.jobs.len(), MAX_JOBS);
+    assert!(matches!(
+        reg.match_or_reserve(candidate("attach".into(), "k0".into(), "standard")),
+        Reservation::Attach(_)
+    ));
+    assert!(matches!(
+        reg.match_or_reserve(candidate("conflict".into(), "k0".into(), "force")),
+        Reservation::Conflict(id) if id == "r0"
+    ));
+    assert!(matches!(
+        reg.match_or_reserve(candidate(
+            "refused".into(),
+            "distinct-at-cap".into(),
+            "standard"
+        )),
+        Reservation::AtCapacity
+    ));
+    assert_eq!(reg.jobs.len(), MAX_JOBS, "refusal cannot over-admit");
+
+    reg.set_outcome("r0", JobState::Succeeded, json!({"done":true}));
+    assert!(matches!(
+        reg.match_or_reserve(candidate(
+            "admitted".into(),
+            "after-terminal".into(),
+            "standard"
+        )),
+        Reservation::Reserved(_)
+    ));
+    assert_eq!(reg.jobs.len(), MAX_JOBS);
+    assert!(
+        !reg.jobs.contains_key("r0"),
+        "oldest terminal job was evicted"
+    );
 }
 
 #[tokio::test]
-async fn version_probe_interprets_a_real_rustc_process() {
-    let version = probe_version("rustc", &["--version"])
+async fn version_probe_interprets_a_real_process() {
+    let version = probe_version("git", &["--version"])
         .await
-        .expect("the test toolchain provides rustc on PATH");
+        .expect("the test environment provides git on PATH");
     assert!(
-        version.starts_with("rustc "),
-        "expected rustc version output, got {version:?}"
+        version.starts_with("git version "),
+        "expected git version output, got {version:?}"
+    );
+}
+
+#[cfg(windows)]
+#[tokio::test]
+async fn real_process_malformed_timeout_and_output_cap_never_validate_as_success() {
+    let command = |script: &str| {
+        vec![
+            "powershell.exe".to_string(),
+            "-NoProfile".to_string(),
+            "-NonInteractive".to_string(),
+            "-Command".to_string(),
+            script.to_string(),
+        ]
+    };
+    let malformed = run_capability_with_limits(
+        &command("[Console]::Out.Write('not-json')"),
+        BoundedLimits {
+            cap: 1024,
+            timeout: Duration::from_secs(5),
+        },
+    )
+    .await;
+    assert_eq!(malformed.code, Some(0));
+    let dir = tempfile::tempdir().expect("target");
+    assert_eq!(
+        validate_install_output(&malformed.stdout, Provider::Core, dir.path(), false).unwrap_err(),
+        setup::ValidationFault::Malformed,
+        "malformed producer evidence retains a typed cause"
+    );
+
+    let marker = dir.path().join(".claude");
+    let script = format!(
+        "New-Item -ItemType Directory -Path '{}' | Out-Null; Start-Sleep -Seconds 5",
+        marker.display()
+    );
+    let timed = run_capability_with_limits(
+        &command(&script),
+        BoundedLimits {
+            cap: 1024,
+            timeout: Duration::from_secs(2),
+        },
+    )
+    .await;
+    assert_eq!(timed.termination, RunTermination::TimeoutCancelled);
+    assert!(
+        marker.is_dir(),
+        "partial directory may exist but cannot prove success"
+    );
+
+    let over = run_capability_with_limits(
+        &command("[Console]::Out.Write(('x' * 4096))"),
+        BoundedLimits {
+            cap: 32,
+            timeout: Duration::from_secs(5),
+        },
+    )
+    .await;
+    assert_eq!(over.termination, RunTermination::OutputCapped);
+}
+
+#[cfg(windows)]
+#[tokio::test]
+async fn failed_child_stderr_is_digested_but_never_served_as_receipt_evidence() {
+    let target = tempfile::tempdir().expect("failed-child target");
+    let secret = "FAILED_CHILD_RAW_STDERR_MUST_NOT_CROSS_THE_WIRE";
+    let argv = vec![
+        "powershell.exe".to_string(),
+        "-NoProfile".to_string(),
+        "-NonInteractive".to_string(),
+        "-Command".to_string(),
+        format!("[Console]::Error.Write('{secret}'); exit 7"),
+    ];
+    let (_, outcome) = setup::run_current_setup(
+        "failed-stderr",
+        true,
+        vec![(Provider::Core, argv)],
+        target.path(),
+    )
+    .await;
+    let receipt = &outcome["aggregate"]["providers"][0];
+    assert_eq!(receipt["state"], "failed", "{outcome}");
+    assert_eq!(receipt["evidence"]["run_cause"], "child_exit_nonzero");
+    assert!(
+        receipt["evidence"]["stderr_digest"]
+            .as_str()
+            .is_some_and(|digest| digest.starts_with("sha256:"))
+    );
+    assert!(receipt["evidence"].get("stderr").is_none());
+    assert!(receipt["evidence"].get("stdout").is_none());
+    assert!(!outcome.to_string().contains(secret));
+}
+
+#[cfg(windows)]
+#[tokio::test]
+async fn four_real_process_install_v1_receipts_can_form_complete_only_after_validation() {
+    let dir = tempfile::tempdir().expect("target");
+    let mut receipts = Vec::new();
+    for (index, provider) in CURRENT_SETUP_PROVIDERS.iter().copied().enumerate() {
+        let rel = format!("item-{index}");
+        std::fs::write(dir.path().join(&rel), "current").expect("declared item");
+        let providers = if provider == Provider::Core {
+            json!([])
+        } else {
+            json!([provider.as_arg()])
+        };
+        let raw = json!({"schema":"vaultspec.install.v1","status":"created","data":{
+            "action":"install","path":dir.path(),"providers":providers,"items":[[rel,"current"]]
+        }})
+        .to_string();
+        let escaped = raw.replace('\'', "''");
+        let argv = vec![
+            "powershell.exe".into(),
+            "-NoProfile".into(),
+            "-NonInteractive".into(),
+            "-Command".into(),
+            format!("[Console]::Out.Write('{escaped}')"),
+        ];
+        let capture = run_capability_with_limits(
+            &argv,
+            BoundedLimits {
+                cap: 4096,
+                timeout: Duration::from_secs(5),
+            },
+        )
+        .await;
+        assert_eq!(capture.code, Some(0));
+        let validated = validate_install_output(&capture.stdout, provider, dir.path(), false)
+            .expect("current receipt");
+        receipts.push(setup_receipt(
+            "real",
+            index + 1,
+            provider,
+            "succeeded",
+            true,
+            json!({
+                "install": validated.projection,
+                "install_digest": digest(&capture.stdout)
+            }),
+            "confirmed_current",
+        ));
+    }
+    assert_eq!(
+        current_setup_outcome(receipts).1["aggregate"]["status"],
+        "complete"
+    );
+}
+
+#[tokio::test]
+async fn project_locked_core_completes_partial_repeat_and_force_aggregate_shapes() {
+    async fn seed(target: &FsPath, count: usize) {
+        let commands = Capability::SetupCurrent { force: false }
+            .setup_commands(target)
+            .expect("setup commands");
+        for (provider, argv) in commands.into_iter().take(count) {
+            let capture = run_capability_with_limits(
+                &argv,
+                BoundedLimits {
+                    cap: JOB_OUTPUT_CAP,
+                    timeout: Duration::from_secs(90),
+                },
+            )
+            .await;
+            assert_eq!(
+                capture.code,
+                Some(0),
+                "seed {provider:?}: {}",
+                capture.combined()
+            );
+            validate_install_output(&capture.stdout, provider, target, false)
+                .expect("project-locked Core seed receipt");
+        }
+    }
+
+    async fn aggregate(target: &FsPath, force: bool, job: &str) -> Value {
+        let commands = Capability::SetupCurrent { force }
+            .setup_commands(target)
+            .expect("setup commands");
+        let (_, outcome) = setup::run_current_setup(job, force, commands, target).await;
+        assert_eq!(outcome["aggregate"]["status"], "complete", "{outcome}");
+        assert!(setup::manifest_is_exact(
+            setup::read_setup_manifest(target).unwrap().as_ref()
+        ));
+        let wire = outcome.to_string();
+        assert!(
+            !wire.contains("producer_stdout"),
+            "raw producer JSON is not served"
+        );
+        assert!(
+            !wire.contains("unknown"),
+            "open-world Doctor metadata is not served"
+        );
+        for receipt in outcome["aggregate"]["providers"].as_array().unwrap() {
+            assert!(receipt["evidence"].get("doctor_digest").is_some());
+            assert!(receipt["reconciliation"].get("final_doctor").is_some());
+            assert!(
+                receipt["reconciliation"]
+                    .get("final_doctor_digest")
+                    .is_some()
+            );
+        }
+        outcome
+    }
+
+    let core_only = tempfile::tempdir().expect("core-only target");
+    seed(core_only.path(), 1).await;
+    let core_only_result = aggregate(core_only.path(), false, "real-core-only").await;
+    assert_eq!(
+        core_only_result["aggregate"]["providers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|receipt| receipt["attempted"].as_bool().unwrap())
+            .collect::<Vec<_>>(),
+        [false, true, true, true]
+    );
+    let repeated = aggregate(core_only.path(), false, "real-healthy-repeat").await;
+    assert!(
+        repeated["aggregate"]["providers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|receipt| receipt["attempted"] == false)
+    );
+    let forced = aggregate(core_only.path(), true, "real-force").await;
+    assert!(
+        forced["aggregate"]["providers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|receipt| receipt["attempted"] == true)
+    );
+
+    let one_missing = tempfile::tempdir().expect("one-missing target");
+    seed(one_missing.path(), 3).await;
+    let one_missing_result = aggregate(one_missing.path(), false, "real-one-missing").await;
+    assert_eq!(
+        one_missing_result["aggregate"]["providers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|receipt| receipt["attempted"].as_bool().unwrap())
+            .collect::<Vec<_>>(),
+        [false, false, false, true]
+    );
+
+    let multiple_missing = tempfile::tempdir().expect("multiple-missing target");
+    seed(multiple_missing.path(), 2).await;
+    let multiple_result = aggregate(multiple_missing.path(), false, "real-multiple-missing").await;
+    assert_eq!(
+        multiple_result["aggregate"]["providers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|receipt| receipt["attempted"].as_bool().unwrap())
+            .collect::<Vec<_>>(),
+        [false, false, true, true]
     );
 }
