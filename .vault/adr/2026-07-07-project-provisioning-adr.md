@@ -3,8 +3,8 @@ tags:
   - '#adr'
   - '#project-provisioning'
 date: '2026-07-07'
-modified: '2026-09-05'
-body_hash: 'sha256:4c7080107a22e8983ce863fbc1a854983865b629d457410026e0bfe0d3ee6b9a'
+modified: '2026-09-06'
+body_hash: 'sha256:f83c83c4ecf499f6de55be72d0164c51824d2da6c98606e6fa4fadaab5b00167'
 related:
   - "[[2026-07-07-project-provisioning-research]]"
   - "[[2026-07-04-dashboard-packaging-adr]]"
@@ -139,3 +139,68 @@ provider-less `setup` operation. Neither substitutes a core-only install,
 constructs four unrelated frontend requests, accepts `all`, or selects a
 provider client-side. Stores remain the sole wire client and render the served
 aggregate and per-provider receipts without inventing completion semantics.
+
+## Amendment - bind setup to the current Core install contract (2026-09-06, owner auto-approved correction)
+
+This amendment corrects D3, D7, D8, and D9 where they described install
+receipts using the generic `vaultspec.sync.v1` vocabulary or left the additive
+multi-provider command shape implicit. The project-locked Core producer and
+live disposable-target captures establish the current contract below.
+
+**D8a - exact supported producer sequence.** Dashboard expands `setup` in the
+fixed D8 order into these current Core operations:
+
+1. `vaultspec-core install core -t <target> [--force] --json`
+2. `vaultspec-core install claude -t <target> [--force] --json --skip core`
+3. `vaultspec-core install antigravity -t <target> [--force] --json --skip core`
+4. `vaultspec-core install codex -t <target> [--force] --json --skip core`
+
+`--skip core` is Core's supported additive provider-install path after the
+first operation has established the framework. A live clean-target proof
+completed this sequence in both safe and force posture. It produced no
+`install all` command and left Core doctor's Gemini entry `not_installed`.
+Changing these operations requires another reviewed contract change.
+
+**D9a - exact receipt acceptance.** A child is successful only when all of the
+following agree: it exits zero; stdout is exactly one JSON object with schema
+`vaultspec.install.v1`, top-level status `created`, `data.action` `install`,
+`data.path` equal to the registry-resolved target, no non-empty `data.errors`,
+and `data.providers` equal to `[]` for the core ordinal or the exact singleton
+provider for the other ordinals. `data.items` must be a non-empty array of
+exact two-string tuples. Each first tuple value must be a safe target-relative
+path and each producer-declared path must exist under the resolved target after
+the command. Any malformed output, extra/trailing output, wrong schema,
+status, action, target, provider set, tuple shape, unsafe path, missing declared
+item, or receipt/status disagreement is not success.
+
+Dashboard binds provider, target, and ordinal from its fixed command context;
+it never accepts those identities from an untrusted child field. The Dashboard
+creates and labels its own local receipt identifier. It retains the exact Core
+stdout and a SHA-256 digest as producer evidence; neither is described as a
+Core receipt identifier.
+
+**D9b - fresh authoritative reconciliation.** After each child, Dashboard runs
+the supported read-only `vaultspec-core spec doctor -t <target> --json` surface
+inside the same aggregate deadline and output budget. It requires schema
+`vaultspec.spec.doctor.v1`, successful process completion, top-level status
+`unchanged`, and `data.framework` `present`. For claude, antigravity, and codex,
+the matching provider entry must report `manifest_entry` `coherent`, a present
+provider directory state, `config` `ok`, and no non-clean managed-content
+signal. The selected provider must also be present in the strict, parseable `.vaultspec/providers.json` installed set. Dashboard validates
+only `core`, `claude`,
+`antigravity`, and `codex` evidence. It neither interprets nor exposes any
+unrelated provider entry; additional producer fields remain open-world metadata.
+For the core ordinal, the strict
+manifest must exist with its current `2.0` shape and a positive serial, and all
+producer-declared item paths must exist. The provider manifest and doctor
+projection are Core-owned postconditions; Dashboard reads them and writes no
+framework state.
+
+Directory presence alone can never promote an ambiguous, malformed, timed-out,
+over-cap, or failed child to success. A receipt reaches `succeeded` only when
+both D9a producer evidence and D9b fresh postconditions agree. A disagreement
+remains `indeterminate`; a definitive child failure with authoritative absent
+postconditions remains `failed`. Aggregate `complete` still requires four
+validated, reconciled receipts. The D9 timeout-cancelled and indeterminate
+rules, no-blind-replay rule, one aggregate-wide deadline/output budget, and
+atomic single-flight posture contract continue unchanged.
