@@ -4,15 +4,13 @@ tags:
   - '#project-provisioning'
 date: '2026-07-07'
 modified: '2026-09-06'
-body_hash: 'sha256:3eb4ac687ccaebca33d098cd1e0011a48c6fd340eeaa10ebf24c9f4e88f7b147'
+body_hash: 'sha256:b3b944b005e5f793bde9bdae154a859e766aeae3deca7ca9f2b7a61b2044934c'
 related:
   - "[[2026-07-07-project-provisioning-research]]"
   - "[[2026-07-04-dashboard-packaging-adr]]"
   - "[[2026-06-14-dashboard-workspace-registry-adr]]"
   - "[[2026-06-26-rag-service-management-adr]]"
 ---
-
-
 # `project-provisioning` adr: `operator-invoked framework acquisition and provisioning plane` | (**status:** `accepted`)
 
 ## Problem Statement
@@ -372,4 +370,42 @@ Preflight retains the typed bounded termination cause. Definitively reaped tree
 timeout becomes `timeout_cancelled`; output cap, read/wait failure, malformed
 evidence, or cancellation without full-tree proof remains `indeterminate` with
 its specific reason. Later ordinals do not mutate after either terminal shape.
-\n
+## Amendment - confined missing paths and exact clean-core evidence (2026-09-06, owner auto-approved correction)
+
+This correction resolves the two HIGH findings in architecture review audit
+`7ced01aea83a1e0d1480266aecd8094ae14865d1`. D4a/b and D9d stand. The D9e and
+D9f clauses are replaced where refined below.
+
+**D9e - existing and missing declared paths are canonically confined before
+mutation.** After lexical relative-path validation, Dashboard canonicalizes the
+resolved setup target. For every existing declared item it canonicalizes the item
+and requires the result to equal the target or remain below it. For every missing
+declared item, Dashboard walks toward the target until it finds the nearest
+existing ancestor, canonicalizes that ancestor, and applies the same containment
+test. Encountering an existing symlink, Windows junction, or other redirecting
+ancestor whose canonical result escapes the target is disagreement and cannot
+authorize mutation. A normal missing descendant whose nearest existing ancestor
+is confined may contribute to authoritative missing state. Post-install
+validation still canonicalizes and confines every now-existing declared item.
+The discriminating contract covers missing file and directory children below
+escaping indirections, a normal in-target missing ancestor, existing escaping
+items, and normal in-target controls.
+
+**D9f - Core missing has one exact negative envelope; provider missing remains
+successful Doctor evidence.** For the core ordinal only, an unmanaged clean
+target is authoritative missing evidence when the process exits exactly 2 and
+stdout is exactly one JSON object with schema `vaultspec.spec.doctor.v1`, status
+`failed`, `data.framework` exactly `missing`, and `data.providers` exactly an
+empty object. Dashboard projects only those selected fields and the exact stdout
+digest. Every other exit, status, framework value, providers shape or membership,
+missing required field, wrong type, or malformed object is indeterminate. This
+narrow current-producer exception does not accept arbitrary failed Doctor output.
+
+For claude, antigravity, and codex, authoritative missing evidence still requires
+exit 0, schema `vaultspec.spec.doctor.v1`, status `unchanged`, framework
+`present`, and the command-bound provider object with exact required types and
+mutually consistent `manifest_entry: not_installed` and `dir_state: missing`
+facts. Failed status, absent or wrong framework, absent selected entry, wrong
+field types, and contradictory fields remain indeterminate and authorize no
+install. Unrelated Doctor metadata is discarded in both positive and negative
+forms and never crosses the Dashboard wire.
