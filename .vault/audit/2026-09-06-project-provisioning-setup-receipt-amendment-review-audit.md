@@ -5,7 +5,7 @@ tags:
 date: '2026-09-06'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:0038ebafd67b452c0d6346f0bfc34297a1f2051f35bdf9bc1dd43a87bc1a0e1d'
+body_hash: 'sha256:53407172e18cd63f18343ba89559a18bec4f315ccf25acfc6ee6a0d392d6c1a0'
 related:
   - "[[2026-07-07-project-provisioning-adr]]"
   - "[[2026-09-06-agent-panel-no-legacy-curation-audit]]"
@@ -122,3 +122,92 @@ should be corrected in the same documentation pass.
 - Cite `2026-09-06-project-provisioning-setup-receipt-amendment-review-audit`
   as the home of the live producer evidence when correcting the ADR, and keep
   the ADR focused on the chosen contract.
+
+## 2026-09-06 re-review of idempotent-preflight correction
+
+Review target: `794b701b4be49ec9156bee8719aa01b0782c3077`, parent
+`a062b935`. This re-review tested the corrected D8b/D9c contract against live
+Vaultspec Core 0.1.73 healthy and partial targets and reconciled each finding
+from the first review. Runtime and unrelated concurrent work remained outside
+the review.
+
+### healthy-dry-run-preflight | low | verified
+
+Type: producer-contract and idempotency evidence. On a fully healthy target,
+all four fixed previews exited zero with `vaultspec.install.v1`, status
+`unchanged`, action `dry_run`, the exact target, non-empty exact two-string
+item tuples, and no missing producer-declared paths. Doctor and the strict
+manifest met the D9b/D9c current-state requirements. Four Dashboard-local
+`reconciled_existing` receipts are accurately distinguished from Core install
+receipts, so the correction closes the original repeated-healthy-target case
+without accepting Core's already-installed error as success.
+
+### partial-current-target-convergence | high | all-or-nothing preflight still falls into the blocked core mutation
+
+Type: state-machine, partial-state recovery, and replay robustness. D8b emits
+`reconciled_existing` only when the entire four-ordinal preflight is already
+healthy. Any valid partial current target therefore falls through wholesale to
+D8a. A live core-only target proved the defect: the core preview was unchanged
+with zero missing paths; the three provider previews identified their missing
+paths; fallback `install core` then exited one with
+`vaultspec.error.v1` already-installed; and the three additive installs exited
+zero and produced a final healthy doctor/manifest state. D9a/b still require
+the core receipt and postcondition to agree, so that successful convergence is
+classified indeterminate. The same failure shape applies when one or several
+provider ordinals are missing from an otherwise valid current target. This
+leaves the original high-severity robustness defect open for partial state.
+
+### unsupported-membership-preflight-order | high | extra membership is not unambiguously terminal before mutation
+
+Type: no-legacy state machine and contract conflict. D9c correctly defines
+exact manifest equality and says extra or unsupported membership fails closed,
+but D8b says every preflight that does not prove the entire current state
+follows D8a. Read literally, a manifest with extra membership can therefore
+enter the mutating sequence before the aggregate later refuses completion.
+That conflicts with the no-legacy requirement: unsupported membership must
+produce a terminal typed contract disagreement before any child mutation.
+Failing completion after current-provider writes is insufficient and needlessly
+alters a target that setup has already declared outside its closed world.
+
+### no-retired-provider-retention | low | verified
+
+Type: no-legacy architecture corpus. The correction removes the named retired
+provider diagnostic capture from active decision evidence. It keeps the fixed
+current command set, consumes no deprecated aggregate or retired-provider
+operation, discards unrelated doctor fields without naming, interpreting,
+storing, or returning them, and defines exact current manifest equality. The
+accepted rejection clauses remain fail-closed policy rather than a
+compatibility surface.
+
+### evidence-home-citation | low | verified
+
+Type: single-home-fact boundary. The correction identifies
+`2026-09-06-project-provisioning-setup-receipt-amendment-review-audit` as the
+home for live clean, force, repeated, and dry-run evidence, while the ADR keeps
+the chosen command and validation rules. The audit already relates to the ADR
+and the project-provisioning feature index links both artifacts, so the
+correction does not fork the observed evidence into a second lifecycle home.
+
+### idempotent-preflight-correction-disposition | high | FAIL
+
+Type: formal architecture-review disposition. Commit `794b701b` closes the
+fully healthy repeat, exact membership, named retired-provider evidence, and
+grounding-home findings, but it does not converge supported partial current
+states and does not make unsupported extra membership terminal before any
+mutation. Those two high findings prevent the ADR from authorizing runtime
+closure.
+
+## Re-review recommendations
+
+- Make preflight authoritative per ordinal. Emit `reconciled_existing` for each
+  already-valid current component and execute only missing current ordinals.
+  A core-only, one-provider-missing, or multiple-providers-missing target must
+  converge without spawning an already-valid core install and without
+  accepting an already-installed error.
+- Make unsupported manifest membership a terminal typed preflight result before
+  any mutation. Do not translate, remove, expose, or otherwise support the
+  unsupported entry.
+- Require live real-process proof for healthy repeat, core-only, each
+  single-provider-missing case, multiple-provider-missing state, unsupported
+  extra membership with zero child mutations, clean install, force install,
+  timeout, and receipt/postcondition disagreement.
