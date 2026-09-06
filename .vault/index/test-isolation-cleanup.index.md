@@ -6,7 +6,7 @@ tags:
 date: '2026-09-04'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:6be7d9ad63bb467b194fe76b903abc9411d22cfe1956c5173de411af9ca2c21d'
+body_hash: 'sha256:e63daa53dfa076c84e3220d8cc80842c9baf2dcbd088691edcf8e91d77c99216'
 related:
   - '[[2026-09-04-test-isolation-cleanup-S01]]'
   - '[[2026-09-04-test-isolation-cleanup-S02]]'
@@ -22,6 +22,7 @@ related:
   - '[[2026-09-04-test-isolation-cleanup-S13]]'
   - '[[2026-09-04-test-isolation-cleanup-S14]]'
   - '[[2026-09-04-test-isolation-cleanup-S16]]'
+  - '[[2026-09-04-test-isolation-cleanup-S17]]'
   - '[[2026-09-04-test-isolation-cleanup-S18]]'
   - '[[2026-09-04-test-isolation-cleanup-adr]]'
   - '[[2026-09-04-test-isolation-cleanup-plan]]'
@@ -35,6 +36,7 @@ related:
   - '[[2026-09-06-test-isolation-cleanup-s13-per-test-window-lifecycle-guard-review-audit]]'
   - '[[2026-09-06-test-isolation-cleanup-s14-eight-file-prefix-diagnostic-review-audit]]'
   - '[[2026-09-06-test-isolation-cleanup-s16-two-phase-sse-cancellation-review-audit]]'
+  - '[[2026-09-06-test-isolation-cleanup-s17-owner-settled-render-teardown-review-audit]]'
   - '[[2026-09-06-test-isolation-cleanup-s18-node-http-transport-review-audit]]'
 ---
 
@@ -59,6 +61,7 @@ Auto-generated index of all documents tagged with `#test-isolation-cleanup`.
 - `2026-09-06-test-isolation-cleanup-s13-per-test-window-lifecycle-guard-review-audit` - `test-isolation-cleanup` audit: `S13 per-test window lifecycle guard review`
 - `2026-09-06-test-isolation-cleanup-s14-eight-file-prefix-diagnostic-review-audit` - `test-isolation-cleanup` audit: `S14 eight-file prefix diagnostic review`
 - `2026-09-06-test-isolation-cleanup-s16-two-phase-sse-cancellation-review-audit` - `test-isolation-cleanup` audit: `S16 two-phase SSE cancellation review`
+- `2026-09-06-test-isolation-cleanup-s17-owner-settled-render-teardown-review-audit` - `test-isolation-cleanup` audit: `S17 owner-settled render teardown review`
 - `2026-09-06-test-isolation-cleanup-s18-node-http-transport-review-audit` - `test-isolation-cleanup` audit: `S18 Node HTTP transport review`
 
 ### exec
@@ -77,6 +80,7 @@ Auto-generated index of all documents tagged with `#test-isolation-cleanup`.
 - `2026-09-04-test-isolation-cleanup-S13` - Add a cross-test lifecycle guard proving the harness never calls happy-dom abort between cases and demonstrate it red with the removed hook restored
 - `2026-09-04-test-isolation-cleanup-S14` - Record the first exact eight-file prefix as a completed diagnostic enumeration even though the zero-diagnostic barrier is red, preserve its log, and route the attributed AgentPanel cluster plus smaller unassigned reset cluster to S15 without an unchanged rerun
 - `2026-09-04-test-isolation-cleanup-S16` - Implement and mutation-prove a shared two-phase SSE cancellation contract that aborts only pending response acquisition, then gracefully cancels the response reader, and route engine, A2A, and authoring lifecycle streams through it
+- `2026-09-04-test-isolation-cleanup-S17` - Install and mutation-prove an owner-enrolled live-render teardown that awaits finite queries before RTL unmount, then awaits S16 stream cancellation and a separately exposed authoring stop-settlement promise before clearing clients, and apply it to AgentPanel and Composer
 - `2026-09-04-test-isolation-cleanup-S18` - Implement and mutation-prove a bounded Node HTTP/HTTPS transport for live-engine tests, route the shared live client through it, and preserve direct raw-fetch conformance
 
 ### plan

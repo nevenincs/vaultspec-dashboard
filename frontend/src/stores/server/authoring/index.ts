@@ -30,6 +30,7 @@ import {
   useQuery,
   type UseQueryResult,
 } from "@tanstack/react-query";
+import { logger } from "../../../platform/logger/logger";
 import {
   bearerToken,
   CANONICAL_TIERS,
@@ -867,13 +868,16 @@ function isAbortError(err: unknown): boolean {
 }
 
 let authoringLifecycleSubscriberCount = 0;
-let stopAuthoringLifecycleLoop: (() => void) | null = null;
+let stopAuthoringLifecycleLoop: (() => Promise<void>) | null = null;
+let authoringLifecycleStopSettlement: Promise<void> = Promise.resolve();
+const authoringLifecycleLog = logger.child("authoring.lifecycle");
 
-function startAuthoringLifecycleLoop(): () => void {
+function startAuthoringLifecycleLoop(): () => Promise<void> {
   let stopped = false;
   let controller: AbortController | null = null;
   let retryAttempt = 0;
   let timer: ReturnType<typeof setTimeout> | null = null;
+  let runSettlement: Promise<void> = Promise.resolve();
 
   const clearPendingTimer = () => {
     if (timer !== null) {
@@ -885,7 +889,7 @@ function startAuthoringLifecycleLoop(): () => void {
   const schedule = (delayMs: number) => {
     clearPendingTimer();
     timer = setTimeout(() => {
-      void run();
+      startRun();
     }, delayMs);
   };
 
@@ -905,7 +909,8 @@ function startAuthoringLifecycleLoop(): () => void {
       retryAttempt = 0;
       if (!stopped) schedule(AUTHORING_STREAM_REOPEN_MS);
     } catch (err) {
-      if (stopped || isAbortError(err)) return;
+      if (stopped) throw err;
+      if (isAbortError(err)) return;
       noteAuthoringStreamError(
         err instanceof EngineError
           ? (err.errorKind ?? "authoring_stream_http_error")
@@ -916,12 +921,21 @@ function startAuthoringLifecycleLoop(): () => void {
     }
   };
 
-  void run();
+  const startRun = () => {
+    runSettlement = run();
+  };
+
+  startRun();
   return () => {
     stopped = true;
     clearPendingTimer();
     controller?.abort();
+    return runSettlement;
   };
+}
+
+export function getAuthoringLifecycleStopSettlement(): Promise<void> {
+  return authoringLifecycleStopSettlement;
 }
 
 export function subscribeAuthoringLifecycle(): () => void {
@@ -938,7 +952,11 @@ export function subscribeAuthoringLifecycle(): () => void {
       authoringLifecycleSubscriberCount - 1,
     );
     if (authoringLifecycleSubscriberCount === 0) {
-      stopAuthoringLifecycleLoop?.();
+      authoringLifecycleStopSettlement =
+        stopAuthoringLifecycleLoop?.() ?? Promise.resolve();
+      void authoringLifecycleStopSettlement.catch((error: unknown) => {
+        authoringLifecycleLog.error("authoring lifecycle stop failed", error);
+      });
       stopAuthoringLifecycleLoop = null;
     }
   };

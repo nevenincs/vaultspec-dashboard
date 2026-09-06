@@ -12,20 +12,14 @@
 // into — never a fabricated empty snapshot. Core vitest matchers only.
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { I18nextProvider } from "react-i18next";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createTestLocalizationRuntime } from "../../localization/testing";
 import { common } from "../../locales/en";
 import { createLiveClient, liveScope, liveTransport } from "../../testing/liveClient";
+import { createLiveRenderQueryTeardown } from "../../testing/queryTeardown";
 import {
   AuthoringClient,
   getAuthoringStreamCursor,
@@ -37,6 +31,7 @@ import {
   adaptRunStatus,
   type ActiveRunsResult,
 } from "../../stores/server/agent/a2aTeam";
+import { EMPTY_RELAY_TRANSCRIPT } from "../../stores/server/liveAdapters/a2aRelay";
 import { PROVIDER_CONDITIONS } from "../../stores/server/agent/providerCondition";
 import {
   setAgentPendingChangesOpen,
@@ -52,6 +47,13 @@ const canonicalTiers = {
   temporal: { available: true },
   semantic: { available: true },
 };
+const liveRenderTeardown = createLiveRenderQueryTeardown();
+const PANEL_FINITE_QUERY_PREFIXES = [
+  ["engine", "dashboard-state"],
+  ["engine", "filters"],
+  ["engine", "vault-tree"],
+  ["a2a", "active-runs"],
+] as const;
 
 function resetStore(): void {
   useAgentPanel.setState({
@@ -64,11 +66,12 @@ function resetStore(): void {
 }
 
 beforeEach(resetStore);
-afterEach(() => {
-  cleanup();
-  resetAuthoringStreamCursor();
-  resetStore();
-});
+afterEach(() =>
+  liveRenderTeardown.run(() => {
+    resetAuthoringStreamCursor();
+    resetStore();
+  }),
+);
 
 function renderPanel(
   queryClient = new QueryClient({
@@ -76,13 +79,50 @@ function renderPanel(
   }),
 ) {
   const runtime = createTestLocalizationRuntime();
+  const enrolledClient = liveRenderTeardown.enroll(queryClient);
   return render(
     <I18nextProvider i18n={runtime}>
-      <QueryClientProvider client={queryClient}>
+      <QueryClientProvider client={enrolledClient}>
         <AgentPanel />
       </QueryClientProvider>
     </I18nextProvider>,
   );
+}
+
+function queryKeyHasPrefix(
+  queryKey: readonly unknown[],
+  prefix: readonly unknown[],
+): boolean {
+  return prefix.every((part, index) => queryKey[index] === part);
+}
+
+function awaitPanelFiniteReads(
+  queryClient: QueryClient,
+  prefixes: ReadonlyArray<readonly unknown[]> = PANEL_FINITE_QUERY_PREFIXES,
+): Promise<void> {
+  const remaining = new Set(prefixes);
+  const inspect = () => {
+    for (const query of queryClient.getQueryCache().getAll()) {
+      for (const prefix of remaining) {
+        if (
+          queryKeyHasPrefix(query.queryKey, prefix) &&
+          query.state.fetchStatus === "idle" &&
+          query.state.status !== "pending"
+        ) {
+          remaining.delete(prefix);
+        }
+      }
+    }
+    return remaining.size === 0;
+  };
+  if (inspect()) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    const unsubscribe = queryClient.getQueryCache().subscribe(() => {
+      if (!inspect()) return;
+      unsubscribe();
+      resolve();
+    });
+  });
 }
 
 /** Create a real, empty session in the live engine and return its id (for the
@@ -111,6 +151,21 @@ async function createLiveSession(prompt?: string): Promise<string> {
   return outcome.session_id;
 }
 
+function holdSyntheticRunRelay(queryClient: QueryClient, runId: string): void {
+  void queryClient
+    .fetchQuery({
+      queryKey: a2aKeys.runRelay(runId),
+      queryFn: ({ signal }) =>
+        new Promise<typeof EMPTY_RELAY_TRANSCRIPT>((resolve) => {
+          signal.addEventListener("abort", () => resolve(EMPTY_RELAY_TRANSCRIPT), {
+            once: true,
+          });
+        }),
+      retry: false,
+    })
+    .catch(() => undefined);
+}
+
 describe("AgentPanel mount gating", () => {
   it("keeps the lifecycle feed alive without mounting the panel, review, or comments", async () => {
     // The feed must OUTLIVE the panel: the panel body now unmounts whenever the
@@ -120,7 +175,7 @@ describe("AgentPanel mount gating", () => {
     const runtime = createTestLocalizationRuntime();
     render(
       <I18nextProvider i18n={runtime}>
-        <QueryClientProvider client={new QueryClient()}>
+        <QueryClientProvider client={liveRenderTeardown.enroll(new QueryClient())}>
           <AgentLifecycleHost />
         </QueryClientProvider>
       </I18nextProvider>,
@@ -133,16 +188,20 @@ describe("AgentPanel mount gating", () => {
     });
   });
 
-  it("renders its region whenever it is mounted, carrying no open flag of its own", () => {
+  it("renders its region whenever it is mounted, carrying no open flag of its own", async () => {
     // The panel body is unconditional: WHETHER it renders is the center slot's
     // decision, made by DockWorkspace, so nothing here re-decides it.
-    renderPanel();
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    renderPanel(queryClient);
     const panel = document.querySelector("[data-agent-panel]");
     expect(panel).not.toBeNull();
     // The composer slot is present in an empty session.
     expect(document.querySelector("[data-agent-composer-slot]")).not.toBeNull();
     // No panel-owned resize handle: the dock sash is the one size control now.
     expect(panel?.querySelector("[role=separator]")).toBeFalsy();
+    await awaitPanelFiniteReads(queryClient, [["a2a", "active-runs"]]);
   });
 });
 
@@ -282,23 +341,31 @@ describe("AgentPanel transcript states", () => {
     // That is a beginning, not a conversation with nothing in it.
     const sessionId = await createLiveSession();
     useAgentPanel.setState({ currentSessionId: sessionId });
-    renderPanel();
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    renderPanel(queryClient);
     await waitFor(
       () => expect(document.querySelector("[data-agent-begin]")).not.toBeNull(),
       { timeout: 10_000 },
     );
     expect(document.querySelector("[data-agent-transcript]")).toBeNull();
+    await awaitPanelFiniteReads(queryClient);
   });
 
   it("keeps sent prompts visible in a populated conversation", async () => {
     const prompt = `Summarize the active document ${run}`;
     const sessionId = await createLiveSession(prompt);
     useAgentPanel.setState({ currentSessionId: sessionId });
-    renderPanel();
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    renderPanel(queryClient);
     await waitFor(() => expect(screen.getByText(prompt)).toBeTruthy(), {
       timeout: 10_000,
     });
     expect(document.querySelector("[data-agent-transcript-entries]")).not.toBeNull();
+    await awaitPanelFiniteReads(queryClient);
   });
 });
 
@@ -331,7 +398,7 @@ async function renderRefusedRun(condition: string, reason: string): Promise<void
   const scope = await liveScope();
   const runId = `run-refused-${condition}`;
   const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
+    defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   });
   queryClient.setQueryData(
     a2aKeys.runStatus(runId),
@@ -344,6 +411,7 @@ async function renderRefusedRun(condition: string, reason: string): Promise<void
       },
     }),
   );
+  holdSyntheticRunRelay(queryClient, runId);
   useAgentPanel.setState({
     currentSessionId: null,
     teamRunId: runId,
@@ -404,12 +472,13 @@ describe("AgentPanel refused-run remediation", () => {
     const scope = await liveScope();
     const runId = "run-still-running";
     const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
     });
     queryClient.setQueryData(
       a2aKeys.runStatus(runId),
       adaptRunStatus({ envelope: { run_id: runId, status: "running" } }),
     );
+    holdSyntheticRunRelay(queryClient, runId);
     useAgentPanel.setState({
       currentSessionId: null,
       teamRunId: runId,

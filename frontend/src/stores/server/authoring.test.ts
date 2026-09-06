@@ -11,6 +11,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { EngineError, type TiersBlock } from "./engine";
+import { logger, type LogRecord } from "../../platform/logger/logger";
 import { liveTransport } from "../../testing/liveClient";
 import {
   AUTHORING_STORE_UNAVAILABLE_KIND,
@@ -28,6 +29,7 @@ import {
   authoringKeys,
   directWriteWirePayload,
   getAuthoringStreamCursor,
+  getAuthoringLifecycleStopSettlement,
   handleAuthoringStreamChunk,
   interpretCommandOutcome,
   lastSeqBefore,
@@ -403,11 +405,76 @@ describe("authoring lifecycle stream ownership", () => {
     const unsubscribe = subscribeAuthoringLifecycle();
     await frameObserved;
     stopObserving();
-    unsubscribe();
+    const releaseResult = unsubscribe();
+    const stopSettlement = getAuthoringLifecycleStopSettlement();
     await readerCancelled;
+    await stopSettlement;
 
+    expect(releaseResult).toBeUndefined();
+    expect(getAuthoringLifecycleStopSettlement()).toBe(stopSettlement);
     expect(requestSignal?.aborted).toBe(false);
     expect(cancellations).toBe(1);
+  });
+
+  it("reports and preserves the original reader-cancel rejection without retrying", async () => {
+    const cancellationFailure = new Error("authoring reader cancellation failed");
+    const records: LogRecord[] = [];
+    const sink = { write: (record: LogRecord) => records.push(record) };
+    logger.addSink(sink);
+    let resolveFrameObserved: (() => void) | undefined;
+    const frameObserved = new Promise<void>((resolve) => {
+      resolveFrameObserved = resolve;
+    });
+    let calls = 0;
+    let frameSent = false;
+    const stopObserving = onAuthoringLifecycleEvent(() => resolveFrameObserved?.());
+    authoringClient.useTransport(async () => {
+      calls += 1;
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          pull(controller) {
+            if (frameSent) return;
+            frameSent = true;
+            controller.enqueue(
+              new TextEncoder().encode(
+                `event: lifecycle\ndata: ${JSON.stringify(lifecycleWire(92))}\n\n`,
+              ),
+            );
+          },
+          cancel() {
+            throw cancellationFailure;
+          },
+        }),
+        { status: 200 },
+      );
+    });
+
+    try {
+      const unsubscribe = subscribeAuthoringLifecycle();
+      await frameObserved;
+      stopObserving();
+      expect(unsubscribe()).toBeUndefined();
+      const originalSettlement = getAuthoringLifecycleStopSettlement();
+
+      await expect(originalSettlement).rejects.toBe(cancellationFailure);
+
+      expect(getAuthoringLifecycleStopSettlement()).toBe(originalSettlement);
+      expect(calls).toBe(1);
+      expect(records).toContainEqual(
+        expect.objectContaining({
+          level: "error",
+          namespace: "authoring.lifecycle",
+          message: "authoring lifecycle stop failed",
+          error: expect.objectContaining({
+            name: "Error",
+            message: cancellationFailure.message,
+          }),
+        }),
+      );
+    } finally {
+      stopObserving();
+      logger.removeSink(sink);
+    }
   });
 });
 
