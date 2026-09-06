@@ -5,7 +5,7 @@ tags:
 date: '2026-09-06'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:a01a31763e7f0fc18f3618fef991b49e835a3ec857ff1f9d72ae76d97f1a13b4'
+body_hash: 'sha256:f3be562e52935470147c5aafbc3145bdfeb04712a9078c196daa31e6fbf4f5d3'
 related:
   - "[[2026-08-01-a2a-agent-flow-adr]]"
   - "[[2026-08-01-agent-panel-shell-integration-adr]]"
@@ -13,7 +13,6 @@ related:
   - "[[2026-08-01-agent-panel-plan]]"
   - '[[2026-07-07-project-provisioning-adr]]'
 ---
-
 # `agent-panel` audit: `provider and model authority reconciliation`
 
 ## Scope
@@ -653,3 +652,216 @@ are resolved in code and discriminating tests against approved D8-D10. The
 correction remains pending formal code re-review and is not declared complete by
 this implementation pass.
 \n
+
+## 2026-09-06 formal review of authoritative current-setup correction
+
+Review target: `160ae18f5a89a94915117c6d1a2edc53e2455bbe`, exact parent
+`a93ffc9f42a1e1fedb7a2e16d81393528d40e6ab`. Review covered the exact seven
+committed paths against approved provisioning ADR `5d9a619c`, the earlier
+architecture PASS and runtime FAIL audits, the strict current-only provider
+contract, and the production route, process and test boundaries. Concurrent
+graph-simulation, design-system, lockfile and generated-local-storage work was
+excluded and preserved.
+
+### safe-preflight-failed-doctor-can-authorize-mutation | high | open
+
+Type: mutation safety and contract validation. Status: review-blocking.
+`parse_doctor` accepts any `vaultspec.spec.doctor.v1` object, while
+`doctor_proves_missing` does not require top-level `status: unchanged`; for
+non-core providers it also does not require `data.framework: present`. A
+schema-valid, exit-zero Doctor result that reports a failed status and a
+missing-looking provider entry therefore reaches `InstallMissing` and permits a
+mutation. D8d says malformed or disagreeing read evidence is never permission
+to mutate, and D9b requires both status and framework fields.
+
+Ownership: make the negative Doctor predicate as strict as the positive one:
+require the exact successful Doctor status, require the provider-appropriate
+framework state, validate the selected current entry's required types and
+values, and treat every other shape as indeterminate. Add separate malformed
+helper cases for failed status, missing/wrong framework, absent entry, wrong
+field types and contradictory missing fields, proving zero install spawn.
+
+### timeout-cancellation-is-not-definitive-on-windows | high | open
+
+Type: process lifetime and retry safety. Status: review-blocking. The bounded
+runner kills and reaps only the direct child, but Dashboard can launch Core
+through a console or uv wrapper whose descendant can survive direct-child
+termination on Windows. `run_capability_with_limits` nevertheless maps every
+bounded timeout to `TimeoutCancelled`, and setup releases the single-flight job
+under that terminal classification. A later retry can overlap the surviving
+writer. This contradicts D4 and D9, which require `timeout_cancelled` only when
+the active mutation is definitively cancelled and reaped and otherwise require
+indeterminate reconciliation.
+
+Ownership: use a process-tree/job-object cancellation boundary on Windows and
+prove the whole mutation tree exited before publishing `timeout_cancelled`.
+When that proof is unavailable, publish `indeterminate`, run authoritative
+reconciliation, and prevent blind replay or overlapping writers. Add a real
+wrapper-plus-descendant discriminator that leaves an observable mutation if
+only the wrapper is killed.
+
+### detached-setup-task-can-orphan-a-mutating-child | high | open
+
+Type: cancellation and shutdown safety. Status: review-blocking. The route
+throws away the `tokio::spawn` handle, and the child command is not configured
+with kill-on-drop or an equivalent task guard. Runtime shutdown or task
+cancellation while setup awaits Doctor, preview or install bypasses the normal
+timeout branch; the child may continue mutating after the registry and server
+that owned its single-flight state disappear.
+
+Ownership: give each aggregate an owned cancellation guard whose drop path
+terminates and reaps the full process tree, and retain task ownership through
+server shutdown. Persist or reconcile an indeterminate terminal result whenever
+definitive cancellation cannot be proved. Add cancellation-at-each-child-phase
+coverage with an observable descendant and zero overlapping retry.
+
+### declared-item-containment-is-only-lexical | high | open
+
+Type: target confinement and receipt integrity. Status: review-blocking.
+`safe_declared_items` rejects absolute and non-normal lexical components, but
+`validate_install_output` proves only `target.join(relative).exists()`. A
+symlink or Windows junction below the target can resolve outside it and still be
+accepted as a materialized producer item; safe preview reconciliation repeats
+the same existence-only check. D9a requires every declared path to exist under
+the canonical resolved target.
+
+Ownership: after lexical validation, canonicalize the target and every existing
+declared item and require each canonical item to remain under the canonical
+target. Keep missing and escaping items as distinct validation failures. Add
+file and directory symlink/junction escape discriminators for preview and
+install, including a normal in-target control.
+
+### setup-job-registry-allows-unbounded-running-growth | high | open
+
+Type: bounded resources. Status: review-blocking. `MAX_JOBS` and TTL eviction
+apply only to completed jobs. `match_or_reserve` inserts a distinct-key running
+job even when all slots are occupied, and the committed test explicitly expects
+`MAX_JOBS + 5` running jobs to survive. Thus an operator can grow the
+process-global registry and spawned work without bound, contrary to D4's
+bounded-registry rule.
+
+Ownership: make reservation capacity-aware. After pruning completed entries,
+refuse a new distinct reservation with a typed capacity response when no safe
+completed victim exists; identical attach and posture conflict must still work
+at capacity and no child may spawn on refusal. Add exact-cap concurrent tests
+for attach, conflict, distinct-key refusal and later admission after terminal
+pruning.
+
+### doctor-evidence-required-by-receipts-is-absent | high | open
+
+Type: evidence and reconciliation observability. Status: review-blocking.
+Per-ordinal receipts and final reconciliation publish only Doctor SHA-256
+digests. D8b and D9 require the exact validated Doctor evidence plus its digest,
+and the current response does not let an operator verify which authoritative
+status, framework and selected-provider facts justified `reconciled_existing`
+or `succeeded`.
+
+Ownership: publish a bounded, typed current-only Doctor projection containing
+schema, status, framework and only the command-bound current provider fields,
+plus the digest of the exact bounded producer response. Never return unrelated
+Doctor entries or fields. Bind the final projection and digest to every terminal
+receipt and test that injected unrelated/retired metadata cannot cross the wire.
+
+### raw-install-stdout-can-expose-open-world-metadata | high | open
+
+Type: wire minimization and no-legacy enforcement. Status: review-blocking.
+Install receipt decoding permits additional JSON fields and then returns exact
+`producer_stdout` through the polled job response. A producer can therefore add
+unrelated provider or retired metadata that Dashboard neither validates nor
+intends to serve. This conflicts with the current-only boundary and with the ADR
+language requiring unrelated metadata to be discarded, while D9a separately
+requires retaining exact stdout.
+
+Ownership: resolve the ADR tension explicitly. Prefer a closed, typed install
+evidence projection plus a digest of the exact bounded stdout on the wire; keep
+raw evidence only in a bounded non-wire evidence home if it must be retained.
+Alternatively, if exact raw stdout remains public, close the accepted producer
+object to an enumerated key schema and reject every extra key before success.
+Add injected unknown, unrelated-provider and retired-name fields proving none is
+served or accepted silently.
+
+### production-composition-lacks-real-core-target-evidence | high | open
+
+Type: test coverage and integration evidence. Status: review-blocking. The
+safe-partial and healthy tests exercise helper predicates. The tests labelled
+real process run PowerShell that emits hand-crafted JSON and then call the
+validator or `current_setup_outcome`; they do not invoke `run_current_setup`
+against a real Core executable and disposable target. Consequently the suite
+did not detect the failed-Doctor mutation path and does not prove the composed
+Doctor, preview, install, manifest, canonical-path and final-reconciliation
+flow.
+
+Ownership: add hermetic real-Core disposable-target integration through the
+production aggregate for core-only, one-missing, multiple-missing, healthy
+repeat and force. Assert exact spawned sequence, final strict manifest, full
+validated frozen/current evidence and digests, and all four ordered receipts.
+Keep malformed helper-process cases separate so failure injection remains
+deterministic. The integration must use the actual project-locked Core boundary,
+not a mock transport or a script that merely prints expected JSON.
+
+### preflight-timeout-loses-terminal-classification | medium | open
+
+Type: result classification. Initial Doctor and provider preview termination is
+reduced to missing optional evidence, after which setup emits generic
+`indeterminate` with `preflight evidence disagrees`. D8d requires a timeout or
+output breach to retain its D9 terminal classification and stop later mutation.
+
+Ownership: carry typed termination through preflight and preserve
+`timeout_cancelled` only when definitive full-tree cancellation is proved;
+otherwise retain the exact indeterminate/output/read failure reason. Test each
+preflight stage and later ordinals.
+
+### concurrent-posture-conflict-is-not-proved-at-the-route | medium | open
+
+Type: concurrency coverage. The barrier-driven HTTP test proves identical safe
+requests reserve once and attach once. Safe-versus-force conflict is covered
+only by sequential registry calls, so the route's confirmation, atomic
+reservation, typed 409 and zero-second-writer composition is not exercised
+concurrently.
+
+Ownership: add a barrier-driven provider-less HTTP safe/force test that accepts
+either request as the winner, proves one typed posture conflict names that job,
+and counts exactly one aggregate/child sequence.
+
+### real-process-tests-have-load-sensitive-five-second-budgets | medium | open
+
+Type: validation reliability. A parallel focused run observed the output-cap
+PowerShell process reported timeout and the four-receipt process returned no
+exit code; both passed alone, and the complete 22-test provisioning set passed
+serially. Fixed five-second ceilings make these environmental process tests
+sensitive to host contention and can obscure the intended discriminator.
+
+Ownership: synchronize on process readiness/output rather than scheduler timing,
+use a narrowly justified test-only budget, and keep production limits unchanged.
+The final broad library run also remains incomplete: it first encountered the
+separately owned authoring failure and was later stopped during concurrent live
+A2A lifecycle work.
+
+### authoritative-setup-correction-positive-controls | low | verified
+
+Type: architecture and scope. Atomic match-or-reserve, identical-posture attach,
+typed different-posture conflict, fixed `core`, `claude`, `antigravity`, `codex`
+order, `--skip core`, pre-spawn unsupported-membership refusal, per-ordinal safe
+convergence shape, force sequencing, strict manifest membership, aggregate
+deadline/output accounting and install envelope identity validation are present.
+No Core `all`, Gemini, deprecated setup alias or unrelated committed path was
+found. The setup/test extraction is coherent and `git diff --check` is clean.
+
+Independent exact-commit verification passed all 22 provisioning route tests
+serially with the pinned Rust 1.96 toolchain. The exact concurrent identical
+HTTP and four-receipt tests are included in that result. The implementation
+record also reports formatting, check and warnings-denied Clippy green. The
+broad run is not acceptance evidence for this correction because it was not
+completed.
+
+### authoritative-current-setup-formal-review | high | FAIL
+
+Type: formal implementation review disposition. Commit `160ae18f` resolves the
+two earlier runtime defects and preserves the current-only setup shape, but the
+seven HIGH findings above expose unsafe mutation admission, non-definitive
+process settlement, target escape, unbounded resource growth and incomplete or
+open wire evidence. The eighth HIGH finding records the missing real-Core
+composition proof required to make those state transitions reviewable. The
+commit is not review-passed. Correct every HIGH defect, add the specified
+discriminating evidence, and obtain another formal review before acceptance. No
+runtime, ADR decision, or plan row changed in this review.
