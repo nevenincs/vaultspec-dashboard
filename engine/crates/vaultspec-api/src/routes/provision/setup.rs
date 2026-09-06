@@ -417,9 +417,9 @@ pub(super) fn preflight_failure(
             "indeterminate",
             format!("{phase}_process_group_at_capacity"),
         )),
-        RunTermination::Indeterminate => {
-            Some(("indeterminate", format!("{phase}_runner_indeterminate")))
-        }
+        RunTermination::SpawnFailed => Some(("indeterminate", format!("{phase}_spawn_failed"))),
+        RunTermination::ReadFailed => Some(("indeterminate", format!("{phase}_read_failed"))),
+        RunTermination::WaitFailed => Some(("indeterminate", format!("{phase}_wait_failed"))),
     }
 }
 
@@ -428,7 +428,9 @@ fn run_cause(capture: &RunCapture) -> Option<&'static str> {
         RunTermination::TimeoutCancelled => Some("child_timeout_cancelled"),
         RunTermination::OutputCapped => Some("child_output_capped"),
         RunTermination::AtCapacity => Some("process_group_at_capacity"),
-        RunTermination::Indeterminate => Some("child_runner_indeterminate"),
+        RunTermination::SpawnFailed => Some("child_spawn_failed"),
+        RunTermination::ReadFailed => Some("child_read_failed"),
+        RunTermination::WaitFailed => Some("child_wait_failed"),
         RunTermination::Completed if capture.code.is_some_and(|code| code != 0) => {
             Some("child_exit_nonzero")
         }
@@ -794,7 +796,9 @@ pub(super) async fn run_current_setup(
             RunTermination::TimeoutCancelled => "timeout_cancelled",
             RunTermination::OutputCapped
             | RunTermination::AtCapacity
-            | RunTermination::Indeterminate => "indeterminate",
+            | RunTermination::SpawnFailed
+            | RunTermination::ReadFailed
+            | RunTermination::WaitFailed => "indeterminate",
             RunTermination::Completed if capture.code.is_some_and(|code| code != 0) => "failed",
             RunTermination::Completed if capture.code.is_none() => "indeterminate",
             RunTermination::Completed => "succeeded",
@@ -851,7 +855,9 @@ pub(super) async fn run_current_setup(
                 post_doctor.termination,
                 RunTermination::OutputCapped
                     | RunTermination::AtCapacity
-                    | RunTermination::Indeterminate
+                    | RunTermination::SpawnFailed
+                    | RunTermination::ReadFailed
+                    | RunTermination::WaitFailed
             )
         {
             "indeterminate"

@@ -896,10 +896,12 @@ pub(crate) async fn shutdown_jobs() {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RunTermination {
     Completed,
+    SpawnFailed,
     TimeoutCancelled,
     OutputCapped,
     AtCapacity,
-    Indeterminate,
+    ReadFailed,
+    WaitFailed,
 }
 
 #[derive(Debug)]
@@ -935,54 +937,7 @@ async fn run_capability_with_limits(argv: &[String], limits: BoundedLimits) -> R
     command.args(&argv[1..]);
     let outcome = match run_bounded(command, None, limits, CapPolicy::Refuse).await {
         Ok(outcome) => outcome,
-        Err(BoundedFault::Spawn(error)) => {
-            return RunCapture {
-                code: None,
-                stdout: String::new(),
-                stderr: format!("spawning {}: {error}", argv[0]),
-                captured_bytes: 0,
-                termination: RunTermination::Completed,
-            };
-        }
-        Err(BoundedFault::Timeout) => {
-            return RunCapture {
-                code: None,
-                stdout: String::new(),
-                stderr: format!("{} timed out after {}s", argv[0], limits.timeout.as_secs()),
-                captured_bytes: 0,
-                termination: RunTermination::TimeoutCancelled,
-            };
-        }
-        Err(BoundedFault::OverCap) => {
-            return RunCapture {
-                code: None,
-                stdout: String::new(),
-                stderr: format!(
-                    "{} produced over {} bytes of output (capped)",
-                    argv[0], limits.cap
-                ),
-                captured_bytes: limits.cap,
-                termination: RunTermination::OutputCapped,
-            };
-        }
-        Err(BoundedFault::Read(error) | BoundedFault::Wait(error)) => {
-            return RunCapture {
-                code: None,
-                stdout: String::new(),
-                stderr: format!("running {}: {error}", argv[0]),
-                captured_bytes: 0,
-                termination: RunTermination::AtCapacity,
-            };
-        }
-        Err(BoundedFault::AtCapacity) => {
-            return RunCapture {
-                code: None,
-                stdout: String::new(),
-                stderr: "bounded process-group capacity exhausted".into(),
-                captured_bytes: 0,
-                termination: RunTermination::Indeterminate,
-            };
-        }
+        Err(fault) => return capability_fault_capture(&argv[0], limits, fault),
     };
     let captured_bytes = (outcome.stdout.len() + outcome.stderr.len()) as u64;
     RunCapture {
@@ -991,6 +946,55 @@ async fn run_capability_with_limits(argv: &[String], limits: BoundedLimits) -> R
         stderr: outcome.stderr_lossy().into_owned(),
         captured_bytes,
         termination: RunTermination::Completed,
+    }
+}
+
+fn capability_fault_capture(
+    program: &str,
+    limits: BoundedLimits,
+    fault: BoundedFault,
+) -> RunCapture {
+    let (termination, detail, captured_bytes) = match fault {
+        BoundedFault::Spawn(error) => (
+            RunTermination::SpawnFailed,
+            format!("spawning {program}: {error}"),
+            0,
+        ),
+        BoundedFault::Timeout => (
+            RunTermination::TimeoutCancelled,
+            format!("{program} timed out after {}s", limits.timeout.as_secs()),
+            0,
+        ),
+        BoundedFault::OverCap => (
+            RunTermination::OutputCapped,
+            format!(
+                "{program} produced over {} bytes of output (capped)",
+                limits.cap
+            ),
+            limits.cap,
+        ),
+        BoundedFault::Read(error) => (
+            RunTermination::ReadFailed,
+            format!("reading {program} output: {error}"),
+            0,
+        ),
+        BoundedFault::Wait(error) => (
+            RunTermination::WaitFailed,
+            format!("awaiting {program} group exit: {error}"),
+            0,
+        ),
+        BoundedFault::AtCapacity => (
+            RunTermination::AtCapacity,
+            "bounded process-group capacity exhausted".into(),
+            0,
+        ),
+    };
+    RunCapture {
+        code: None,
+        stdout: String::new(),
+        stderr: detail,
+        captured_bytes,
+        termination,
     }
 }
 

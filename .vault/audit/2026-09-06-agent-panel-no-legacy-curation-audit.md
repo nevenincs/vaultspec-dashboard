@@ -5,7 +5,7 @@ tags:
 date: '2026-09-06'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:36f2110f343160f8a9dfe64f6e9a250557ad7d902ad6ec9b74568b7cefd303b7'
+body_hash: 'sha256:1f071a02cede987ef79d60cd7d4b524f749767bf95f3bf7798b36f6dbeba0c02'
 related:
   - "[[2026-08-01-a2a-agent-flow-adr]]"
   - "[[2026-08-01-agent-panel-shell-integration-adr]]"
@@ -1564,3 +1564,46 @@ obtain another formal review before acceptance.
   lifecycle work.
 - Exercise every bounded-runner fault through the real provisioning adapter so
   synthetic captures cannot mask future classification drift.
+## 2026-09-06 provisioning fault-adapter correction response
+
+Correction target: formal review audit `9a7ab9425bde7117c22bad974f91e1f32917482c`
+after bounded ownership commit `9b6ddef2`. Scope is the production
+`BoundedFault` adapter, setup preflight cause projection, and discriminating
+tests. No producer bytes, legacy provider, deprecated option, or compatibility
+behavior is introduced.
+
+### production-fault-adapter-is-bijective | medium | resolved
+
+Type: typed failure classification. The provisioning adapter now maps Spawn,
+Timeout, OverCap, Read, Wait, and AtCapacity to six distinct internal terminal
+states: `SpawnFailed`, `TimeoutCancelled`, `OutputCapped`, `ReadFailed`,
+`WaitFailed`, and `AtCapacity`. Setup causes remain correspondingly distinct as
+spawn, timeout, output-cap, read, wait, and process-group-capacity facts; none is
+collapsed or swapped. A table-driven discriminator calls the same production
+adapter for every `BoundedFault` variant and checks the exact preflight cause.
+Existing real-process timeout/output-cap coverage remains green.
+
+### process-capacity-reaches-safe-setup-wire | medium | resolved
+
+Type: end-to-end cause fidelity. The setup discriminator reserves all 64 real
+process-group permits, invokes safe current setup, and lets the actual Doctor
+spawn cross `run_bounded` and the production provisioning adapter. The aggregate
+is `indeterminate`, and its first receipt contains the closed typed cause
+`doctor_process_group_at_capacity`; no command is spawned and no raw stream
+field is served.
+
+### fault-adapter-correction-validation | medium | verified
+
+Type: validation evidence. Pinned Rust 1.96 `cargo check -p vaultspec-api
+--tests` is green. The six-fault production adapter matrix, end-to-end safe setup
+capacity case, and existing real-process malformed/timeout/output-cap case are
+green. The prior complete 30-test provisioning filter, 15-test bounded-child
+suite, real Core matrix, shutdown, containment, and HTTP proofs remain green.
+Final warnings-denied Clippy and Vaultspec Core corpus checks are recorded with
+the correction commit.
+
+### fault-adapter-correction-disposition | medium | pending-review
+
+Type: rolling review disposition. The open MEDIUM mapping defect from
+`9a7ab942` is corrected with production-adapter and end-to-end evidence. Closure
+remains pending mandatory formal code re-review.

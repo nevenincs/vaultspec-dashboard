@@ -298,7 +298,7 @@ fn outcome_parses_sync_envelope_on_success() {
 fn outcome_failure_on_nonzero_and_breach_is_indeterminate() {
     let (state, _) = outcome_value(Some(1), "boom", RunTermination::Completed);
     assert_eq!(state, JobState::Failed);
-    let (state, out) = outcome_value(None, "killed", RunTermination::Indeterminate);
+    let (state, out) = outcome_value(None, "killed", RunTermination::WaitFailed);
     assert_eq!(state, JobState::Failed);
     assert_eq!(out["outcome_indeterminate"], true);
 }
@@ -637,8 +637,8 @@ fn preflight_preserves_timeout_output_cap_and_runner_failure_causes_by_phase() {
         Some(("indeterminate", "preview_output_capped".into()))
     );
     assert_eq!(
-        setup::preflight_failure(&capture(RunTermination::Indeterminate), "doctor"),
-        Some(("indeterminate", "doctor_runner_indeterminate".into()))
+        setup::preflight_failure(&capture(RunTermination::ReadFailed), "doctor"),
+        Some(("indeterminate", "doctor_read_failed".into()))
     );
     assert_eq!(
         setup::preflight_failure(&capture(RunTermination::AtCapacity), "preview"),
@@ -670,6 +670,78 @@ fn nonzero_doctor_and_preview_exits_remain_distinct_from_state_disagreement() {
     assert_eq!(
         setup::validation_cause(&capture, &preview),
         Some("child_exit_nonzero")
+    );
+}
+
+#[test]
+fn production_fault_adapter_preserves_all_six_local_causes() {
+    let limits = BoundedLimits {
+        cap: 17,
+        timeout: Duration::from_secs(3),
+    };
+    let io = || std::io::Error::other("adapter proof");
+    let cases = [
+        (
+            BoundedFault::Spawn(io()),
+            RunTermination::SpawnFailed,
+            "phase_spawn_failed",
+        ),
+        (
+            BoundedFault::Timeout,
+            RunTermination::TimeoutCancelled,
+            "phase_timeout_cancelled",
+        ),
+        (
+            BoundedFault::OverCap,
+            RunTermination::OutputCapped,
+            "phase_output_capped",
+        ),
+        (
+            BoundedFault::Read(io()),
+            RunTermination::ReadFailed,
+            "phase_read_failed",
+        ),
+        (
+            BoundedFault::Wait(io()),
+            RunTermination::WaitFailed,
+            "phase_wait_failed",
+        ),
+        (
+            BoundedFault::AtCapacity,
+            RunTermination::AtCapacity,
+            "phase_process_group_at_capacity",
+        ),
+    ];
+    for (fault, termination, expected_cause) in cases {
+        let capture = capability_fault_capture("proof", limits, fault);
+        assert_eq!(capture.termination, termination);
+        assert_eq!(
+            setup::preflight_failure(&capture, "phase")
+                .expect("fault is terminal")
+                .1,
+            expected_cause
+        );
+    }
+}
+
+#[tokio::test]
+async fn setup_process_group_capacity_exhaustion_is_end_to_end_indeterminate() {
+    let permits = crate::bounded_child::test_reserve_all_group_slots();
+    let target = tempfile::tempdir().expect("capacity target");
+    let (_, outcome) = setup::run_current_setup(
+        "capacity",
+        false,
+        vec![(Provider::Core, vec!["must-not-spawn".into()])],
+        target.path(),
+    )
+    .await;
+    drop(permits);
+    let receipt = &outcome["aggregate"]["providers"][0];
+    assert_eq!(outcome["aggregate"]["status"], "indeterminate");
+    assert_eq!(receipt["state"], "indeterminate");
+    assert_eq!(
+        receipt["evidence"]["error_kind"], "doctor_process_group_at_capacity",
+        "the real safe-setup adapter preserves capacity through preflight wire evidence"
     );
 }
 
