@@ -729,6 +729,295 @@ export const NATIVE_CONTROL_LEDGER = [
         "Remove the comment compose box's native textarea and duplicated field-state classes during comment-authoring migration.",
     },
   },
+  {
+    source: {
+      path: "frontend/src/app/agent/ComposerModelPicker.tsx",
+      owner: "ProviderModelRow",
+      slot: "model-option",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/OptionRow.tsx",
+      name: "OptionRow",
+      status: "planned",
+    },
+    rationale: {
+      summary: "ProviderModelRow is a behaviorally ordinary selectable option row.",
+      equivalence:
+        "The row needs the planned OptionRow contract for selection, activation, disabled state, accessible pressed state, leading or trailing content, and forwarded focus props.",
+      replacement:
+        "Compose OptionRow while retaining catalog freshness, provider and model identity, health reasons, selection derivation, and popover dismissal.",
+      deletion:
+        "Remove the provider model row's native button and duplicated option-state classes during model-picker migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/menu/ContextMenuHost.tsx",
+      owner: "ContextMenuHost",
+      slot: "context-menu-command",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/OptionRow.tsx",
+      name: "OptionRow",
+      status: "planned",
+    },
+    rationale: {
+      summary: "ContextMenuHost renders behaviorally ordinary command option rows.",
+      equivalence:
+        "The rows need the planned OptionRow contract for activation, disabled state, leading and trailing content, and forwarded role, tab stop, pointer, and keyboard props.",
+      replacement:
+        "Compose OptionRow while retaining menuitem semantics, focus-zone cursoring, destructive confirmation, resolver dispatch, shortcuts, and dismissal.",
+      deletion:
+        "Remove the context menu's native command button and duplicated row-state classes during context-menu migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/timeline/DateBasisSelect.tsx",
+      owner: "DateBasisSelect",
+      slot: "date-basis-option",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/OptionRow.tsx",
+      name: "OptionRow",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "DateBasisSelect renders behaviorally ordinary single-choice option rows.",
+      equivalence:
+        "The rows need the planned OptionRow contract for selection, activation, disabled state, and forwarded menuitemradio, checked, focus-zone, keyboard, and title props.",
+      replacement:
+        "Compose OptionRow while retaining the portaled menu, date-criterion identity, roving focus, activation-only selection, and close behavior.",
+      deletion:
+        "Remove the date-basis native option button and duplicated row-state classes during option-row migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/stage/FilterMenu.tsx",
+      owner: "FilterChip",
+      slot: "compact-facet-option",
+    },
+    element: "button",
+    disposition: "retain-semantic-seam",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/stage/FilterMenu.tsx",
+      name: "FilterChip",
+      status: "existing",
+    },
+    rationale: {
+      summary: "FilterChip owns the compact filter sheet's pressed facet control.",
+      distinction:
+        "Its wrapped pill geometry and independent multi-select pressed semantics are integral to the compact filter composition and do not match the desktop FacetRow or ordinary row-shaped OptionRow contract.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/stage/FilterMenu.tsx",
+      owner: "ChipsBody",
+      slot: "reset-filters-action",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/Button.tsx",
+      name: "Button",
+      status: "existing",
+    },
+    rationale: {
+      summary: "ChipsBody duplicates an ordinary text reset action.",
+      equivalence:
+        "The action needs the canonical Button contract for activation, accessible text, focus treatment, and a quiet visual variant.",
+      replacement:
+        "Compose Button while retaining conditional visibility, reset intent, compact typography, and the existing text-action emphasis.",
+      deletion:
+        "Remove the compact filter body's native reset button and duplicated action-state classes during filter migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/stage/FilterMenu.tsx",
+      owner: "ChipsBody",
+      slot: "show-results-action",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/Button.tsx",
+      name: "Button",
+      status: "existing",
+    },
+    rationale: {
+      summary: "ChipsBody duplicates an ordinary primary apply action.",
+      equivalence:
+        "The action needs the canonical Button contract for activation, accessible text, focus treatment, full-width layout, and primary visual state.",
+      replacement:
+        "Compose Button while retaining optional rendering, apply-and-close intent, full-width compact layout, and current label.",
+      deletion:
+        "Remove the compact filter body's native show-results button and duplicated primary-action classes during filter migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/stage/FilterMenu.tsx",
+      owner: "FilterMenu",
+      slot: "reset-filters-action",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/Button.tsx",
+      name: "Button",
+      status: "existing",
+    },
+    rationale: {
+      summary: "FilterMenu duplicates an ordinary text reset action.",
+      equivalence:
+        "The action needs the canonical Button contract for activation, accessible text, focus treatment, and a quiet visual variant.",
+      replacement:
+        "Compose Button while retaining conditional visibility, reset intent, regular-menu density, and the existing text-action emphasis.",
+      deletion:
+        "Remove the regular filter menu's native reset button and duplicated action-state classes during filter migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/palette/CommandPalette.tsx",
+      owner: "CommandPaletteSurface",
+      slot: "command-option",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/OptionRow.tsx",
+      name: "OptionRow",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "CommandPaletteSurface renders behaviorally ordinary command option rows.",
+      equivalence:
+        "The rows need the planned OptionRow contract for selection, activation, disabled state, leading and trailing content, and forwarded listbox-option and pointer props.",
+      replacement:
+        "Compose OptionRow while retaining command scoring, active-descendant cursoring, confirmation state, shortcuts, dispatch, and dismissal.",
+      deletion:
+        "Remove the command palette's native option button and duplicated row-state classes during command migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/palette/SearchPaletteSurface.tsx",
+      owner: "SearchPaletteSurface",
+      slot: "compact-cancel-action",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/Button.tsx",
+      name: "Button",
+      status: "existing",
+    },
+    rationale: {
+      summary: "SearchPaletteSurface duplicates an ordinary compact cancel action.",
+      equivalence:
+        "The text action needs the canonical Button contract for activation, accessible text, focus treatment, and quiet emphasis.",
+      replacement:
+        "Compose Button while retaining compact-only placement, palette dismissal, and the existing cancel label and emphasis.",
+      deletion:
+        "Remove the compact search palette's native cancel button and duplicated action-state classes during search-surface migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/palette/SearchPaletteSurface.tsx",
+      owner: "SearchPaletteSurface",
+      slot: "compact-search-result",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/OptionRow.tsx",
+      name: "OptionRow",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "SearchPaletteSurface renders compact search results as ordinary option rows.",
+      equivalence:
+        "The rows need the planned OptionRow contract for activation, disabled state, result content, and forwarded listbox-option state.",
+      replacement:
+        "Compose OptionRow while retaining result identity, permanent entity activation, frame intent, error containment, and palette dismissal.",
+      deletion:
+        "Remove the compact search result's native button and duplicated row wrapper during search-result migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/palette/SearchPaletteSurface.tsx",
+      owner: "SearchPaletteSurface",
+      slot: "split-search-result",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/OptionRow.tsx",
+      name: "OptionRow",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "SearchPaletteSurface renders split-preview search results as ordinary option rows.",
+      equivalence:
+        "The rows need the planned OptionRow contract for selection, activation, disabled state, result content, and forwarded listbox-option and tab-stop state.",
+      replacement:
+        "Compose OptionRow while retaining cursor selection, preview-only activation, active-descendant coordination, and the open preview panel.",
+      deletion:
+        "Remove the split-preview search result's native button and duplicated row wrapper during search-result migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/palette/SearchPaletteSurface.tsx",
+      owner: "SearchPaletteSurface",
+      slot: "collapsed-search-result",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/OptionRow.tsx",
+      name: "OptionRow",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "SearchPaletteSurface renders collapsed search results as ordinary option rows.",
+      equivalence:
+        "The rows need the planned OptionRow contract for selection, activation, disabled state, result content, and forwarded listbox-option and tab-stop state.",
+      replacement:
+        "Compose OptionRow while retaining cursor selection, reveal-selected behavior, active-descendant coordination, and deferred preview loading.",
+      deletion:
+        "Remove the collapsed search result's native button and duplicated row wrapper during search-result migration.",
+    },
+  },
 ] as const satisfies readonly NativeControlLedgerEntry[];
 export const RELATIVE_VALUE_LEDGER: readonly RelativeValueLedgerEntry[] = [];
 export const NAMING_DEBT_LEDGER: readonly NamingDebtLedgerEntry[] = [];
