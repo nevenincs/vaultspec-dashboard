@@ -496,7 +496,8 @@ pub async fn serve(port: Option<u16>, scope: Option<String>, no_seat: bool) -> s
     // cancels their active phase, and this bounded join keeps the task ownership
     // alive until each drop guard has terminated its group.
     routes::provision::shutdown_jobs().await;
-    if let Err(error) = crate::bounded_child::reap_terminated_groups().await {
+    if let Err(error) = crate::bounded_child::reap_terminated_groups(Duration::from_secs(10)).await
+    {
         result = Err(std::io::Error::other(format!(
             "provisioning process-group cleanup failed: {error}"
         )));

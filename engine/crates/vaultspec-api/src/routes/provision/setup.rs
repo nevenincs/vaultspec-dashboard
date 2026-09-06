@@ -413,6 +413,10 @@ pub(super) fn preflight_failure(
             Some(("timeout_cancelled", format!("{phase}_timeout_cancelled")))
         }
         RunTermination::OutputCapped => Some(("indeterminate", format!("{phase}_output_capped"))),
+        RunTermination::AtCapacity => Some((
+            "indeterminate",
+            format!("{phase}_process_group_at_capacity"),
+        )),
         RunTermination::Indeterminate => {
             Some(("indeterminate", format!("{phase}_runner_indeterminate")))
         }
@@ -423,6 +427,7 @@ fn run_cause(capture: &RunCapture) -> Option<&'static str> {
     match capture.termination {
         RunTermination::TimeoutCancelled => Some("child_timeout_cancelled"),
         RunTermination::OutputCapped => Some("child_output_capped"),
+        RunTermination::AtCapacity => Some("process_group_at_capacity"),
         RunTermination::Indeterminate => Some("child_runner_indeterminate"),
         RunTermination::Completed if capture.code.is_some_and(|code| code != 0) => {
             Some("child_exit_nonzero")
@@ -430,6 +435,13 @@ fn run_cause(capture: &RunCapture) -> Option<&'static str> {
         RunTermination::Completed if capture.code.is_none() => Some("child_exit_unobserved"),
         RunTermination::Completed => None,
     }
+}
+
+pub(super) fn validation_cause<T>(
+    capture: &RunCapture,
+    validation: &Result<T, ValidationFault>,
+) -> Option<&'static str> {
+    run_cause(capture).or_else(|| validation.as_ref().err().map(|fault| fault.kind()))
 }
 
 pub(super) fn decide_preflight(
@@ -764,9 +776,9 @@ pub(super) async fn run_current_setup(
                     false,
                     json!({
                         "error_kind":"preflight_evidence_disagreement",
-                        "preview_cause":preview_validation.as_ref().err().map(|fault| fault.kind()),
-                        "doctor_current_cause":doctor_current.as_ref().err().map(|fault| fault.kind()),
-                        "doctor_missing_cause":doctor_missing.as_ref().err().map(|fault| fault.kind()),
+                        "preview_cause":validation_cause(&preview, &preview_validation),
+                        "doctor_current_cause":validation_cause(doctor_run, &doctor_current),
+                        "doctor_missing_cause":validation_cause(doctor_run, &doctor_missing),
                         "preview_digest":digest(&preview.stdout),
                         "doctor_digest":digest(&doctor_run.stdout),
                     }),
@@ -780,7 +792,9 @@ pub(super) async fn run_current_setup(
         let capture = run_setup_bounded(argv, started, &mut remaining_output).await;
         let state = match capture.termination {
             RunTermination::TimeoutCancelled => "timeout_cancelled",
-            RunTermination::OutputCapped | RunTermination::Indeterminate => "indeterminate",
+            RunTermination::OutputCapped
+            | RunTermination::AtCapacity
+            | RunTermination::Indeterminate => "indeterminate",
             RunTermination::Completed if capture.code.is_some_and(|code| code != 0) => "failed",
             RunTermination::Completed if capture.code.is_none() => "indeterminate",
             RunTermination::Completed => "succeeded",
@@ -835,7 +849,9 @@ pub(super) async fn run_current_setup(
         } else if matches!(state, "indeterminate")
             || matches!(
                 post_doctor.termination,
-                RunTermination::OutputCapped | RunTermination::Indeterminate
+                RunTermination::OutputCapped
+                    | RunTermination::AtCapacity
+                    | RunTermination::Indeterminate
             )
         {
             "indeterminate"

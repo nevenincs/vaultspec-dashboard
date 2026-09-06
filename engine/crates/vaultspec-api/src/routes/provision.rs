@@ -898,6 +898,7 @@ enum RunTermination {
     Completed,
     TimeoutCancelled,
     OutputCapped,
+    AtCapacity,
     Indeterminate,
 }
 
@@ -969,6 +970,15 @@ async fn run_capability_with_limits(argv: &[String], limits: BoundedLimits) -> R
                 code: None,
                 stdout: String::new(),
                 stderr: format!("running {}: {error}", argv[0]),
+                captured_bytes: 0,
+                termination: RunTermination::AtCapacity,
+            };
+        }
+        Err(BoundedFault::AtCapacity) => {
+            return RunCapture {
+                code: None,
+                stdout: String::new(),
+                stderr: "bounded process-group capacity exhausted".into(),
                 captured_bytes: 0,
                 termination: RunTermination::Indeterminate,
             };

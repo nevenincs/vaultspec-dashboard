@@ -5,7 +5,7 @@ tags:
 date: '2026-09-06'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:1b7ab07d2d5e7172b1956b82147c2f61d274e8f72b9c3e94d37906680605d998'
+body_hash: 'sha256:f001b12ab4b15b0caa89f7f88ad17cb4e864ca20c9ba95276e4dbe386d42ad34'
 related:
   - "[[2026-08-01-a2a-agent-flow-adr]]"
   - "[[2026-08-01-agent-panel-shell-integration-adr]]"
@@ -1437,3 +1437,55 @@ and obtain another formal review before acceptance.
   typed unresolved-cleanup failure if full-tree proof cannot complete.
 - Preserve nonzero Doctor and preview process causes alongside closed validator
   causes, digests, and zero-mutation evidence.
+## 2026-09-06 bounded reaper correction re-review response
+
+Correction target: formal Dashboard review audit `72173b06`, following process
+and evidence correction `5da89420`. Scope is bounded child-process admission,
+cancelled-group ownership and shutdown classification, plus setup preflight
+cause preservation. No legacy or deprecated surface is introduced.
+
+### cancelled-group-ownership-is-capped-and-self-pruning | high | resolved
+
+Type: resource ownership. Every bounded child must first acquire one of 64
+explicit owned-process-group permits. Cancellation transfers that permit and the
+group handle into a keyed waiter registry, so the number of live groups and
+waiters cannot exceed admission. A completed waiter observes group-empty,
+releases its permit, and removes its own handle during runtime. A repeated real
+wrapper/descendant cancellation test drives twelve cancellations without an
+explicit drain and proves the waiter count converges to zero; a separate test
+reserves all 64 permits and proves the next command is refused before spawn.
+
+### group-shutdown-has-one-terminal-budget | high | resolved
+
+Type: bounded shutdown. Service shutdown drains the bounded waiter map under one
+absolute ten-second deadline shared by all group-empty joins. A waiter error is
+typed `GroupWaitUnresolved`; deadline exhaustion is typed `DeadlineExceeded`.
+Neither condition is reported as definitive cleanup, and the server continues
+its remaining cleanup before returning the error. A deliberately pending waiter
+proves the drain returns `DeadlineExceeded` within its 150 ms test budget and
+does not hang or report success.
+
+### nonzero-preflight-exits-remain-distinct | medium | resolved
+
+Type: aggregate cause fidelity. Doctor and preview validation now combine
+process and schema evidence without replacing a completed nonzero child exit
+with generic producer state disagreement. `child_exit_nonzero` wins for that
+case; timeout, output cap, process-group admission exhaustion, runner failure,
+and typed validation disagreement remain separate causes. The discriminator
+proves both Doctor and preview preserve the nonzero-exit cause.
+
+### bounded-reaper-correction-validation | medium | verified
+
+Type: validation evidence. Pinned Rust 1.96 gates are green:
+`cargo check -p vaultspec-api --tests`; 15 bounded-child tests including
+self-pruning, hard admission, and wedged shutdown; exact service-shutdown and
+nonzero-preflight discriminators; 30 provisioning tests including the real Core
+matrix (67.51 seconds); and `cargo clippy -p vaultspec-api --tests -- -D
+warnings`. Existing raw-stream closure, current-only provider, containment,
+receipt, HTTP concurrency, and aggregate reconciliation proofs remain intact.
+
+### bounded-reaper-correction-disposition | high | pending-review
+
+Type: rolling review disposition. Both HIGH findings and the MEDIUM finding from
+`72173b06` now have bounded implementation and discriminating evidence. Closure
+remains pending formal code re-review of the correction commit.

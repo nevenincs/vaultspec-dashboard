@@ -289,10 +289,72 @@ async fn dropping_the_runner_future_terminates_the_real_descendant_tree() {
     wait_for_heartbeat(&heartbeat).await;
     run.abort();
     let _ = run.await;
-    reap_terminated_groups()
+    reap_terminated_groups(std::time::Duration::from_secs(5))
         .await
         .expect("cancelled group is observed empty");
     assert_heartbeat_stopped(&heartbeat).await;
+}
+
+#[tokio::test]
+async fn repeated_cancelled_groups_self_prune_without_registry_growth() {
+    let dir = tempfile::tempdir().expect("cancelled group heartbeat directory");
+    for index in 0..12 {
+        let heartbeat = dir.path().join(format!("cancelled-{index}"));
+        let run = tokio::spawn(run_bounded(
+            tree_command(&heartbeat),
+            None,
+            BoundedLimits {
+                cap: 4 * 1024,
+                timeout: std::time::Duration::from_secs(30),
+            },
+            CapPolicy::Refuse,
+        ));
+        wait_for_heartbeat(&heartbeat).await;
+        run.abort();
+        let _ = run.await;
+    }
+    for _ in 0..300 {
+        if test_reaper_count() == 0 {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    panic!(
+        "completed cancellation waiters did not self-prune: {} remain",
+        test_reaper_count()
+    );
+}
+
+#[tokio::test]
+async fn wedged_group_waiter_exhausts_one_shutdown_budget_as_unresolved() {
+    test_register_wedged_reaper();
+    let started = std::time::Instant::now();
+    assert_eq!(
+        reap_terminated_groups(std::time::Duration::from_millis(150)).await,
+        Err(ReapFault::DeadlineExceeded)
+    );
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(1),
+        "a wedged waiter cannot hang service shutdown"
+    );
+    assert_eq!(test_reaper_count(), 0, "exhausted ownership was drained");
+}
+
+#[tokio::test]
+async fn process_group_admission_refuses_work_at_the_explicit_cap() {
+    let mut permits = Vec::with_capacity(MAX_OWNED_GROUPS);
+    for _ in 0..MAX_OWNED_GROUPS {
+        permits.push(
+            Arc::clone(&GROUP_PERMITS)
+                .try_acquire_owned()
+                .expect("reserve test process-group slot"),
+        );
+    }
+    let fault = run_bounded(chatty_command(), None, PROOF_LIMITS, CapPolicy::Refuse)
+        .await
+        .expect_err("the sixty-fifth process group is refused before spawn");
+    assert!(matches!(fault, BoundedFault::AtCapacity));
+    drop(permits);
 }
 
 #[tokio::test]

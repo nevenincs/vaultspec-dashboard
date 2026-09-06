@@ -229,6 +229,10 @@ pub(crate) fn bounded_fault_error(
             StatusCode::BAD_GATEWAY,
             format!("awaiting {program} exit: {error}"),
         ),
+        BoundedFault::AtCapacity => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            format!("the bounded process-group capacity for {program} is exhausted"),
+        ),
     };
     api_error(state, status, detail)
 }

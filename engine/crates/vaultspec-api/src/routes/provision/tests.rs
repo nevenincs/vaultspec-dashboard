@@ -72,7 +72,7 @@ async fn service_shutdown_aborts_owned_runner_and_awaits_group_empty() {
     wait_for_shutdown_heartbeat(&heartbeat).await;
     test_register_owned_task("shutdown-tree-proof", owned);
     shutdown_jobs().await;
-    crate::bounded_child::reap_terminated_groups()
+    crate::bounded_child::reap_terminated_groups(Duration::from_secs(5))
         .await
         .expect("service shutdown observes every group empty");
     let stopped = std::fs::read(&heartbeat).expect("read stopped heartbeat");
@@ -641,8 +641,35 @@ fn preflight_preserves_timeout_output_cap_and_runner_failure_causes_by_phase() {
         Some(("indeterminate", "doctor_runner_indeterminate".into()))
     );
     assert_eq!(
+        setup::preflight_failure(&capture(RunTermination::AtCapacity), "preview"),
+        Some(("indeterminate", "preview_process_group_at_capacity".into()))
+    );
+    assert_eq!(
         setup::preflight_failure(&capture(RunTermination::Completed), "preview"),
         None
+    );
+}
+
+#[test]
+fn nonzero_doctor_and_preview_exits_remain_distinct_from_state_disagreement() {
+    let capture = RunCapture {
+        code: Some(7),
+        stdout: String::new(),
+        stderr: String::new(),
+        captured_bytes: 0,
+        termination: RunTermination::Completed,
+    };
+    let doctor: Result<Value, setup::ValidationFault> =
+        Err(setup::ValidationFault::StateDisagreement);
+    let preview: Result<setup::ValidatedInstall, setup::ValidationFault> =
+        Err(setup::ValidationFault::StateDisagreement);
+    assert_eq!(
+        setup::validation_cause(&capture, &doctor),
+        Some("child_exit_nonzero")
+    );
+    assert_eq!(
+        setup::validation_cause(&capture, &preview),
+        Some("child_exit_nonzero")
     );
 }
 
