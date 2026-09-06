@@ -797,6 +797,22 @@ impl Registry {
             }
             Some(existing) => Reservation::Conflict(existing.id.clone()),
             None => {
+                if self.jobs.len() >= MAX_JOBS {
+                    let victim = self
+                        .order
+                        .iter()
+                        .find(|id| {
+                            self.jobs
+                                .get(*id)
+                                .is_some_and(|candidate| candidate.state != JobState::Running)
+                        })
+                        .cloned();
+                    let Some(victim) = victim else {
+                        return Reservation::AtCapacity;
+                    };
+                    self.jobs.remove(&victim);
+                    self.order.retain(|id| id != &victim);
+                }
                 let wire = job.to_wire();
                 self.insert(job);
                 Reservation::Reserved(wire)
@@ -823,9 +839,12 @@ enum Reservation {
     Reserved(Value),
     Attach(Value),
     Conflict(String),
+    AtCapacity,
 }
 
 static REGISTRY: LazyLock<Mutex<Registry>> = LazyLock::new(|| Mutex::new(Registry::new()));
+static TASKS: LazyLock<Mutex<HashMap<String, tokio::task::JoinHandle<()>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 static JOB_SEQ: AtomicU64 = AtomicU64::new(1);
 
 fn next_job_id() -> String {
@@ -836,12 +855,52 @@ fn registry_lock() -> std::sync::MutexGuard<'static, Registry> {
     REGISTRY.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+fn task_lock() -> std::sync::MutexGuard<'static, HashMap<String, tokio::task::JoinHandle<()>>> {
+    TASKS.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+#[cfg(test)]
+pub(crate) fn test_job_and_task_counts(id: &str) -> (usize, usize) {
+    (
+        registry_lock()
+            .jobs
+            .values()
+            .filter(|job| job.id == id)
+            .count(),
+        usize::from(task_lock().contains_key(id)),
+    )
+}
+
+/// Join every aggregate task still owned by the provisioning plane. The shared
+/// shutdown latch makes each task drop its active bounded process-tree future
+/// first; retaining and joining the handles keeps serve shutdown from orphaning
+/// work whose single-flight registry disappears with the process.
+pub(crate) async fn shutdown_jobs() {
+    let tasks: Vec<_> = task_lock().drain().map(|(_, task)| task).collect();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    for mut task in tasks {
+        let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
+            task.abort();
+            let _ = task.await;
+            continue;
+        };
+        if tokio::time::timeout(remaining, &mut task).await.is_err() {
+            // Dropping the bounded runner closes its kill-on-drop process group.
+            // The registry remains indeterminate rather than publishing a
+            // cancellation result that was not observed and reaped here.
+            task.abort();
+            let _ = task.await;
+        }
+    }
+}
+
 // --- the bounded job runner ---------------------------------------------------
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RunTermination {
     Completed,
     TimeoutCancelled,
+    OutputCapped,
     Indeterminate,
 }
 
@@ -850,6 +909,7 @@ struct RunCapture {
     code: Option<i32>,
     stdout: String,
     stderr: String,
+    captured_bytes: u64,
     termination: RunTermination,
 }
 
@@ -864,15 +924,14 @@ impl RunCapture {
     }
 
     fn bytes(&self) -> u64 {
-        (self.stdout.len() + self.stderr.len()) as u64
+        self.captured_bytes
     }
 }
 
 /// Spawn a capability's argv bounded (output cap + wall-clock), capturing the
-/// combined streams. On a timeout the canonical runner kills and reaps the
-/// direct child and reports a timeout cancellation. An output breach or a
-/// read/wait failure is indeterminate because a console-script grandchild can
-/// outlive the direct child; callers must re-read `GET /provision/status`.
+/// combined streams. The canonical runner owns a process group, so a timeout or
+/// cap breach kills and reaps the complete tree. A read/wait failure remains
+/// indeterminate because the runner could not prove that lifecycle completed.
 async fn run_capability_with_limits(argv: &[String], limits: BoundedLimits) -> RunCapture {
     let mut command = tokio::process::Command::new(&argv[0]);
     command.args(&argv[1..]);
@@ -883,6 +942,7 @@ async fn run_capability_with_limits(argv: &[String], limits: BoundedLimits) -> R
                 code: None,
                 stdout: String::new(),
                 stderr: format!("spawning {}: {error}", argv[0]),
+                captured_bytes: 0,
                 termination: RunTermination::Completed,
             };
         }
@@ -891,6 +951,7 @@ async fn run_capability_with_limits(argv: &[String], limits: BoundedLimits) -> R
                 code: None,
                 stdout: String::new(),
                 stderr: format!("{} timed out after {}s", argv[0], limits.timeout.as_secs()),
+                captured_bytes: 0,
                 termination: RunTermination::TimeoutCancelled,
             };
         }
@@ -902,7 +963,8 @@ async fn run_capability_with_limits(argv: &[String], limits: BoundedLimits) -> R
                     "{} produced over {} bytes of output (capped)",
                     argv[0], limits.cap
                 ),
-                termination: RunTermination::Indeterminate,
+                captured_bytes: limits.cap,
+                termination: RunTermination::OutputCapped,
             };
         }
         Err(BoundedFault::Read(error) | BoundedFault::Wait(error)) => {
@@ -910,14 +972,17 @@ async fn run_capability_with_limits(argv: &[String], limits: BoundedLimits) -> R
                 code: None,
                 stdout: String::new(),
                 stderr: format!("running {}: {error}", argv[0]),
+                captured_bytes: 0,
                 termination: RunTermination::Indeterminate,
             };
         }
     };
+    let captured_bytes = (outcome.stdout.len() + outcome.stderr.len()) as u64;
     RunCapture {
         code: outcome.code,
         stdout: outcome.stdout_lossy().into_owned(),
         stderr: outcome.stderr_lossy().into_owned(),
+        captured_bytes,
         termination: RunTermination::Completed,
     }
 }
@@ -1061,6 +1126,14 @@ pub(crate) async fn provision_run(
                 ),
             ));
         }
+        Reservation::AtCapacity => {
+            return Err(super::api_error_kind(
+                &state,
+                StatusCode::CONFLICT,
+                "at_capacity",
+                format!("provisioning registry is at its hard {MAX_JOBS}-job capacity"),
+            ));
+        }
     };
 
     // Run the job in the background so the request returns immediately with the
@@ -1070,21 +1143,44 @@ pub(crate) async fn provision_run(
     let bg_id = id.clone();
     let mutates_project = capability.mutates_project();
     let bg_target = target.clone();
-    tokio::spawn(async move {
-        let (job_state, outcome) = match setup_commands {
-            Some(commands) => {
-                setup::run_current_setup(
-                    &bg_id,
-                    matches!(capability, Capability::SetupCurrent { force: true }),
-                    commands,
-                    bg_target.as_deref().expect("setup target"),
-                )
-                .await
+    let task_id = bg_id.clone();
+    let (start_tx, start_rx) = tokio::sync::oneshot::channel();
+    let task = tokio::spawn(async move {
+        let _ = start_rx.await;
+        let operation = async {
+            match setup_commands {
+                Some(commands) => {
+                    setup::run_current_setup(
+                        &bg_id,
+                        matches!(capability, Capability::SetupCurrent { force: true }),
+                        commands,
+                        bg_target.as_deref().expect("setup target"),
+                    )
+                    .await
+                }
+                None => {
+                    let argv = argv.expect("single capability argv");
+                    let capture = run_capability(&argv).await;
+                    outcome_value(capture.code, &capture.combined(), capture.termination)
+                }
             }
-            None => {
-                let argv = argv.expect("single capability argv");
-                let capture = run_capability(&argv).await;
-                outcome_value(capture.code, &capture.combined(), capture.termination)
+        };
+        let (job_state, outcome) = tokio::select! {
+            result = operation => result,
+            _ = bg_state.shutdown.wait() => {
+                if matches!(capability, Capability::SetupCurrent { .. }) {
+                    setup::current_setup_outcome(setup::terminal_receipts(
+                        &bg_id,
+                        "indeterminate",
+                        json!({"error_kind":"shutdown_cancelled"}),
+                        "full_tree_drop_pending",
+                    ))
+                } else {
+                    (JobState::Failed, json!({
+                        "outcome_indeterminate": true,
+                        "error_kind": "shutdown_cancelled",
+                    }))
+                }
             }
         };
         // Reconcile before publishing the terminal job state, so a client that
@@ -1099,7 +1195,10 @@ pub(crate) async fn provision_run(
             }
         }
         registry_lock().set_outcome(&bg_id, job_state, outcome);
+        task_lock().remove(&bg_id);
     });
+    task_lock().insert(task_id, task);
+    let _ = start_tx.send(());
 
     Ok(super::envelope(
         json!({ "job": wire, "attached": false }),

@@ -120,7 +120,13 @@ pub(super) fn manifest_is_exact(manifest: Option<&ManifestState>) -> bool {
     manifest.is_some_and(|m| m.version == "2.0" && m.serial > 0 && m.installed == expected)
 }
 
-pub(super) fn safe_declared_items(envelope: &Value) -> Result<Vec<String>, String> {
+#[derive(Debug)]
+pub(super) struct ValidatedInstall {
+    pub(super) projection: Value,
+    pub(super) all_items_exist: bool,
+}
+
+pub(super) fn safe_declared_items(envelope: &Value) -> Result<Vec<(String, String)>, String> {
     let items = envelope["data"]["items"]
         .as_array()
         .ok_or_else(|| "install items are missing".to_string())?;
@@ -136,9 +142,9 @@ pub(super) fn safe_declared_items(envelope: &Value) -> Result<Vec<String>, Strin
         let rel = pair[0]
             .as_str()
             .ok_or_else(|| "install item path is not a string".to_string())?;
-        if pair[1].as_str().is_none() {
-            return Err("install item label is not a string".to_string());
-        }
+        let label = pair[1]
+            .as_str()
+            .ok_or_else(|| "install item label is not a string".to_string())?;
         let rel_path = FsPath::new(rel);
         if rel_path.is_absolute()
             || rel_path
@@ -147,9 +153,39 @@ pub(super) fn safe_declared_items(envelope: &Value) -> Result<Vec<String>, Strin
         {
             return Err("install item path is not a safe relative path".to_string());
         }
-        paths.push(rel.to_string());
+        paths.push((rel.to_string(), label.to_string()));
     }
     Ok(paths)
+}
+
+fn path_is_within(canonical_target: &FsPath, path: &FsPath) -> bool {
+    path == canonical_target || path.starts_with(canonical_target)
+}
+
+/// Prove an existing item or the nearest existing ancestor of a missing item
+/// remains within the canonical target. This catches a missing child below an
+/// existing symlink/junction before that child can authorize a mutation.
+pub(super) fn declared_item_state(target: &FsPath, relative: &str) -> Result<bool, String> {
+    let canonical_target =
+        std::fs::canonicalize(target).map_err(|_| "setup target cannot be resolved".to_string())?;
+    let item = target.join(relative);
+    let exists = item.exists();
+    let mut ancestor = item.as_path();
+    while !ancestor.exists() {
+        ancestor = ancestor
+            .parent()
+            .ok_or_else(|| "declared item has no existing ancestor".to_string())?;
+    }
+    let canonical = std::fs::canonicalize(ancestor)
+        .map_err(|_| "declared item ancestor cannot be resolved".to_string())?;
+    if !path_is_within(&canonical_target, &canonical) {
+        return Err(if exists {
+            "producer-declared install item escapes the setup target".to_string()
+        } else {
+            "missing producer-declared item has an escaping ancestor".to_string()
+        });
+    }
+    Ok(exists)
 }
 
 pub(super) fn validate_install_output(
@@ -157,7 +193,7 @@ pub(super) fn validate_install_output(
     provider: Provider,
     target: &FsPath,
     preview: bool,
-) -> Result<Value, String> {
+) -> Result<ValidatedInstall, String> {
     let envelope: Value = serde_json::from_str(raw)
         .map_err(|_| "Core stdout is not exactly one JSON object".to_string())?;
     if envelope["schema"] != "vaultspec.install.v1" {
@@ -198,15 +234,28 @@ pub(super) fn validate_install_output(
         }
     }
     let items = safe_declared_items(&envelope)?;
-    if !preview && items.iter().any(|relative| !target.join(relative).exists()) {
+    let states = items
+        .iter()
+        .map(|(relative, _)| declared_item_state(target, relative))
+        .collect::<Result<Vec<_>, _>>()?;
+    let all_items_exist = states.iter().all(|exists| *exists);
+    if !preview && !all_items_exist {
         return Err("producer-declared install item is missing".to_string());
     }
-    Ok(
-        json!({ "schema": "vaultspec.install.v1", "status": expected_status, "action": expected_action, "items": items }),
-    )
+    Ok(ValidatedInstall {
+        projection: json!({
+            "schema": "vaultspec.install.v1",
+            "status": expected_status,
+            "action": expected_action,
+            "target": expected.to_string_lossy(),
+            "provider": provider.as_arg(),
+            "items": items,
+        }),
+        all_items_exist,
+    })
 }
 
-pub(super) fn parse_doctor(raw: &str) -> Result<Value, String> {
+fn parse_doctor(raw: &str) -> Result<Value, String> {
     let envelope: Value =
         serde_json::from_str(raw).map_err(|_| "Core doctor stdout is malformed".to_string())?;
     if envelope["schema"] != "vaultspec.spec.doctor.v1" {
@@ -215,29 +264,96 @@ pub(super) fn parse_doctor(raw: &str) -> Result<Value, String> {
     Ok(envelope)
 }
 
-pub(super) fn doctor_proves(doctor: &Value, provider: Provider) -> bool {
-    if doctor["status"] != "unchanged" || doctor["data"]["framework"] != "present" {
-        return false;
-    }
-    if provider == Provider::Core {
-        return true;
-    }
-    let entry = &doctor["data"]["providers"][provider.as_arg()];
-    let content_clean = entry["content"]
-        .as_object()
-        .is_some_and(|items| items.values().all(|value| value == "clean"));
-    entry["manifest_entry"] == "coherent"
-        && matches!(entry["dir_state"].as_str(), Some("complete" | "mixed"))
-        && entry["config"] == "ok"
-        && content_clean
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum DoctorExpectation {
+    Current,
+    Missing,
 }
 
-pub(super) fn doctor_proves_missing(doctor: &Value, provider: Provider) -> bool {
+/// Decode only the command-bound current evidence that may cross the wire.
+/// Unknown producer metadata remains open-world input and is discarded.
+pub(super) fn validate_doctor_output(
+    raw: &str,
+    code: Option<i32>,
+    provider: Provider,
+    expectation: DoctorExpectation,
+) -> Result<Value, String> {
+    let doctor = parse_doctor(raw)?;
     if provider == Provider::Core {
-        return doctor["data"]["framework"] == "missing";
+        let (expected_code, status, framework) = match expectation {
+            DoctorExpectation::Current => (0, "unchanged", "present"),
+            DoctorExpectation::Missing => (2, "failed", "missing"),
+        };
+        if code != Some(expected_code)
+            || doctor["status"] != status
+            || doctor["data"]["framework"] != framework
+        {
+            return Err("Core Doctor status/framework disagreement".to_string());
+        }
+        if expectation == DoctorExpectation::Missing
+            && !doctor["data"]["providers"]
+                .as_object()
+                .is_some_and(serde_json::Map::is_empty)
+        {
+            return Err("Core-missing Doctor providers are not empty".to_string());
+        }
+        return Ok(json!({
+            "schema":"vaultspec.spec.doctor.v1",
+            "status":status,
+            "framework":framework,
+            "provider":"core",
+        }));
+    }
+    if code != Some(0)
+        || doctor["status"] != "unchanged"
+        || doctor["data"]["framework"] != "present"
+    {
+        return Err("provider Doctor status/framework disagreement".to_string());
     }
     let entry = &doctor["data"]["providers"][provider.as_arg()];
-    entry["manifest_entry"] == "not_installed" && entry["dir_state"] == "missing"
+    let manifest_entry = entry["manifest_entry"]
+        .as_str()
+        .ok_or_else(|| "Doctor manifest_entry is missing or mistyped".to_string())?;
+    let dir_state = entry["dir_state"]
+        .as_str()
+        .ok_or_else(|| "Doctor dir_state is missing or mistyped".to_string())?;
+    let config = entry["config"]
+        .as_str()
+        .ok_or_else(|| "Doctor config is missing or mistyped".to_string())?;
+    let content = entry["content"]
+        .as_object()
+        .ok_or_else(|| "Doctor content is missing or mistyped".to_string())?;
+    let valid = match expectation {
+        DoctorExpectation::Current => {
+            manifest_entry == "coherent"
+                && matches!(dir_state, "complete" | "mixed")
+                && config == "ok"
+                && content
+                    .values()
+                    .all(|value| value.as_str() == Some("clean"))
+        }
+        DoctorExpectation::Missing => {
+            manifest_entry == "not_installed"
+                && dir_state == "missing"
+                && config == "ok"
+                && content.is_empty()
+        }
+    };
+    if !valid {
+        return Err("selected provider Doctor evidence disagrees".to_string());
+    }
+    Ok(json!({
+        "schema":"vaultspec.spec.doctor.v1",
+        "status":"unchanged",
+        "framework":"present",
+        "provider":provider.as_arg(),
+        "entry":{
+            "manifest_entry":manifest_entry,
+            "dir_state":dir_state,
+            "config":config,
+            "content_clean":true,
+        }
+    }))
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -247,9 +363,26 @@ pub(super) enum PreflightDecision {
     Indeterminate,
 }
 
+pub(super) fn preflight_failure(
+    capture: &RunCapture,
+    phase: &str,
+) -> Option<(&'static str, String)> {
+    match capture.termination {
+        RunTermination::Completed => None,
+        RunTermination::TimeoutCancelled => {
+            Some(("timeout_cancelled", format!("{phase}_timeout_cancelled")))
+        }
+        RunTermination::OutputCapped => Some(("indeterminate", format!("{phase}_output_capped"))),
+        RunTermination::Indeterminate => {
+            Some(("indeterminate", format!("{phase}_runner_indeterminate")))
+        }
+    }
+}
+
 pub(super) fn decide_preflight(
     manifest: Option<&ManifestState>,
-    doctor: Option<&Value>,
+    doctor_current: bool,
+    doctor_missing: bool,
     provider: Provider,
     preview_shape_valid: bool,
     preview_items_exist: bool,
@@ -258,17 +391,9 @@ pub(super) fn decide_preflight(
         Provider::Core => manifest.is_some_and(|m| m.version == "2.0" && m.serial > 0),
         _ => manifest.is_some_and(|m| m.installed.contains(provider.as_arg())),
     };
-    if preview_shape_valid
-        && preview_items_exist
-        && manifest_valid
-        && doctor.is_some_and(|value| doctor_proves(value, provider))
-    {
+    if preview_shape_valid && preview_items_exist && manifest_valid && doctor_current {
         PreflightDecision::ReconciledExisting
-    } else if preview_shape_valid
-        && !preview_items_exist
-        && !manifest_valid
-        && doctor.is_some_and(|value| doctor_proves_missing(value, provider))
-    {
+    } else if preview_shape_valid && !preview_items_exist && !manifest_valid && doctor_missing {
         PreflightDecision::InstallMissing
     } else {
         PreflightDecision::Indeterminate
@@ -308,6 +433,7 @@ pub(super) async fn run_setup_bounded(
             code: None,
             stdout: String::new(),
             stderr: "aggregate setup deadline reached".into(),
+            captured_bytes: 0,
             termination: RunTermination::TimeoutCancelled,
         };
     };
@@ -316,7 +442,8 @@ pub(super) async fn run_setup_bounded(
             code: None,
             stdout: String::new(),
             stderr: "aggregate setup output budget exhausted".into(),
-            termination: RunTermination::Indeterminate,
+            captured_bytes: 0,
+            termination: RunTermination::OutputCapped,
         };
     }
     let capture = run_capability_with_limits(
@@ -436,14 +563,10 @@ pub(super) async fn run_current_setup(
         return outcome;
     }
 
-    let mut doctor_capture =
-        run_setup_bounded(doctor_argv(target), started, &mut remaining_output).await;
-    let mut doctor = if doctor_capture.code == Some(0)
-        && doctor_capture.termination == RunTermination::Completed
-    {
-        parse_doctor(&doctor_capture.stdout).ok()
-    } else {
+    let mut doctor_capture = if force {
         None
+    } else {
+        Some(run_setup_bounded(doctor_argv(target), started, &mut remaining_output).await)
     };
 
     for (index, (provider, argv)) in commands.into_iter().enumerate() {
@@ -461,7 +584,14 @@ pub(super) async fn run_current_setup(
             continue;
         }
         let manifest = match read_setup_manifest(target) {
-            Ok(manifest) if !manifest_has_unsupported(manifest.as_ref()) => manifest,
+            Ok(manifest)
+                if !manifest_has_unsupported(manifest.as_ref())
+                    && manifest
+                        .as_ref()
+                        .is_none_or(|state| state.version == "2.0" && state.serial > 0) =>
+            {
+                manifest
+            }
             Ok(_) => {
                 receipts.push(setup_receipt(
                     job_id,
@@ -469,7 +599,7 @@ pub(super) async fn run_current_setup(
                     provider,
                     "indeterminate",
                     false,
-                    json!({"error_kind":"manifest_membership_disagreement"}),
+                    json!({"error_kind":"manifest_contract_disagreement"}),
                     "refused_before_child_spawn",
                 ));
                 stop = true;
@@ -489,70 +619,116 @@ pub(super) async fn run_current_setup(
                 continue;
             }
         };
-        let preview_capture = if force {
-            None
-        } else {
-            Some(run_setup_bounded(preview_argv(&argv), started, &mut remaining_output).await)
-        };
-        let preview_validation = preview_capture.as_ref().and_then(|capture| {
-            if capture.code == Some(0) && capture.termination == RunTermination::Completed {
-                validate_install_output(&capture.stdout, provider, target, true).ok()
+        if !force {
+            let doctor_run = doctor_capture
+                .as_ref()
+                .expect("safe setup has Doctor evidence");
+            if let Some((state, error_kind)) = preflight_failure(doctor_run, "doctor") {
+                receipts.push(setup_receipt(
+                    job_id,
+                    ordinal,
+                    provider,
+                    state,
+                    false,
+                    json!({
+                        "error_kind": error_kind,
+                        "doctor_digest": digest(&doctor_run.stdout),
+                    }),
+                    "preflight_not_authoritative",
+                ));
+                stop = true;
+                continue;
+            }
+            let doctor_current = validate_doctor_output(
+                &doctor_run.stdout,
+                doctor_run.code,
+                provider,
+                DoctorExpectation::Current,
+            )
+            .ok();
+            let doctor_missing = validate_doctor_output(
+                &doctor_run.stdout,
+                doctor_run.code,
+                provider,
+                DoctorExpectation::Missing,
+            )
+            .ok();
+            let preview =
+                run_setup_bounded(preview_argv(&argv), started, &mut remaining_output).await;
+            if let Some((state, error_kind)) = preflight_failure(&preview, "preview") {
+                receipts.push(setup_receipt(
+                    job_id,
+                    ordinal,
+                    provider,
+                    state,
+                    false,
+                    json!({
+                        "error_kind": error_kind,
+                        "preview_digest": digest(&preview.stdout),
+                        "doctor_digest": digest(&doctor_run.stdout),
+                    }),
+                    "preflight_not_authoritative",
+                ));
+                stop = true;
+                continue;
+            }
+            let preview_validation = if preview.code == Some(0) {
+                validate_install_output(&preview.stdout, provider, target, true).ok()
             } else {
                 None
+            };
+            let decision = decide_preflight(
+                manifest.as_ref(),
+                doctor_current.is_some(),
+                doctor_missing.is_some(),
+                provider,
+                preview_validation.is_some(),
+                preview_validation
+                    .as_ref()
+                    .is_some_and(|value| value.all_items_exist),
+            );
+            if decision == PreflightDecision::ReconciledExisting {
+                receipts.push(setup_receipt(
+                    job_id,
+                    ordinal,
+                    provider,
+                    "reconciled_existing",
+                    false,
+                    json!({
+                        "install": preview_validation.expect("validated preview").projection,
+                        "install_digest": digest(&preview.stdout),
+                        "doctor": doctor_current.expect("validated current Doctor"),
+                        "doctor_digest": digest(&doctor_run.stdout),
+                    }),
+                    "confirmed_current",
+                ));
+                continue;
             }
-        });
-        let preview_shape_valid = preview_validation.is_some();
-        let preview_items_exist = preview_validation.as_ref().is_some_and(|value| {
-            value["items"].as_array().is_some_and(|items| {
-                items.iter().all(|item| {
-                    item.as_str()
-                        .is_some_and(|relative| target.join(relative).exists())
-                })
-            })
-        });
-        let decision = decide_preflight(
-            manifest.as_ref(),
-            doctor.as_ref(),
-            provider,
-            preview_shape_valid,
-            preview_items_exist,
-        );
-        if !force && decision == PreflightDecision::ReconciledExisting {
-            let preview = preview_capture.expect("checked preview");
-            receipts.push(setup_receipt(
-                job_id,
-                ordinal,
-                provider,
-                "reconciled_existing",
-                false,
-                json!({
-                    "producer_stdout": preview.stdout,
-                    "producer_stdout_digest": digest(&preview.stdout),
-                    "doctor_digest": digest(&doctor_capture.stdout),
-                }),
-                "confirmed_current",
-            ));
-            continue;
-        }
-        if !force && decision != PreflightDecision::InstallMissing {
-            receipts.push(setup_receipt(
-                job_id,
-                ordinal,
-                provider,
-                "indeterminate",
-                false,
-                json!({"error":"preflight evidence disagrees"}),
-                "unresolved",
-            ));
-            stop = true;
-            continue;
+            if decision != PreflightDecision::InstallMissing {
+                receipts.push(setup_receipt(
+                    job_id,
+                    ordinal,
+                    provider,
+                    "indeterminate",
+                    false,
+                    json!({
+                        "error_kind":"preflight_evidence_disagreement",
+                        "preview_digest":digest(&preview.stdout),
+                        "doctor_digest":digest(&doctor_run.stdout),
+                    }),
+                    "unresolved",
+                ));
+                stop = true;
+                continue;
+            }
         }
 
         let capture = run_setup_bounded(argv, started, &mut remaining_output).await;
         let state = match capture.termination {
             RunTermination::TimeoutCancelled => "timeout_cancelled",
-            RunTermination::Indeterminate => "indeterminate",
-            RunTermination::Completed if capture.code != Some(0) => "failed",
+            RunTermination::OutputCapped | RunTermination::Indeterminate => "indeterminate",
+            RunTermination::Completed if capture.code.is_some_and(|code| code != 0) => "failed",
+            RunTermination::Completed if capture.code.is_none() => "indeterminate",
             RunTermination::Completed => "succeeded",
         };
         let install = if state == "succeeded" {
@@ -560,12 +736,27 @@ pub(super) async fn run_current_setup(
         } else {
             Err(capture.stderr.clone())
         };
-        doctor_capture =
+        let post_doctor =
             run_setup_bounded(doctor_argv(target), started, &mut remaining_output).await;
-        doctor = if doctor_capture.code == Some(0)
-            && doctor_capture.termination == RunTermination::Completed
-        {
-            parse_doctor(&doctor_capture.stdout).ok()
+        let doctor_current = if post_doctor.termination == RunTermination::Completed {
+            validate_doctor_output(
+                &post_doctor.stdout,
+                post_doctor.code,
+                provider,
+                DoctorExpectation::Current,
+            )
+            .ok()
+        } else {
+            None
+        };
+        let doctor_missing = if post_doctor.termination == RunTermination::Completed {
+            validate_doctor_output(
+                &post_doctor.stdout,
+                post_doctor.code,
+                provider,
+                DoctorExpectation::Missing,
+            )
+            .ok()
         } else {
             None
         };
@@ -582,19 +773,21 @@ pub(super) async fn run_current_setup(
         let confirmed = install.is_ok()
             && !post_has_unsupported
             && post_manifest_valid
-            && doctor
-                .as_ref()
-                .is_some_and(|value| doctor_proves(value, provider));
+            && doctor_current.is_some();
         let final_state = if confirmed {
             "succeeded"
-        } else if matches!(state, "timeout_cancelled") {
-            "timeout_cancelled"
-        } else if state == "failed"
-            && !post_manifest_valid
-            && doctor
-                .as_ref()
-                .is_some_and(|value| doctor_proves_missing(value, provider))
+        } else if matches!(state, "timeout_cancelled")
+            || post_doctor.termination == RunTermination::TimeoutCancelled
         {
+            "timeout_cancelled"
+        } else if matches!(state, "indeterminate")
+            || matches!(
+                post_doctor.termination,
+                RunTermination::OutputCapped | RunTermination::Indeterminate
+            )
+        {
+            "indeterminate"
+        } else if state == "failed" && !post_manifest_valid && doctor_missing.is_some() {
             "failed"
         } else {
             "indeterminate"
@@ -607,10 +800,10 @@ pub(super) async fn run_current_setup(
             true,
             json!({
                 "exit_code": capture.code,
-                "producer_stdout": capture.stdout,
-                "producer_stdout_digest": digest(&capture.stdout),
-                "stderr": capture.stderr,
-                "doctor_digest": digest(&doctor_capture.stdout),
+                "install": install.as_ref().ok().map(|value| value.projection.clone()),
+                "install_digest": digest(&capture.stdout),
+                "doctor": doctor_current.clone().or(doctor_missing),
+                "doctor_digest": digest(&post_doctor.stdout),
                 "validation": install.err(),
             }),
             if confirmed {
@@ -619,6 +812,7 @@ pub(super) async fn run_current_setup(
                 "unresolved"
             },
         ));
+        doctor_capture = Some(post_doctor);
         stop = matches!(final_state, "timeout_cancelled" | "indeterminate");
     }
     let candidate_complete = receipts.len() == CURRENT_SETUP_PROVIDERS.len()
@@ -630,30 +824,58 @@ pub(super) async fn run_current_setup(
         });
     let final_manifest_current =
         manifest_is_exact(read_setup_manifest(target).ok().flatten().as_ref());
-    let (final_doctor_current, final_doctor_failure_state, final_doctor_digest) =
+    let (final_doctor_current, final_doctor_failure_state, final_doctor_digest, final_projections) =
         if candidate_complete {
             let final_doctor =
                 run_setup_bounded(doctor_argv(target), started, &mut remaining_output).await;
             let current = final_doctor.code == Some(0)
                 && final_doctor.termination == RunTermination::Completed
-                && parse_doctor(&final_doctor.stdout).is_ok_and(|value| {
-                    CURRENT_SETUP_PROVIDERS
-                        .iter()
-                        .copied()
-                        .all(|provider| doctor_proves(&value, provider))
+                && CURRENT_SETUP_PROVIDERS.iter().copied().all(|provider| {
+                    validate_doctor_output(
+                        &final_doctor.stdout,
+                        final_doctor.code,
+                        provider,
+                        DoctorExpectation::Current,
+                    )
+                    .is_ok()
                 });
+            let projections = if current {
+                CURRENT_SETUP_PROVIDERS
+                    .iter()
+                    .copied()
+                    .map(|provider| {
+                        validate_doctor_output(
+                            &final_doctor.stdout,
+                            final_doctor.code,
+                            provider,
+                            DoctorExpectation::Current,
+                        )
+                        .expect("checked current Doctor projection")
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            };
             let failure_state = if final_doctor.termination == RunTermination::TimeoutCancelled {
                 "timeout_cancelled"
             } else {
                 "indeterminate"
             };
-            (current, failure_state, Some(digest(&final_doctor.stdout)))
+            (
+                current,
+                failure_state,
+                Some(digest(&final_doctor.stdout)),
+                projections,
+            )
         } else {
-            (false, "indeterminate", None)
+            (false, "indeterminate", None, Vec::new())
         };
     if let Some(final_digest) = final_doctor_digest {
-        for receipt in &mut receipts {
+        for (index, receipt) in receipts.iter_mut().enumerate() {
             receipt["reconciliation"]["final_doctor_digest"] = json!(&final_digest);
+            if let Some(projection) = final_projections.get(index) {
+                receipt["reconciliation"]["final_doctor"] = projection.clone();
+            }
         }
     }
     if candidate_complete && (!final_manifest_current || !final_doctor_current) {
@@ -667,7 +889,11 @@ pub(super) async fn run_current_setup(
                 } else {
                     "indeterminate"
                 });
-                receipt["reconciliation"]["status"] = json!("final_manifest_disagreement");
+                receipt["reconciliation"]["status"] = json!(if !final_manifest_current {
+                    "final_manifest_disagreement"
+                } else {
+                    "final_doctor_disagreement"
+                });
             }
         }
     }

@@ -18,6 +18,7 @@ use std::process::Stdio;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use command_group::AsyncCommandGroup as _;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 
 /// The two bounds every spawned child carries.
@@ -111,11 +112,17 @@ pub(crate) async fn run_bounded(
         })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    let mut child = command.spawn().map_err(BoundedFault::Spawn)?;
+    // Every child is a process-tree root. On Windows command-group creates the
+    // process suspended, assigns it to a Job Object, and only then resumes it,
+    // closing the spawn/assignment race. `kill_on_drop` makes cancellation of
+    // this async future close the owned group instead of orphaning descendants.
+    let mut group = command.group();
+    group.kill_on_drop(true);
+    let mut child = group.spawn().map_err(BoundedFault::Spawn)?;
 
-    let stdin = child.stdin.take();
-    let stdout = child.stdout.take().expect("piped stdout");
-    let stderr = child.stderr.take().expect("piped stderr");
+    let stdin = child.inner().stdin.take();
+    let stdout = child.inner().stdout.take().expect("piped stdout");
+    let stderr = child.inner().stderr.take().expect("piped stderr");
 
     let body = stdin_body.map(str::to_owned);
     let feed = async move {

@@ -5,7 +5,7 @@ tags:
 date: '2026-09-06'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:d4b9dd2247f23a80803d0969a2ad9e2e616f63b0c3923f08f1bf01f83542e013'
+body_hash: 'sha256:a40e4b62909e46afdeeae0ab1ef22000dfd3919730e1439f4945c47f460f0ce2'
 related:
   - "[[2026-08-01-a2a-agent-flow-adr]]"
   - "[[2026-08-01-agent-panel-shell-integration-adr]]"
@@ -651,7 +651,6 @@ Type: implementation review disposition. The two prior HIGH runtime findings
 are resolved in code and discriminating tests against approved D8-D10. The
 correction remains pending formal code re-review and is not declared complete by
 this implementation pass.
-\n
 
 ## 2026-09-06 formal review of authoritative current-setup correction
 
@@ -1057,3 +1056,96 @@ concurrency proofs remain subject to the mandatory formal code review.
   and prove absent file and directory descendants beneath escaping symlinks and
   Windows junctions are refused before any mutation. Preserve the audit's
   remaining runtime test obligations through final code review.
+## 2026-09-06 implementation correction after architecture PASS
+
+Correction target: the runtime work following formal review FAIL
+`e2e707652a58f2ca3ae8692df99c11938236e7b9`, provisioning-contract
+corrections `27d29a33` and `48c32377`, and architecture PASS `86470e6c`.
+The implementation scope is the Dashboard provisioning route, bounded child
+runner, setup reconciler, and discriminating Rust tests. Concurrent graph,
+design-system, RAG configuration, root lockfile, and local frontend artifacts
+remain excluded.
+
+### strict-doctor-and-current-only-wire-evidence | high | resolved
+
+Type: mutation admission and evidence boundary. The safe preflight now accepts
+only the exact current Doctor envelope or the separate exact clean-Core negative
+envelope. Provider status, framework status, selected current-provider entry,
+manifest, directory, configuration, and clean-content facts must agree before
+mutation. Receipts carry only a bounded closed projection and SHA-256 digest;
+raw producer stdout, stderr, unknown provider maps, and open-world metadata do
+not cross the wire. This resolves
+`safe-preflight-failed-doctor-can-authorize-mutation`,
+`doctor-evidence-required-by-receipts-is-absent`, and
+`raw-install-stdout-can-expose-open-world-metadata` without adding a retired or
+compatibility path.
+
+### full-tree-lifecycle-and-owned-shutdown | high | resolved
+
+Type: process ownership. The shared bounded runner now creates an owned process
+group, enables kill-on-drop, and kills and waits for the complete group on
+wall-clock or output-cap breach. Provisioning retains every aggregate task,
+selects it against server shutdown, drains the task registry on serve exit, and
+aborts and awaits any task that exceeds the shutdown join deadline. Real
+wrapper-plus-descendant tests prove timeout and future-drop stop the descendant
+heartbeat. This resolves `timeout-cancellation-is-not-definitive-on-windows`
+and `detached-setup-task-can-orphan-a-mutating-child`.
+
+### canonical-items-and-hard-admission-bound | high | resolved
+
+Type: filesystem confinement and resource bounds. The reconciler canonicalizes
+the target and every existing declared item; for each missing item it
+canonicalizes and confines the nearest existing ancestor before mutation, then
+requires every produced item to exist within the target afterward. File and
+directory symlink escape tests, including missing descendants, pass on Windows.
+The single-mutex match-or-reserve operation enforces `MAX_JOBS`: an identical
+request still attaches, a posture mismatch still conflicts, a completed job may
+be evicted, and a distinct request is rejected while all capacity is running.
+This resolves `declared-item-containment-is-only-lexical` and
+`setup-job-registry-allows-unbounded-running-growth`.
+
+### real-core-current-aggregate-matrix | high | resolved
+
+Type: production composition. A project-locked Core integration exercises the
+actual reconciler against disposable targets for core-only, one missing,
+multiple missing, healthy repeat, and force postures. Every case reaches
+complete with the expected attempted-versus-reconciled ordinals, exact current
+manifest membership, four validated receipts, and final Doctor agreement. The
+fixed operations remain `core`, `claude`, `antigravity`, and `codex`; no `all`
+command or retired-provider operation is generated. This resolves
+`production-composition-lacks-real-core-target-evidence`.
+
+### typed-preflight-and-http-concurrency-proofs | medium | resolved
+
+Type: terminal classification and concurrency. Doctor/preview timeout stays
+`timeout_cancelled`; output exhaustion and runner failure remain typed
+`indeterminate` causes. Barrier-driven HTTP tests prove simultaneous identical
+safe requests share one stable job and simultaneous safe-versus-force requests
+admit one posture and return one typed conflict. Generous readiness and
+termination budgets plus heartbeat synchronization replace the prior
+load-sensitive assumptions. This resolves
+`preflight-timeout-loses-terminal-classification`,
+`concurrent-posture-conflict-is-not-proved-at-the-route`, and
+`real-process-tests-have-load-sensitive-five-second-budgets`.
+
+### correction-validation | medium | verified
+
+Type: validation evidence. Pinned Rust 1.96 gates are green:
+`cargo check -p vaultspec-api --tests`; 26 focused provisioning tests, including
+the real Core matrix (99.32 seconds); 12 bounded-child tests; both exact HTTP
+barrier tests; and `cargo clippy -p vaultspec-api --tests -- -D warnings`.
+Clippy surfaced two test-only findings during the pass: the process-tree helper
+had not explicitly waited its spawned descendant and one boolean assertion used
+an equality form. Both were corrected without suppression and the affected
+suite was rerun green. Raw-byte accounting now enforces the aggregate output
+budget even for lossy UTF-8 conversion. The previously recorded unrelated broad
+suite failure and A2A-process contention remain assigned to their owning
+workstreams; this correction adds no observed provisioning regression.
+
+### implementation-correction-disposition | high | pending-review
+
+Type: rolling review disposition. All eight HIGH and three MEDIUM findings from
+`e2e70765` now have code and discriminating evidence, and the architecture PASS
+requirements are implemented without legacy or deprecated behavior. Per the
+rolling audit mandate, closure remains pending formal code re-review of the
+correction commit.

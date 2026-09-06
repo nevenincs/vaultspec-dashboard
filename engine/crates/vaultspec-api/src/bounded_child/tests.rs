@@ -10,6 +10,8 @@ const ENV_TIMEOUT: &str = "VAULTSPEC_BOUNDED_CHILD_TIMEOUT";
 /// Path which the timeout child updates while it is alive. The parent uses it
 /// to prove the timeout path reaped the child rather than merely returning.
 const ENV_TIMEOUT_HEARTBEAT: &str = "VAULTSPEC_BOUNDED_CHILD_TIMEOUT_HEARTBEAT";
+const ENV_TREE_ROLE: &str = "VAULTSPEC_BOUNDED_CHILD_TREE_ROLE";
+const ENV_TREE_HEARTBEAT: &str = "VAULTSPEC_BOUNDED_CHILD_TREE_HEARTBEAT";
 /// Far more stderr than any OS pipe buffer (64 KiB on Windows and Linux), so an
 /// undrained stderr pipe provably blocks the child mid-write.
 const CHATTY_STDERR_BYTES: usize = 512 * 1024;
@@ -66,6 +68,75 @@ fn bounded_child_timeout_process() {
         tick += 1;
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
+}
+
+/// Real wrapper-plus-descendant helper. The wrapper never touches the
+/// heartbeat; only its grandchild does, so a stable marker after cancellation
+/// proves the whole process group stopped rather than only the direct child.
+#[test]
+fn bounded_child_tree_process() {
+    let Ok(role) = std::env::var(ENV_TREE_ROLE) else {
+        return;
+    };
+    let heartbeat = std::env::var_os(ENV_TREE_HEARTBEAT).expect("tree heartbeat path");
+    if role == "wrapper" {
+        let mut descendant = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "bounded_child::tests::bounded_child_tree_process",
+                "--exact",
+                "--nocapture",
+                "--test-threads=1",
+            ])
+            .env(ENV_TREE_ROLE, "descendant")
+            .env(ENV_TREE_HEARTBEAT, &heartbeat)
+            .spawn()
+            .expect("spawn observable descendant");
+        descendant.wait().expect("wait for observable descendant");
+        return;
+    }
+    let mut tick = 0_u64;
+    loop {
+        std::fs::write(&heartbeat, tick.to_le_bytes()).expect("descendant heartbeat");
+        tick += 1;
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+}
+
+fn tree_command(heartbeat: &std::path::Path) -> tokio::process::Command {
+    let mut command = tokio::process::Command::new(std::env::current_exe().unwrap());
+    command
+        .args([
+            "bounded_child::tests::bounded_child_tree_process",
+            "--exact",
+            "--nocapture",
+            "--test-threads=1",
+        ])
+        .env(ENV_TREE_ROLE, "wrapper")
+        .env(ENV_TREE_HEARTBEAT, heartbeat);
+    command
+}
+
+async fn wait_for_heartbeat(path: &std::path::Path) {
+    tokio::time::timeout(std::time::Duration::from_secs(15), async {
+        loop {
+            if path.is_file() {
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("descendant became ready");
+}
+
+async fn assert_heartbeat_stopped(path: &std::path::Path) {
+    let before = std::fs::read(path).expect("descendant heartbeat exists");
+    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    assert_eq!(
+        std::fs::read(path).expect("descendant heartbeat remains readable"),
+        before,
+        "descendant remained alive after the owned process group settled"
+    );
 }
 
 /// Spawn this test binary as the child that requires timeout termination.
@@ -178,6 +249,47 @@ async fn a_timed_out_child_is_killed_and_reaped_before_the_fault_returns() {
         started.elapsed() < std::time::Duration::from_secs(3),
         "the runner must kill and reap the indefinitely-running child at its {timeout:?} deadline"
     );
+}
+
+#[tokio::test]
+async fn timeout_terminates_and_reaps_the_real_wrapper_descendant_tree() {
+    let dir = tempfile::tempdir().expect("tree heartbeat directory");
+    let heartbeat = dir.path().join("descendant-heartbeat");
+    let run = tokio::spawn(run_bounded(
+        tree_command(&heartbeat),
+        None,
+        BoundedLimits {
+            cap: 4 * 1024,
+            timeout: std::time::Duration::from_secs(3),
+        },
+        CapPolicy::Refuse,
+    ));
+    wait_for_heartbeat(&heartbeat).await;
+    let fault = run
+        .await
+        .expect("runner task")
+        .expect_err("observable tree reaches timeout");
+    assert!(matches!(fault, BoundedFault::Timeout), "got {fault:?}");
+    assert_heartbeat_stopped(&heartbeat).await;
+}
+
+#[tokio::test]
+async fn dropping_the_runner_future_terminates_the_real_descendant_tree() {
+    let dir = tempfile::tempdir().expect("tree heartbeat directory");
+    let heartbeat = dir.path().join("descendant-heartbeat");
+    let run = tokio::spawn(run_bounded(
+        tree_command(&heartbeat),
+        None,
+        BoundedLimits {
+            cap: 4 * 1024,
+            timeout: std::time::Duration::from_secs(30),
+        },
+        CapPolicy::Refuse,
+    ));
+    wait_for_heartbeat(&heartbeat).await;
+    run.abort();
+    let _ = run.await;
+    assert_heartbeat_stopped(&heartbeat).await;
 }
 
 #[tokio::test]
