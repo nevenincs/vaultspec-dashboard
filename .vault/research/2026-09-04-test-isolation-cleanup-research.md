@@ -5,7 +5,7 @@ tags:
 date: '2026-09-04'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:3f25d2023eee56532adfec0060c57173aef7500936d4806c89290c601ddb1060'
+body_hash: 'sha256:f58e790d2f5d7f89ec969480b67471e913c0da991656fce1e1a134a71945d79a'
 related: []
 ---
 
@@ -186,6 +186,29 @@ Both serialized full-suite runs must also be free of synchronous `AbortError` st
 and `socket hang up` or `ECONNRESET` diagnostics, in addition to reporting no
 unhandled-error section, worker exit, or unexpected engine exit.
 
+### Runner-owned file teardown exposes narrower async owners
+
+After removal of the per-test abort hook, the first and only exact `S14` eight-file
+prefix completed in 178.97 seconds with all eight files and all 84 assertions
+passing. It still emitted 147 paired `socket hang up`/`ECONNRESET` diagnostics and
+two synchronous `AbortError` stacks. Both stacks terminate in Vitest's
+`teardownWindow`; none traverses `liveSetup`. The log contains no unhandled-error
+section, worker exit, or unexpected engine exit.
+
+This changes the attribution, not the acceptance threshold. The absence of a
+`liveSetup` frame confirms the application-owned window lifecycle hook is gone.
+Vitest's file teardown is instead revealing requests that their narrower owner left
+active at the end of a file. Run segmentation assigns the dominant 144-reset
+cluster to `AgentPanel.render.test.tsx`. The remaining three-reset cluster is
+adjacent to `Composer.render.test.tsx`, but the combined log does not mechanically
+identify its file owner, so it remains unassigned until isolated execution proves
+or disproves that candidate.
+
+`S14` was written to run this exact prefix and enumerate residual leakage. Its
+completed diagnostic action may therefore be recorded even though the plan-wide
+zero-diagnostic barrier is still red. That red barrier routes to `S15`; it is not
+waived, reclassified as success, or grounds for an unchanged repeat of `S14`.
+
 ### Option space
 
 Three shapes, with the trade-off that distinguishes them:
@@ -230,6 +253,7 @@ with its own blast radius and belongs in its own record.
 
 ## Sources
 
+- `C:\Users\hello\AppData\Local\Temp\vaultspec-s14-eight-file-prefix.log` — first and only exact S14 prefix output
 - `node_modules/@testing-library/react/dist/index.js:26` — the `typeof afterEach` guard
 - `node_modules/@testing-library/react/dist/index.js:41` — the act-environment guard
 - `node_modules/@testing-library/react/dist/act-compat.js:41` — `withGlobalActEnvironment`
@@ -243,6 +267,12 @@ with its own blast radius and belongs in its own record.
 - `node_modules/happy-dom/lib/fetch/Fetch.js:545` — request and response destruction during async-task abort
 - `node_modules/vitest/dist/chunks/index.1_nbEjJY.js:1164` — Vitest awaits happy-dom abort
 - `frontend/src/testing/happyDOMAbort.ts:10` — the per-test abort call reached by all 71 S10 AbortError stacks
+- `frontend/src/app/agent/AgentPanel.render.test.tsx:67` — candidate test-owned teardown and per-render query-client boundary
+- `frontend/src/app/agent/Composer.render.test.tsx:49` — candidate module query-client teardown boundary
+- `frontend/src/stores/server/authoring/index.ts:869` — lifecycle-stream controller and owner cleanup
+- `frontend/src/stores/server/agent/index.ts:484` — signal-aware AgentPanel query owner
+- `frontend/src/stores/server/agent/a2aTeam.ts:1059` — signal-aware Composer/team query owner
+- `frontend/src/stores/server/queryClient.ts:12` — shared QueryClient lifecycle policy
 - `frontend/src/stores/server/systemPrograms.live.test.ts:82` — stale unavailable-identity assertion
 - `engine/crates/vaultspec-api/src/routes/stream.rs:52` — crashed-service identity contract
 - `frontend/src/app/chrome/useReducedMotion.test.tsx` — the single suite fixed in `55b5e7a41b`

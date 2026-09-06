@@ -9,7 +9,7 @@ related:
   - '[[2026-09-04-test-isolation-cleanup-research]]'
 modified: '2026-09-06'
 body_schema: body-v2
-body_hash: 'sha256:3d8f401654120b62a2c40f69519c9d543e539dab5ef43ae02cd4dd213bdbe74c'
+body_hash: 'sha256:14284ce91dbc7d8fb7349503ce9104e399fe28224e25525dad365f770c6e101d'
 ---
 
 # `test-isolation-cleanup` plan
@@ -46,9 +46,11 @@ in `2026-09-04-test-isolation-cleanup-research`.
 The second reopened portion removes that destructive per-test lifecycle owner and
 its obsolete helper and guard. RTL cleanup remains the global between-test barrier;
 Vitest alone owns awaited happy-dom abort at file teardown. A replacement guard
-proves the window is not aborted between cases, a bounded reproduction set must be
-diagnostically clean, and any surviving post-unmount work is repaired only at the
-component, query, transport, or test that owns it. No Step authorizes diagnostic
+proves the window is not aborted between cases. The first bounded reproduction
+completed every assertion but retained runner-teardown abort/reset diagnostics;
+that diagnostic enumeration completes `S14` while leaving the plan-wide barrier
+red. `S15` isolates the two candidate files, repairs only a demonstrated owner,
+and must clear the bounded barrier before `S10`. No Step authorizes diagnostic
 suppression, retry, timeout inflation, mocking, or assertion weakening.
 
 ## Steps
@@ -65,8 +67,8 @@ suppression, retry, timeout inflation, mocking, or assertion weakening.
 - [x] `S09` - Run frontend/src/app/left/AddProjectDialog.localization.test.tsx, frontend/src/app/left/CreateDocDialog.render.test.tsx, frontend/src/stores/server/comments.live.test.ts, frontend/src/stores/server/systemPrograms.live.test.ts, frontend/src/stores/server/queries/docmeta.test.ts, both barrier guards, and full frontend lint; `frontend`.
 - [x] `S12` - Remove the destructive per-test happy-dom abort path and its obsolete helper and guard while preserving RTL unmount and Vitest-owned file teardown; `frontend/src/testing/happyDOMAbort.ts, frontend/src/testing/happyDOMAbort.guard.test.ts, frontend/src/testing/liveSetup.ts, frontend/src/testing/rtlCleanup.ts, frontend/vite.config.ts`.
 - [x] `S13` - Add a cross-test lifecycle guard proving the harness never calls happy-dom abort between cases and demonstrate it red with the removed hook restored; `frontend/src/testing/perTestWindowLifecycle.guard.test.ts`.
-- [ ] `S14` - Run the exact eight-file S10 prefix that exposed abort-driven resets and enumerate any remaining post-unmount async leakage with unsuppressed diagnostics; `frontend/dev/tooling/scan-design-system.test.ts, frontend/dev/tooling/scan-localization.test.ts, frontend/src/app/agent/Composer.render.test.tsx, frontend/src/app/palette/DocumentSearchSurface.localization.test.tsx, frontend/src/app/stage/GraphControls.render.test.tsx, frontend/src/app/agent/AgentPanel.render.test.tsx, frontend/dev/tooling/token-drift-check.test.ts, frontend/src/stores/server/authoring.happyPath.live.test.ts`.
-- [ ] `S15` - Repair any surviving post-unmount async leak at its component, query, transport, or test owner and confirm the bounded prefix plus full frontend lint; `frontend/src`.
+- [ ] `S14` - Record the first exact eight-file prefix as a completed diagnostic enumeration even though the zero-diagnostic barrier is red, preserve its log, and route the attributed AgentPanel cluster plus smaller unassigned reset cluster to S15 without an unchanged rerun; `frontend/dev/tooling/scan-design-system.test.ts, frontend/dev/tooling/scan-localization.test.ts, frontend/src/app/agent/Composer.render.test.tsx, frontend/src/app/palette/DocumentSearchSurface.localization.test.tsx, frontend/src/app/stage/GraphControls.render.test.tsx, frontend/src/app/agent/AgentPanel.render.test.tsx, frontend/dev/tooling/token-drift-check.test.ts, frontend/src/stores/server/authoring.happyPath.live.test.ts`.
+- [ ] `S15` - Run AgentPanel and Composer once each in isolation to mechanically attribute both reset clusters, repair only the demonstrated async owner, then require the exact eight-file prefix and full frontend lint to pass; `frontend/src/app/agent/AgentPanel.render.test.tsx, frontend/src/app/agent/Composer.render.test.tsx, frontend/src/app/agent/AgentPanel.tsx, frontend/src/app/agent/Composer.tsx, frontend/src/stores/server/agent/index.ts, frontend/src/stores/server/agent/a2aTeam.ts, frontend/src/stores/server/authoring/index.ts, frontend/src/stores/server/queryClient.ts`.
 - [ ] `S10` - Run one timing-enabled serialized full frontend suite and one ordinary serialized confirmation suite, recording timing and failure classification; `frontend`.
 
 ## Parallelization
@@ -75,11 +77,13 @@ None. All Steps are sequential and single-threaded. The completed `S01` through
 `S05` established the unmount barrier; completed `S06` through `S09` and `S11`
 record the awaited-abort hypothesis and its focused evidence. The failed first
 `S10` attempt authorizes no retry. `S12` removes the disproved ownership path,
-`S13` mutation-tests the replacement boundary, `S14` reruns the exact early-file
-set that exposed the mechanism, and `S15` traces any remaining post-unmount work
-to its narrow owner and confirms the bounded gate. Only after corrective
+`S13` mutation-tests the replacement boundary, and `S14` records one exact
+early-file diagnostic run. `S14` may close on that evidence even while its
+zero-diagnostic outcome is red. `S15` then runs AgentPanel and Composer once each
+in isolation, assigns both clusters only from direct output, repairs only the
+demonstrated owner, and confirms the bounded gate. Only after corrective
 implementation is `S10` re-entered as the final timing-enabled and ordinary
-full-suite gate; this is not a blind rerun of unchanged state.
+full-suite gate; no execution is a blind rerun of unchanged state.
 
 The suite runs online against one spawned engine with mutable fixture state, so
 files remain serial and no sibling worker or separate full/live-engine run may
@@ -100,8 +104,19 @@ must pass with zero synchronous AbortError stacks, zero `socket hang up` or
 `ECONNRESET` diagnostics, no unhandled-error section, no worker exit, and no
 unexpected engine exit. Any work that survives unmount and affects another case
 is fixed and verified at its actual owner. Diagnostic filtering, exception
-swallowing, retries, timeout
-increases, mocks, and assertion weakening are forbidden.
+swallowing, retries, timeout increases, mocks, and assertion weakening are
+forbidden.
+
+Checking `S14` records its one exact command, preserved output, and diagnostic
+classification; it does not satisfy the prefix gate above. `S15` begins with one
+fresh-engine AgentPanel-only run and one fresh-engine Composer-only run, executed
+sequentially before repair. The dominant cluster stays assigned to AgentPanel; the
+smaller cluster stays unassigned unless the Composer run mechanically reproduces
+it. If either candidate result is inconclusive, execution stops for an in-place
+plan amendment rather than widening scope. After the narrow repair, each changed
+owner runs once, followed by one exact eight-file prefix and full frontend lint.
+Each must pass its applicable assertion and zero-diagnostic gate. No identical
+unchanged invocation is repeated as a retry.
 
 All five files that failed in the interrupted design-system phase run must pass
 focused execution. `just lint frontend` must exit zero. Then one timing-enabled

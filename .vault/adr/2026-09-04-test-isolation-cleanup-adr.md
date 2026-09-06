@@ -5,7 +5,7 @@ tags:
 date: '2026-09-04'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:a402dfae9c4d115c8f16f79dfb26d407a45e07e0abe42bbc391ab62fe3c1dc0e'
+body_hash: 'sha256:b45dd1ccaf99b4e88867c5be712910d441dd20853a169c4dd0bdbe223792ec2b'
 related:
   - "[[2026-09-04-test-isolation-cleanup-research]]"
 ---
@@ -38,6 +38,11 @@ disproved awaited window abort as a safe per-test settlement mechanism:
 window-wide abort is destructive environment teardown. The harness must therefore
 stop owning window destruction between tests rather than suppress, retry, or
 normalize the diagnostics it creates.
+
+The first bounded run after that removal confirms the ownership change and exposes
+the next boundary: the remaining abort/reset output originates during Vitest's
+file teardown, not the removed application hook. The exact evidence and candidate
+owners remain grounded in the linked research.
 
 ## Considerations
 
@@ -150,6 +155,14 @@ that work is traced to its actual component, query client, transport, or test
 owner, then awaited or cancelled there. A generic drain, window abort, diagnostic
 filter, retry, timeout increase, or exception swallow is not an admissible repair.
 
+The bounded prefix is first an attribution action and then an acceptance gate.
+Completing its first diagnostic execution records the red result and candidate
+owners without asserting plan completion. Before the full-suite gate, the
+candidate files execute once each in isolation, only the mechanically demonstrated
+owner is repaired, and the exact prefix must then satisfy the zero-diagnostic
+threshold. An inconclusive candidate run stops for a plan amendment rather than
+expanding the repair scope ad hoc.
+
 Files remain serial against the one shared engine. Configuration states that
 truth directly: retain `fileParallelism: false` and set `maxWorkers: 1`, removing
 the obsolete claim that four workers improved this suite. Unexpected engine exit
@@ -214,6 +227,11 @@ exit code does not waive these diagnostic conditions.
 Removing the global abort can reveal an operation whose owner failed to cancel or
 await it. That is an ownership defect to repair at its source, never evidence for
 restoring a window-wide per-test hook or suppressing its diagnostics.
+
+An evidence-producing Step may close with a red gate when its stated output is the
+failure enumeration that authorizes the next repair Step. That closure never
+changes the acceptance state: `S15` owns clearing the bounded zero-diagnostic
+barrier before `S10` can begin.
 
 A deterministic pure-test failure is never classified as an engine-port failure
 merely because the engine also died during the run. Infrastructure classification
