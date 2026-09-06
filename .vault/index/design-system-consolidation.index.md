@@ -6,7 +6,7 @@ tags:
 date: '2026-09-05'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:770889807ae7d43f7f062f0bed32b6bc19868bb4d4d1e75eccc694598049277e'
+body_hash: 'sha256:a4ca5d193109fddd3e317ff13b5dcc48892993ae8f7b53010b8d596929a2d051'
 related:
   - '[[2026-09-05-design-system-consolidation-W01-P01-S01]]'
   - '[[2026-09-05-design-system-consolidation-W01-P01-S164]]'
@@ -23,6 +23,7 @@ related:
   - '[[2026-09-05-design-system-consolidation-W01-P01-S175]]'
   - '[[2026-09-05-design-system-consolidation-W01-P01-S176]]'
   - '[[2026-09-05-design-system-consolidation-W01-P01-S177]]'
+  - '[[2026-09-05-design-system-consolidation-W01-P01-S178]]'
   - '[[2026-09-05-design-system-consolidation-adr]]'
   - '[[2026-09-05-design-system-consolidation-horizontal-polish-research]]'
   - '[[2026-09-05-design-system-consolidation-plan]]'
@@ -42,6 +43,7 @@ related:
   - '[[2026-09-06-design-system-consolidation-s175-palette-agent-relative-value-review-audit]]'
   - '[[2026-09-06-design-system-consolidation-s176-stage-timeline-relative-value-review-audit]]'
   - '[[2026-09-06-design-system-consolidation-s177-residual-relative-value-review-audit]]'
+  - '[[2026-09-06-design-system-consolidation-s178-relative-value-completeness-review-audit]]'
 ---
 
 # `design-system-consolidation` feature index
@@ -71,6 +73,7 @@ Auto-generated index of all documents tagged with `#design-system-consolidation`
 - `2026-09-06-design-system-consolidation-s175-palette-agent-relative-value-review-audit` - `design-system-consolidation` audit: `S175 palette and agent relative-value classification review`
 - `2026-09-06-design-system-consolidation-s176-stage-timeline-relative-value-review-audit` - `design-system-consolidation` audit: `S176 stage and timeline relative-value classification review`
 - `2026-09-06-design-system-consolidation-s177-residual-relative-value-review-audit` - `design-system-consolidation` audit: `S177 residual relative-value classification review`
+- `2026-09-06-design-system-consolidation-s178-relative-value-completeness-review-audit` - `design-system-consolidation` audit: `S178 relative-value completeness test review`
 
 ### exec
 
@@ -89,6 +92,7 @@ Auto-generated index of all documents tagged with `#design-system-consolidation`
 - `2026-09-05-design-system-consolidation-W01-P01-S175` - Classify arbitrary relative values owned by palette, search, and agent surfaces
 - `2026-09-05-design-system-consolidation-W01-P01-S176` - Classify arbitrary relative values owned by stage overlays, graph DOM chrome, filters, and timeline composition without touching scene source
 - `2026-09-05-design-system-consolidation-W01-P01-S177` - Classify arbitrary relative values owned by left rail, right rail, settings, panels, and remaining surfaces
+- `2026-09-05-design-system-consolidation-W01-P01-S178` - Verify the relative-value family ledger accounts for the complete 106-site baseline without duplicates
 
 ### plan
 

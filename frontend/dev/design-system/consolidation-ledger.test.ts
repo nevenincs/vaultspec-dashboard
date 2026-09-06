@@ -6,17 +6,27 @@ import { describe, expect, it } from "vitest";
 
 import {
   CANONICAL_OWNER_LAYERS,
+  CHROME_AND_SHELL_RELATIVE_VALUE_LEDGER,
   CONSOLIDATION_BASELINE_COUNTS,
   CONSOLIDATION_DISPOSITIONS,
   CONSOLIDATION_LEDGER,
   CONSOLIDATION_LEDGER_SCHEMA_VERSION,
   CONSOLIDATION_SOURCE_SCOPE,
   DISPOSITION_RATIONALE_FIELDS,
+  KIT_RELATIVE_VALUE_LEDGER,
   ledgerSourceKey,
   NATIVE_CONTROL_ELEMENTS,
   NATIVE_CONTROL_LEDGER,
+  PALETTE_AND_AGENT_RELATIVE_VALUE_LEDGER,
+  RELATIVE_VALUE_LEDGER,
+  RELATIVE_VALUE_UNITS,
+  RESIDUAL_RELATIVE_VALUE_LEDGER,
+  STAGE_AND_TIMELINE_RELATIVE_VALUE_LEDGER,
+  VIEWER_RELATIVE_VALUE_LEDGER,
   type NativeControlElement,
   type NativeControlLedgerEntry,
+  type RelativeValueLedgerEntry,
+  type RelativeValueUnit,
 } from "./consolidation-ledger";
 
 const FRONTEND_ROOT = resolve(import.meta.dirname, "../..");
@@ -53,6 +63,80 @@ const PROSE_FALSE_POSITIVES = [
     text: '<input type="date">',
   },
 ] as const;
+
+interface RelativeValueLineSite {
+  path: `frontend/${string}`;
+  line: number;
+  expression: string;
+}
+
+const RAW_RELATIVE_VALUE_PATTERN = /\[[^\]]*(?:rem|em|vw|vh|%)\]/;
+const ARBITRARY_UTILITY_PATTERN = /(?:^|[\s"'`])([@!a-zA-Z0-9:_-]+-\[[^\]\r\n]+\])/g;
+const NUMERIC_RELATIVE_UNIT_PATTERN =
+  /[-+]?(?:\d+(?:\.\d+)?|\.\d+)(cqw|rem|em|vw|vh|%)/g;
+
+const RELATIVE_SCANNER_DEFECTS = [
+  {
+    path: "frontend/src/app/left/CreateDocDialog.tsx",
+    owner: "CreateDocDialog",
+    slot: "related-array-scan-false-positive",
+    expression: "[...related, stem]",
+    units: ["em"],
+  },
+  {
+    path: "frontend/src/app/viewer/RelatedDocPicker.tsx",
+    owner: "RelatedDocPicker",
+    slot: "selected-array-scan-false-positive",
+    expression: "[...selected, stem]",
+    units: ["em"],
+  },
+  {
+    path: "frontend/src/app/stage/CategoryLegend.tsx",
+    owner: "CategoryLegend",
+    slot: "active-item-destructure-scan-false-positive",
+    expression: "[activeItem, setActiveItem]",
+    units: ["em"],
+  },
+  {
+    path: "frontend/src/app/timeline/DateBasisSelect.tsx",
+    owner: "DateBasisSelect",
+    slot: "menu-width-comment-scan-false-positive",
+    expression: "min-w-[11rem]",
+    units: ["rem"],
+  },
+  {
+    path: "frontend/src/app/left/FolderBrowser.tsx",
+    owner: "FolderBrowser",
+    slot: "focus-effect-dependencies-scan-false-positive",
+    expression: "[currentPath, firstRowPath, focusIntent, focusItem]",
+    units: ["em"],
+  },
+] as const satisfies readonly {
+  path: `frontend/${string}`;
+  owner: string;
+  slot: string;
+  expression: string;
+  units: readonly [RelativeValueUnit, ...RelativeValueUnit[]];
+}[];
+
+const DOCUMENTED_RELATIVE_VALUE_EXAMPLE = {
+  path: "frontend/src/app/kit/Skeleton.tsx",
+  expression: "w-[5rem]",
+  slot: "width-api-documentation-example",
+} as const;
+
+const RELATIVE_VALUE_PARTITIONS = [
+  ["S172", KIT_RELATIVE_VALUE_LEDGER, 18],
+  ["S173", CHROME_AND_SHELL_RELATIVE_VALUE_LEDGER, 14],
+  ["S174", VIEWER_RELATIVE_VALUE_LEDGER, 24],
+  ["S175", PALETTE_AND_AGENT_RELATIVE_VALUE_LEDGER, 9],
+  ["S176", STAGE_AND_TIMELINE_RELATIVE_VALUE_LEDGER, 16],
+  ["S177", RESIDUAL_RELATIVE_VALUE_LEDGER, 25],
+] as const satisfies readonly (readonly [
+  string,
+  readonly RelativeValueLedgerEntry[],
+  number,
+])[];
 
 /**
  * Semantic slots for repeated controls are explicitly bound to their zero-based
@@ -325,6 +409,169 @@ function scanRawControlLexemes(files: readonly string[]): RawControlLexeme[] {
   return lexemes;
 }
 
+function normalizeRelativeExpression(expression: string): string {
+  return expression.replace(/\s+/g, " ").trim();
+}
+
+function arbitraryRelativeUtilities(text: string): string[] {
+  const utilities: string[] = [];
+  for (const match of text.matchAll(
+    new RegExp(ARBITRARY_UTILITY_PATTERN.source, "g"),
+  )) {
+    const utility = match[1];
+    if (
+      utility !== undefined &&
+      new RegExp(NUMERIC_RELATIVE_UNIT_PATTERN.source).test(utility)
+    ) {
+      utilities.push(utility);
+    }
+  }
+  return utilities;
+}
+
+function scanRawRelativeValueLines(files: readonly string[]): RelativeValueLineSite[] {
+  const sites: RelativeValueLineSite[] = [];
+  for (const file of files.filter((candidate) => candidate.endsWith(".tsx"))) {
+    const source = readFileSync(file, "utf8");
+    source.split(/\r?\n/).forEach((line, index) => {
+      if (!RAW_RELATIVE_VALUE_PATTERN.test(line)) return;
+      const utilities = arbitraryRelativeUtilities(line);
+      const falsePositive = line.match(RAW_RELATIVE_VALUE_PATTERN)?.[0];
+      const expression = utilities.join(" ") || falsePositive;
+      if (expression === undefined) {
+        throw new Error(`Raw relative-value match has no expression in ${file}`);
+      }
+      sites.push({
+        path: repositoryPath(file),
+        line: index + 1,
+        expression: normalizeRelativeExpression(expression),
+      });
+    });
+  }
+  return sites;
+}
+
+function stringLiteralSpans(sourceFile: ts.SourceFile): readonly [number, number][] {
+  const spans = new Map<string, [number, number]>();
+  const visit = (node: ts.Node) => {
+    if (
+      ts.isStringLiteralLike(node) ||
+      node.kind === ts.SyntaxKind.TemplateHead ||
+      node.kind === ts.SyntaxKind.TemplateMiddle ||
+      node.kind === ts.SyntaxKind.TemplateTail
+    ) {
+      const span: [number, number] = [node.getStart(sourceFile), node.getEnd()];
+      spans.set(JSON.stringify(span), span);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return [...spans.values()];
+}
+
+function scanExecutableRelativeValueLines(
+  files: readonly string[],
+): RelativeValueLineSite[] {
+  const sites: RelativeValueLineSite[] = [];
+  for (const file of files.filter((candidate) => candidate.endsWith(".tsx"))) {
+    const source = readFileSync(file, "utf8");
+    const sourceFile = ts.createSourceFile(
+      file,
+      source,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TSX,
+    );
+    const spans = stringLiteralSpans(sourceFile);
+    const sourceLines = source.split(/\r?\n/);
+    const byLine = new Map<number, { offset: number; utilities: string[] }>();
+    for (const match of source.matchAll(
+      new RegExp(ARBITRARY_UTILITY_PATTERN.source, "g"),
+    )) {
+      const utility = match[1];
+      if (
+        utility === undefined ||
+        !new RegExp(NUMERIC_RELATIVE_UNIT_PATTERN.source).test(utility)
+      ) {
+        continue;
+      }
+      const relativeOffset = match[0].lastIndexOf(utility);
+      const offset = (match.index ?? 0) + relativeOffset;
+      const end = offset + utility.length;
+      if (!spans.some(([start, finish]) => offset >= start && end <= finish)) continue;
+      const line = sourceFile.getLineAndCharacterOfPosition(offset).line + 1;
+      // Preserve the accepted dated raw-line baseline: a compound line enters the
+      // inventory only when the original scanner sees a supported suffix before
+      // `]`. Once admitted, retain every co-located supported-unit utility.
+      if (!RAW_RELATIVE_VALUE_PATTERN.test(sourceLines[line - 1] ?? "")) continue;
+      const group = byLine.get(line) ?? { offset, utilities: [] };
+      group.offset = Math.min(group.offset, offset);
+      group.utilities.push(utility);
+      byLine.set(line, group);
+    }
+    for (const [line, group] of [...byLine].sort((a, b) => a[1].offset - b[1].offset)) {
+      sites.push({
+        path: repositoryPath(file),
+        line,
+        expression: normalizeRelativeExpression(group.utilities.join(" ")),
+      });
+    }
+  }
+  return sites;
+}
+
+function relativeSiteKey(
+  site: Pick<RelativeValueLineSite, "path" | "expression">,
+): string {
+  return JSON.stringify([site.path, normalizeRelativeExpression(site.expression)]);
+}
+
+function ledgerRelativeSiteKey(entry: RelativeValueLedgerEntry): string {
+  return relativeSiteKey({ path: entry.source.path, expression: entry.expression });
+}
+
+function multisetDifference(
+  left: readonly string[],
+  right: readonly string[],
+): string[] {
+  const available = new Map<string, number>();
+  for (const key of right) available.set(key, (available.get(key) ?? 0) + 1);
+  const difference: string[] = [];
+  for (const key of left) {
+    const remaining = available.get(key) ?? 0;
+    if (remaining === 0) difference.push(key);
+    else available.set(key, remaining - 1);
+  }
+  return difference;
+}
+
+function duplicateKeys(keys: readonly string[]): string[] {
+  const counts = new Map<string, number>();
+  for (const key of keys) counts.set(key, (counts.get(key) ?? 0) + 1);
+  return [...counts].filter(([, count]) => count > 1).map(([key]) => key);
+}
+
+function numericRelativeUnits(expression: string): RelativeValueUnit[] {
+  const units: RelativeValueUnit[] = [];
+  for (const match of expression.matchAll(
+    new RegExp(NUMERIC_RELATIVE_UNIT_PATTERN.source, "g"),
+  )) {
+    const unit = match[1] as RelativeValueUnit;
+    if (!units.includes(unit)) units.push(unit);
+  }
+  return units;
+}
+
+function jsonTokenExists(file: string, tokenName: string): boolean {
+  let value: unknown = JSON.parse(readFileSync(file, "utf8"));
+  for (const segment of tokenName.split(".")) {
+    if (typeof value !== "object" || value === null || !(segment in value))
+      return false;
+    value = (value as Record<string, unknown>)[segment];
+  }
+  return true;
+}
+
 function elementCounts(
   controls: readonly { element: NativeControlElement }[],
 ): Record<NativeControlElement, number> {
@@ -433,7 +680,9 @@ function declaredOwnerNames(file: string): Set<string> {
   return names;
 }
 
-function rationaleKeys(entry: NativeControlLedgerEntry): string[] {
+function rationaleKeys(
+  entry: Pick<NativeControlLedgerEntry | RelativeValueLedgerEntry, "rationale">,
+): string[] {
   return Object.keys(entry.rationale).sort();
 }
 
@@ -558,5 +807,179 @@ describe("design-system consolidation native-control ledger", () => {
         ).not.toBe("");
       }
     }
+  });
+});
+
+describe("design-system consolidation relative-value ledger", () => {
+  const files = productionSourceFiles();
+  const raw = scanRawRelativeValueLines(files);
+  const executable = scanExecutableRelativeValueLines(files);
+  const ledgerKeys = RELATIVE_VALUE_LEDGER.map(ledgerRelativeSiteKey);
+  const rawKeys = raw.map(relativeSiteKey);
+
+  it("separates executable utilities from the reviewed raw-scanner exceptions", () => {
+    expect(CONSOLIDATION_BASELINE_COUNTS.arbitraryRelativeValueSites).toBe(106);
+    expect(raw).toHaveLength(106);
+    expect(executable).toHaveLength(100);
+
+    const rawOnly = multisetDifference(rawKeys, executable.map(relativeSiteKey));
+    const expectedRawOnly = [
+      ...RELATIVE_SCANNER_DEFECTS,
+      DOCUMENTED_RELATIVE_VALUE_EXAMPLE,
+    ].map(relativeSiteKey);
+    expect(multisetDifference(rawOnly, expectedRawOnly)).toEqual([]);
+    expect(multisetDifference(expectedRawOnly, rawOnly)).toEqual([]);
+
+    const repairs = RELATIVE_VALUE_LEDGER.filter(
+      ({ disposition }) => disposition === "repair-local-defect",
+    );
+    expect(repairs).toHaveLength(RELATIVE_SCANNER_DEFECTS.length);
+    for (const defect of RELATIVE_SCANNER_DEFECTS) {
+      expect(repairs).toContainEqual(
+        expect.objectContaining({
+          source: {
+            path: defect.path,
+            owner: defect.owner,
+            slot: defect.slot,
+          },
+          expression: defect.expression,
+          units: defect.units,
+          disposition: "repair-local-defect",
+        }),
+      );
+    }
+
+    expect(RELATIVE_VALUE_LEDGER).toContainEqual(
+      expect.objectContaining({
+        source: expect.objectContaining({
+          path: DOCUMENTED_RELATIVE_VALUE_EXAMPLE.path,
+          slot: DOCUMENTED_RELATIVE_VALUE_EXAMPLE.slot,
+        }),
+        expression: DOCUMENTED_RELATIVE_VALUE_EXAMPLE.expression,
+        disposition: "retain-exact-geometry",
+      }),
+    );
+    expect(
+      raw.find(({ path }) => path === "frontend/src/app/kit/Breadcrumb.tsx")
+        ?.expression,
+    ).toBe("text-[0.8125rem]");
+    expect(
+      RELATIVE_VALUE_LEDGER.find(
+        ({ source }) =>
+          source.path === "frontend/src/app/viewer/CommentThreadPanel.tsx" &&
+          source.slot === "thread-panel-viewport-bounds",
+      ),
+    ).toEqual(expect.objectContaining({ units: expect.arrayContaining(["cqw"]) }));
+  });
+
+  it("partitions all 106 raw line-sites without overlaps, missing sites, or stale sites", () => {
+    for (const [step, partition, expectedCount] of RELATIVE_VALUE_PARTITIONS) {
+      expect(partition, step).toHaveLength(expectedCount);
+    }
+    const partitionEntries = RELATIVE_VALUE_PARTITIONS.flatMap(([, entries]) => [
+      ...entries,
+    ]);
+    expect(partitionEntries).toHaveLength(106);
+    expect(RELATIVE_VALUE_LEDGER).toEqual(partitionEntries);
+
+    const stableKeys = RELATIVE_VALUE_LEDGER.map(({ source }) =>
+      ledgerSourceKey(source),
+    );
+    expect(duplicateKeys(stableKeys)).toEqual([]);
+    expect(multisetDifference(rawKeys, ledgerKeys)).toEqual([]);
+    expect(multisetDifference(ledgerKeys, rawKeys)).toEqual([]);
+  });
+
+  it("enforces relative-value schema, ownership, unit, and rationale completeness", () => {
+    expect(CONSOLIDATION_LEDGER.relativeValues).toBe(RELATIVE_VALUE_LEDGER);
+    const allowedDispositions = new Set([
+      "migrate",
+      "retain-exact-geometry",
+      "repair-local-defect",
+    ]);
+    const allowedUnits = new Set<string>(RELATIVE_VALUE_UNITS);
+    const ownerLayers = new Set<string>(CANONICAL_OWNER_LAYERS);
+
+    for (const entry of RELATIVE_VALUE_LEDGER) {
+      const key = ledgerSourceKey(entry.source);
+      expect(allowedDispositions.has(entry.disposition), key).toBe(true);
+      expect(entry.expression.trim(), key).not.toBe("");
+      expect(entry.units.length, key).toBeGreaterThan(0);
+      expect(new Set(entry.units).size, key).toBe(entry.units.length);
+      expect(
+        entry.units.every((unit) => allowedUnits.has(unit)),
+        key,
+      ).toBe(true);
+
+      const defect = RELATIVE_SCANNER_DEFECTS.find(
+        ({ path, owner, slot }) => ledgerSourceKey({ path, owner, slot }) === key,
+      );
+      if (defect !== undefined) expect(entry.units, key).toEqual(defect.units);
+      else expect(entry.units, key).toEqual(numericRelativeUnits(entry.expression));
+
+      expect(ownerLayers.has(entry.canonicalOwner.layer), key).toBe(true);
+      expect(entry.canonicalOwner.path.startsWith("frontend/"), key).toBe(true);
+      expect(entry.canonicalOwner.path.includes("\\"), key).toBe(false);
+      expect(entry.canonicalOwner.name.trim(), key).not.toBe("");
+      expect(["existing", "planned"], key).toContain(entry.canonicalOwner.status);
+      if (entry.canonicalOwner.status === "existing") {
+        const ownerFile = resolve(
+          FRONTEND_ROOT,
+          entry.canonicalOwner.path.slice("frontend/".length),
+        );
+        expect(existsSync(ownerFile), entry.canonicalOwner.path).toBe(true);
+        if (extname(ownerFile) === ".json") {
+          expect(
+            jsonTokenExists(ownerFile, entry.canonicalOwner.name),
+            `${entry.canonicalOwner.path} must define ${entry.canonicalOwner.name}`,
+          ).toBe(true);
+        } else {
+          expect(
+            declaredOwnerNames(ownerFile).has(entry.canonicalOwner.name),
+            `${entry.canonicalOwner.path} must declare ${entry.canonicalOwner.name}`,
+          ).toBe(true);
+        }
+      }
+
+      expect(entry.source.owner.trim(), key).not.toBe("");
+      expect(entry.source.slot.trim(), key).not.toBe("");
+      expect(entry.source.path.includes("\\"), key).toBe(false);
+      expect(
+        CONSOLIDATION_SOURCE_SCOPE.roots.some((root) =>
+          entry.source.path.startsWith(`${root}/`),
+        ),
+        key,
+      ).toBe(true);
+      expect(existsSync(resolve(FRONTEND_ROOT, entry.source.path.slice(9))), key).toBe(
+        true,
+      );
+
+      const required = [...DISPOSITION_RATIONALE_FIELDS[entry.disposition]].sort();
+      expect(rationaleKeys(entry), key).toEqual(required);
+      for (const field of required) {
+        expect(
+          (entry.rationale as Record<string, string>)[field]?.trim(),
+          `${key} rationale.${field}`,
+        ).not.toBe("");
+      }
+    }
+  });
+
+  it("detects representative missing, stale, and duplicate ledger mutations", () => {
+    const missingEntry = ledgerKeys.slice(1);
+    expect(multisetDifference(rawKeys, missingEntry)).toEqual([ledgerKeys[0]]);
+
+    const staleEntry = [...ledgerKeys];
+    staleEntry[0] = relativeSiteKey({
+      path: "frontend/src/app/stale.tsx",
+      expression: "w-[1rem]",
+    });
+    expect(multisetDifference(rawKeys, staleEntry)).toEqual([ledgerKeys[0]]);
+    expect(multisetDifference(staleEntry, rawKeys)).toEqual([staleEntry[0]]);
+
+    const stableKeys = RELATIVE_VALUE_LEDGER.map(({ source }) =>
+      ledgerSourceKey(source),
+    );
+    expect(duplicateKeys([...stableKeys, stableKeys[0]])).toEqual([stableKeys[0]]);
   });
 });
