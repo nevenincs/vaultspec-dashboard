@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+import tempfile
 import tomllib
 from pathlib import Path
 
@@ -288,8 +289,16 @@ def _derive(repo_root: Path, workflow: str) -> set[str]:
     #
     # Bytes, not text: in text mode Python re-encodes stdin with the platform
     # line ending, which undoes the LF normalisation above on the way in.
-    relative = ".preflight-derivation-output"
-    output = repo_root / relative
+    # Each invocation owns its output. Multiple agents can run the full lint gate
+    # against one worktree, so a shared filename lets one cleanup race another
+    # invocation between the workflow script and this read.
+    with tempfile.NamedTemporaryFile(
+        dir=repo_root,
+        prefix=".preflight-derivation-output-",
+        delete=False,
+    ) as output_file:
+        output = Path(output_file.name)
+    relative = output.name
     try:
         output.write_text("", encoding="utf-8")
         prelude = "export GITHUB_OUTPUT='" + relative + "'\n"
