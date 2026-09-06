@@ -5,7 +5,7 @@ tags:
 date: '2026-09-06'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:55a1c6f2d4637bd15d11330e838533662b8299162237a0cd8ec7feab1cf56293'
+body_hash: 'sha256:d4b9dd2247f23a80803d0969a2ad9e2e616f63b0c3923f08f1bf01f83542e013'
 related:
   - "[[2026-08-01-a2a-agent-flow-adr]]"
   - "[[2026-08-01-agent-panel-shell-integration-adr]]"
@@ -983,3 +983,77 @@ obligations; this docs-only pass does not close them.
   normal in-target missing ancestors and existing-item controls.
 - Apply the queued Vaultspec Core markdown repair in the correction pass while
   preserving the evidence and decision boundary.
+
+## 2026-09-06 re-review of exact missing-state confinement correction
+
+Review target: `48c32377598a641fc46735e8d97c49a03b6005e1`, exact parent
+`7ced01aea83a1e0d1480266aecd8094ae14865d1`. This documentation-only re-review
+reconciled the two open high findings against live Core 0.1.73 output, the
+accepted current-only setup contract, canonical filesystem containment, and
+Vaultspec mechanical checks. Runtime and unrelated concurrent work were
+excluded.
+
+### exact-clean-core-negative-envelope | low | verified
+
+Type: typed missing-state producer contract. The correction replaces the
+impossible universal successful-Doctor predicate with one narrow core-only
+negative envelope: exit exactly 2, stdout exactly one JSON object, schema
+`vaultspec.spec.doctor.v1`, status `failed`, framework `missing`, and providers
+exactly an empty object. A live unmanaged target reproduced exactly that stdout
+shape; diagnostics remained on stderr and do not alter the one-object stdout
+contract. Every different exit, schema, status, framework value, provider
+shape or membership, missing field, wrong type, or malformed object is
+indeterminate. This closes
+`core-missing-doctor-contract-rejects-real-clean-target` without accepting
+arbitrary failed Doctor responses.
+
+### strict-non-core-missing-envelope | low | verified
+
+Type: mutation admission. Claude, antigravity, and codex retain the separate
+strict successful contract: exit 0, exact Doctor schema, status `unchanged`,
+framework `present`, command-bound current provider object, exact required
+types, and consistent `not_installed`/`missing` facts. Failed status, missing or
+wrong framework, absent selected entry, wrong types, contradictions, and
+unrelated metadata cannot authorize installation or cross the wire. No
+core-negative exception broadens provider missing-state admission.
+
+### nearest-existing-ancestor-confinement | low | verified
+
+Type: pre-mutation target confinement. The corrected D9e applies lexical checks
+first, canonicalizes the target and every existing item, and, for each absent
+file or directory, walks toward the target to canonicalize the nearest existing
+ancestor before granting mutation authority. An escaping symlink, junction, or
+other redirecting ancestor is disagreement; a confined ancestor may contribute
+only to otherwise authoritative missing evidence. Every created item is then
+canonicalized again after installation. This closes
+`missing-item-ancestor-containment` for existing and absent declared paths and
+preserves distinct missing-versus-escape failures.
+
+### current-only-and-mechanical-reconciliation | low | verified
+
+Type: no-legacy, no-deprecated, and corpus hygiene. The amendment adds no
+provider, alias, aggregate, fallback, translation, migration, or compatibility
+path beyond the four current setup ordinals. The core-negative projection is
+closed, provider projections remain command-bound, and unrelated metadata is
+discarded. The correction removes the literal end residue and repairs the
+extra-blank/final-newline warning through the Core-maintained document shape.
+`vaultspec-core vault check markdown`, frontmatter, links, and modified-stamp
+are clean for the reviewed corpus state.
+
+### exact-missing-state-confinement-disposition | low | PASS
+
+Type: formal architecture-review disposition. Commit `48c32377` resolves both
+high findings from `7ced01ae`. The exact current Core negative envelope, strict
+non-core missing evidence, nearest-existing-ancestor pre-mutation confinement,
+post-install item checks, current-only boundary, and mechanical hygiene are
+coherent. No critical, high, or medium architecture defect remains. Runtime
+wire finalization may proceed, but the production implementation and its
+real-process, cancellation, capacity, containment, malformed-evidence, and
+concurrency proofs remain subject to the mandatory formal code review.
+
+## Exact missing-state re-review recommendation
+
+- Implement the closed predicates without widening failed-Doctor acceptance,
+  and prove absent file and directory descendants beneath escaping symlinks and
+  Windows junctions are refused before any mutation. Preserve the audit's
+  remaining runtime test obligations through final code review.
