@@ -111,21 +111,16 @@ to create some, or open an existing project's vault for the walkthrough below.
 
 ### Start the dashboard
 
-From the managed Git worktree, run:
+From your Git worktree, run:
 
 ```console
 vaultspec serve
 ```
 
-Keep the terminal open. When the service is ready, it prints:
+Open the browser URL printed in the terminal. Leave that terminal open while using
+the dashboard.
 
-```text
-vaultspec serve: listening on http://127.0.0.1:8767 (bearer token in service.json)
-```
-
-Open `http://127.0.0.1:8767` in your browser. A successful dashboard shows the current
-worktree selector, **Vault/Files** browser, populated graph, timeline, and activity rail.
-The [complete workspace capture](#vaultspec-dashboard) shows this result.
+[Follow one record](#follow-one-record-from-vault-to-search) from your vault to search.
 
 ### Optional semantic search
 
