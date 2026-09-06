@@ -10,7 +10,7 @@ related:
   - '[[2026-09-05-design-system-consolidation-shipped-frontend-blueprint-reference]]'
 modified: '2026-09-06'
 body_schema: body-v2
-body_hash: 'sha256:a50000492d35ab08a9f2701ba8ec50561c4d38e142599e51372c035db7bac8cb'
+body_hash: 'sha256:dafc35ff4c3b880b716fa6383bebda407b94ee4f9e56d0a8b14407278e4984f6'
 ---
 
 <!-- RETIRED: S02, S03, S95, S96, S158 -->
@@ -47,7 +47,7 @@ Establish one machine-readable ledger that distinguishes migrations, retained se
 - [x] `W01.P01.S168` - Classify specialized search, composer-entry, code-overlay, date-input, select, and task-checkbox native seams; `frontend/dev/design-system/consolidation-ledger.ts`.
 - [x] `W01.P01.S169` - Classify graph, island, timeline-handle, tree-row, and renderer-coordination native seams; `frontend/dev/design-system/consolidation-ledger.ts`.
 - [x] `W01.P01.S170` - Classify remaining left-rail, right-rail, panel, authoring, shell, and platform native controls; `frontend/dev/design-system/consolidation-ledger.ts`.
-- [ ] `W01.P01.S171` - Verify the native-control family ledger accounts for the complete 125-site executable JSX baseline without duplicates; `frontend/dev/design-system/consolidation-ledger.test.ts`.
+- [x] `W01.P01.S171` - Verify the native-control family ledger accounts for the complete 125-site executable JSX baseline without duplicates; `frontend/dev/design-system/consolidation-ledger.test.ts`.
 - [ ] `W01.P01.S172` - Classify arbitrary relative values owned by kit primitives and their states; `frontend/dev/design-system/consolidation-ledger.ts`.
 - [ ] `W01.P01.S173` - Classify arbitrary relative values owned by shared chrome, dialogs, sheets, and shell composition; `frontend/dev/design-system/consolidation-ledger.ts`.
 - [ ] `W01.P01.S174` - Classify arbitrary relative values owned by viewer, reader, code, and authoring surfaces; `frontend/dev/design-system/consolidation-ledger.ts`.

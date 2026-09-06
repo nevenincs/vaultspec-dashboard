@@ -6,7 +6,7 @@ tags:
 date: '2026-09-05'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:d78ed689fe50cf1c7863424d04dd600becaa6f612cf03e25beb236c63e35fc65'
+body_hash: 'sha256:7750a73f32f28f5221a29779850ecb5ed6e3c995f6e4f1594c27cf5311be1d6f'
 related:
   - '[[2026-09-05-design-system-consolidation-W01-P01-S01]]'
   - '[[2026-09-05-design-system-consolidation-W01-P01-S164]]'
@@ -16,6 +16,7 @@ related:
   - '[[2026-09-05-design-system-consolidation-W01-P01-S168]]'
   - '[[2026-09-05-design-system-consolidation-W01-P01-S169]]'
   - '[[2026-09-05-design-system-consolidation-W01-P01-S170]]'
+  - '[[2026-09-05-design-system-consolidation-W01-P01-S171]]'
   - '[[2026-09-05-design-system-consolidation-adr]]'
   - '[[2026-09-05-design-system-consolidation-horizontal-polish-research]]'
   - '[[2026-09-05-design-system-consolidation-plan]]'
@@ -28,6 +29,7 @@ related:
   - '[[2026-09-06-design-system-consolidation-s168-specialized-seam-review-audit]]'
   - '[[2026-09-06-design-system-consolidation-s169-composite-seam-review-audit]]'
   - '[[2026-09-06-design-system-consolidation-s170-residual-native-control-review-audit]]'
+  - '[[2026-09-06-design-system-consolidation-s171-native-control-completeness-review-audit]]'
 ---
 
 # `design-system-consolidation` feature index
@@ -50,6 +52,7 @@ Auto-generated index of all documents tagged with `#design-system-consolidation`
 - `2026-09-06-design-system-consolidation-s168-specialized-seam-review-audit` - `design-system-consolidation` audit: `S168 specialized native seam classification review`
 - `2026-09-06-design-system-consolidation-s169-composite-seam-review-audit` - `design-system-consolidation` audit: `S169 graph and renderer seam classification review`
 - `2026-09-06-design-system-consolidation-s170-residual-native-control-review-audit` - `design-system-consolidation` audit: `S170 residual native-control classification review`
+- `2026-09-06-design-system-consolidation-s171-native-control-completeness-review-audit` - `design-system-consolidation` audit: `S171 native-control completeness test review`
 
 ### exec
 
@@ -61,6 +64,7 @@ Auto-generated index of all documents tagged with `#design-system-consolidation`
 - `2026-09-05-design-system-consolidation-W01-P01-S168` - Classify specialized search, composer-entry, code-overlay, date-input, select, and task-checkbox native seams
 - `2026-09-05-design-system-consolidation-W01-P01-S169` - Classify graph, island, timeline-handle, tree-row, and renderer-coordination native seams
 - `2026-09-05-design-system-consolidation-W01-P01-S170` - Classify remaining left-rail, right-rail, panel, authoring, shell, and platform native controls
+- `2026-09-05-design-system-consolidation-W01-P01-S171` - Verify the native-control family ledger accounts for the complete 125-site executable JSX baseline without duplicates
 
 ### plan
 
