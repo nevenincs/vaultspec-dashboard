@@ -5,7 +5,7 @@ tags:
 date: '2026-09-06'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:1f071a02cede987ef79d60cd7d4b524f749767bf95f3bf7798b36f6dbeba0c02'
+body_hash: 'sha256:7fff54ab5e024991cfc2acd6749b3748e1e8b5eb657ac844ec790c4bcf08a0cd'
 related:
   - "[[2026-08-01-a2a-agent-flow-adr]]"
   - "[[2026-08-01-agent-panel-shell-integration-adr]]"
@@ -1607,3 +1607,72 @@ the correction commit.
 Type: rolling review disposition. The open MEDIUM mapping defect from
 `9a7ab942` is corrected with production-adapter and end-to-end evidence. Closure
 remains pending mandatory formal code re-review.
+## 2026-09-06 formal re-review of provisioning fault-adapter correction
+
+Review target: `4544910c3ffaada857ffb53670fc6ab820a410d2`, exact parent
+`9a7ab9425bde7117c22bad974f91e1f32917482c`. Review covered the exact five
+committed paths against the open fault-classification finding in `9a7ab942`,
+the production bounded-runner adapter, the end-to-end setup capacity path, and
+the previously accepted ownership, shutdown, confinement, projection, and
+current-provider controls. The later design-system commit and concurrent graph,
+performance, RAG, lockfile, generated-local-storage, and other unrelated work
+were excluded.
+
+### production-fault-adapter-mapping | low | verified
+
+Type: typed failure classification. The exact helper called by
+`run_capability_with_limits` maps all six `BoundedFault` variants without
+aliasing or reversal: Spawn to `SpawnFailed`, Timeout to
+`TimeoutCancelled`, OverCap to `OutputCapped`, Read to `ReadFailed`, Wait
+to `WaitFailed`, and AtCapacity to `AtCapacity`. Setup then projects those
+states to distinct closed causes, including
+`doctor_process_group_at_capacity` or
+`preview_process_group_at_capacity`. Completed nonzero Doctor and preview
+runs still retain `child_exit_nonzero`.
+
+The table-driven six-variant matrix invokes that same production helper and
+checks the exact cause for every variant. It therefore discriminates the real
+adapter mapping that the prior synthetic `RunCapture` test failed to cover.
+Existing real-process timeout, output-cap, malformed-output, and nonzero
+coverage supplies the complementary subprocess behavior proof.
+
+### setup-capacity-is-proved-end-to-end | low | verified
+
+Type: admission and wire fidelity. The setup test acquires all 64 real
+process-group permits, calls the production safe current-only setup path, and
+allows the Doctor attempt to reach `run_bounded`. Admission is refused before
+spawn, `BoundedFault::AtCapacity` crosses the production adapter, the
+aggregate is indeterminate, and the receipt contains the closed typed cause
+`doctor_process_group_at_capacity`. The response contains no producer stdout
+or stderr bytes.
+
+### prior-bounded-and-current-only-controls | low | verified
+
+Type: regression review. Process-group admission remains pre-spawn and capped
+at 64. Ownership of a live group and its permit transfers together to the keyed
+self-pruning waiter on cancellation; service shutdown applies one absolute
+ten-second budget and preserves typed unresolved-group failures. Unix group
+kill/reap and Windows Job Object ownership remain intact. Setup continues to
+serve bounded projections and digests rather than raw streams or open metadata.
+Component-wise no-follow inspection and canonical containment still reject
+live or dangling links, directory junctions, and reparse indirection before
+mutation. The hard setup-job cap, safe-versus-force barrier, real
+project-locked Core five-state matrix, and validator-cause precedence are
+unchanged.
+
+The served provider set remains exactly Core, Claude Code, Antigravity, and
+Codex. No `all`, Gemini, profile, alias, translation, migration, fallback,
+compatibility, legacy, or deprecated path is present in the reviewed change.
+The correction is limited to the five coherent paths listed above. Its
+implementation record reports green check, warnings-denied Clippy, the
+six-variant adapter matrix, the end-to-end capacity case, and the earlier
+30-test provisioning and 15-test bounded-child suites. The reviewed commit also
+passes `git diff --check`.
+
+### provisioning-fault-adapter-formal-disposition | low | PASS
+
+Type: formal implementation review disposition. No critical, high, or medium
+finding remains in the reviewed correction. Commit `4544910c` fixes the
+production adapter reversal, proves every bounded fault has its intended closed
+cause, and proves the 64-permit refusal reaches the setup receipt without
+spawning or exposing producer bytes. The correction is review-passed.
