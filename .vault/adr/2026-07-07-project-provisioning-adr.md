@@ -4,7 +4,7 @@ tags:
   - '#project-provisioning'
 date: '2026-07-07'
 modified: '2026-09-06'
-body_hash: 'sha256:f83c83c4ecf499f6de55be72d0164c51824d2da6c98606e6fa4fadaab5b00167'
+body_hash: 'sha256:ae04fb3ac9a9c4df4629d53db58e912fda0ac78e13db29582c3cdc359e8644aa'
 related:
   - "[[2026-07-07-project-provisioning-research]]"
   - "[[2026-07-04-dashboard-packaging-adr]]"
@@ -158,7 +158,7 @@ fixed D8 order into these current Core operations:
 `--skip core` is Core's supported additive provider-install path after the
 first operation has established the framework. A live clean-target proof
 completed this sequence in both safe and force posture. It produced no
-`install all` command and left Core doctor's Gemini entry `not_installed`.
+`install all` command and did not consume or expose unrelated provider metadata.
 Changing these operations requires another reviewed contract change.
 
 **D9a - exact receipt acceptance.** A child is successful only when all of the
@@ -204,3 +204,49 @@ postconditions remains `failed`. Aggregate `complete` still requires four
 validated, reconciled receipts. The D9 timeout-cancelled and indeterminate
 rules, no-blind-replay rule, one aggregate-wide deadline/output budget, and
 atomic single-flight posture contract continue unchanged.
+
+## Amendment - idempotent current-state preflight and closed manifest set (2026-09-06, owner auto-approved correction)
+
+This correction responds to
+`2026-09-06-project-provisioning-setup-receipt-amendment-review-audit`, which
+is the evidence home for the live clean-target, force-target, repeated-target,
+and dry-run captures.
+
+**D8b - healthy repeated setup converges through supported read-only Core
+operations.** Before any mutating child, Dashboard performs one setup-wide
+preflight within the same deadline and output budget. It reads the strict Core
+manifest, runs `vaultspec-core spec doctor -t <target> --json`, and runs the
+four provider-specific install previews in D8 order: Core first, followed by
+claude, antigravity, and codex. Each uses `install <provider> -t <target>
+--dry-run --json`; the last three also carry `--skip core`. Every command carries the same resolved target.
+
+The live repeated-target proof established that a healthy target's four
+previews return schema `vaultspec.install.v1`, status `unchanged`, action
+`dry_run`, the exact target, non-empty two-string item tuples, and zero missing
+producer-declared paths. The doctor result meets D9b. By contrast, replaying a
+plain safe `install core` exits 1 with Core's already-installed error.
+Dashboard therefore never replays that blocked mutation and never accepts the
+error as success.
+
+When all preflight facts agree, Dashboard returns `complete` with four ordered
+Dashboard-local `reconciled_existing` receipts. Each receipt retains the exact
+preview and doctor evidence plus SHA-256 digests and identifies the validated
+provider and ordinal from the fixed command context. This is authoritative
+idempotent convergence, not an install receipt invented on Core's behalf. If
+preflight does not prove the entire current state, setup follows D8a and D9a/b;
+it does not promote the target based on directory presence and does not blindly
+replay an ambiguous prior child.
+
+**D9c - the provider manifest is closed-world.** The strict manifest's
+`installed` membership must equal exactly `{claude, antigravity, codex}` before
+a healthy preflight may return complete and after a mutating sequence may
+return complete. Missing, extra, unknown, or unsupported membership fails
+closed. Dashboard does not translate, remove, provision, report, or otherwise
+support an extra entry; it returns an indeterminate contract disagreement for
+operator reconciliation outside this setup operation.
+
+Doctor response objects remain open-world only at the JSON field level needed
+for forward-compatible decoding. Dashboard selects and validates evidence for
+exactly core, claude, antigravity, and codex and discards every unrelated field
+without naming, interpreting, storing, or returning it. Open-world decoding
+does not weaken the closed manifest membership rule.
