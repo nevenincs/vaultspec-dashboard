@@ -5,7 +5,7 @@ tags:
 date: '2026-09-06'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:bde78dcc91b638a947d83539197c21c60c5784b867a4239ddc92baa48a0bd49c'
+body_hash: 'sha256:1b7ab07d2d5e7172b1956b82147c2f61d274e8f72b9c3e94d37906680605d998'
 related:
   - "[[2026-08-01-a2a-agent-flow-adr]]"
   - "[[2026-08-01-agent-panel-shell-integration-adr]]"
@@ -1346,3 +1346,94 @@ receipt proofs remain green in the complete provisioning filter.
 Type: rolling review disposition. The three HIGH and one MEDIUM findings from
 `45e6430696` are implemented and carry discriminating evidence. Closure remains
 pending the mandatory formal code re-review of the correction commit.
+## 2026-09-06 formal re-review of process and evidence correction
+
+Review target: `5da89420b6b5390c8a22fd52e172d4246e68cac2`, exact parent
+`84f7c9130c75daf2dc813311cfd60abc58026d15`. Review covered the exact seven
+committed paths against the three HIGH and one MEDIUM findings in `45e64306`,
+approved D4a/b and D9d-f, the always-on resource-bound and current-only wire
+rules, the pinned `command-group` implementation, and the reported validation.
+The parent design-system commit and all concurrent graph, performance, RAG,
+lockfile, generated-local-storage, and design-system work were excluded.
+
+### cancelled-group-waiters-and-shutdown-drain-are-unbounded | high | open
+
+Type: process lifecycle and bounded resources. The new cancellation owner
+correctly sends a group kill and moves the live `AsyncGroupChild` into a waiter,
+but stores every waiter in process-global `REAP_TASKS: Vec<JoinHandle<_>>`.
+That accumulator has no capacity, TTL, completed-handle pruning, or steady-state
+drain; `reap_terminated_groups` is called only at serve shutdown and in two
+tests. Repeated cancellation of any route using the shared bounded runner can
+therefore retain completed handles for the process lifetime. At shutdown the
+reaper awaits every handle sequentially with no per-waiter or total deadline,
+so one group whose empty observation wedges can prevent `serve` from returning
+indefinitely. This contradicts the explicit bounded-accumulator rule and the
+boot contract that every shutdown wait carries a bound. The passing shutdown
+test uses one cooperative group and cannot discriminate either failure mode.
+
+Ownership: replace the append-only waiter vector with self-reaping bounded
+ownership whose admission is tied to an explicit cap and which removes terminal
+waiters during normal runtime. Drain all remaining groups under one total
+shutdown deadline. A deadline breach must return a typed unresolved-cleanup
+error without claiming group-empty proof; it must not hang or silently release a
+live mutator. Add repeated-cancellation evidence proving completed handles do
+not accumulate, exact-cap behavior, and a deliberately wedged/fault-injected
+waiter proving shutdown cannot exceed its budget.
+
+### nonzero-preflight-exit-loses-run-cause | medium | open
+
+Type: terminal classification. The correction preserves typed validator faults,
+but a completed Doctor or preview process with a nonzero exit does not pass
+through `run_cause`. Doctor validation reduces the exit mismatch to
+`producer_state_disagreement`; preview explicitly constructs that same fault
+when `code != 0`. The receipt therefore loses `child_exit_nonzero` at safe
+preflight even though post-install receipts preserve it. This contradicts the
+implementation record's claim that nonzero exit remains distinct across
+preflight and reconciliation.
+
+Ownership: preserve the closed process cause alongside the validator cause for
+Doctor and preview preflight, without exposing stream bytes. Add separate
+nonzero Doctor and preview production-path cases proving `child_exit_nonzero`,
+the phase, digests, zero install spawn, and no raw stdout/stderr fields.
+
+### prior-wire-confinement-and-cancellation-findings | low | verified
+
+Type: corrected positive controls. No producer stdout or stderr bytes cross the
+setup wire; receipts carry Dashboard-authored causes, closed current projections,
+and bounded digests. Component-wise `symlink_metadata` plus canonicalization
+rejects live escapes and dangling file/directory indirections before mutation.
+Explicit timeout/output paths terminate and await the complete process group;
+future abort and service shutdown synchronously request group termination,
+retain the group handle, and propagate group-wait errors when the waiter
+completes. Validator failures now retain closed malformed, schema, state,
+identity, target, path, escape, unresolved, missing-item, and producer-error
+kinds. The provider set and command sequence remain exactly core, claude,
+antigravity, and codex, with no `all`, Gemini, profile, deprecated API, alias,
+translation, migration, fallback, or compatibility path.
+
+The committed evidence reports 29 focused provisioning tests including the real
+Core five-shape matrix, 12 bounded-child tests, exact shutdown/disclosure/
+containment cases, two HTTP concurrency barriers, warnings-denied Clippy, Core
+checks, and clean diff. An independent targeted rerun could not start `rustc`
+because the shared Windows build path was rejected as an untrusted mount point;
+this is validation-transport evidence, not a code failure, and the formal
+verdict does not depend on rerunning the already reported green suite. The
+correction commit itself contains no unrelated path.
+
+### process-evidence-correction-formal-disposition | high | FAIL
+
+Type: formal implementation review disposition. Commit `5da89420` resolves the
+three prior direct HIGH defects and preserves the no-legacy/no-deprecated
+boundary, but its retained cleanup implementation creates an unbounded global
+accumulator and an unbounded shutdown wait. The remaining MEDIUM finding loses
+the nonzero process cause during safe preflight. The correction is not
+review-passed. Resolve both findings with discriminating production-path tests
+and obtain another formal review before acceptance.
+
+## Process and evidence re-review recommendations
+
+- Make canceled-group ownership self-reaping and explicitly capacity-bounded.
+- Apply one total deadline to service-shutdown group settlement and surface a
+  typed unresolved-cleanup failure if full-tree proof cannot complete.
+- Preserve nonzero Doctor and preview process causes alongside closed validator
+  causes, digests, and zero-mutation evidence.
