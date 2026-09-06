@@ -5,7 +5,7 @@ tags:
 date: '2026-09-06'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:f4966365b5d2c3687146bdddc39ff255bb402683a629aa05e16dd13f2c08ea67'
+body_hash: 'sha256:bde78dcc91b638a947d83539197c21c60c5784b867a4239ddc92baa48a0bd49c'
 related:
   - "[[2026-08-01-a2a-agent-flow-adr]]"
   - "[[2026-08-01-agent-panel-shell-integration-adr]]"
@@ -1279,3 +1279,70 @@ production-path tests and obtain another formal review before acceptance.
   terminate-and-reap protocol retained through server shutdown.
 - Preserve closed validator causes through preflight and re-run the focused,
   bounded-child, HTTP concurrency, lint, and project-locked Core gates.
+## 2026-09-06 process and evidence correction re-review response
+
+Correction target: formal Dashboard review audit `45e6430696`, following
+runtime commit `bdc0b45c` and architecture PASS `86470e6c`. Scope remains the
+current four-provider setup aggregate, its bounded process runner, shutdown
+ownership, containment validator, and tests. No legacy, deprecated, fallback,
+translation, or compatibility behavior is added.
+
+### failed-child-streams-are-not-wire-evidence | high | resolved
+
+Type: evidence disclosure boundary. A failed child no longer contributes raw
+stderr through `evidence.validation` or any other setup receipt field. Receipts
+serve a closed local `run_cause`, typed validator causes, exit code, closed
+producer projections when valid, and allowed SHA-256 digests. A real failing
+PowerShell child writes a unique stderr marker; the resulting receipt contains
+`child_exit_nonzero` and a digest while neither a stdout/stderr field nor the
+marker appears anywhere in the aggregate wire value.
+
+### reparse-aware-component-confinement | high | resolved
+
+Type: filesystem mutation safety. Declared-item validation now walks every path
+component with `symlink_metadata`, canonicalizes every present component, and
+requires the result to stay within the canonical target. A present component
+that cannot canonicalize, including a dangling symlink or junction, is typed
+`producer_item_unresolved`; an outside resolution is typed
+`producer_item_escape`. Missing normal children remain admissible only after all
+present ancestors have passed. Existing file/directory escapes, missing children
+below escapes, dangling file links, dangling directory links, and normal
+in-target missing descendants are covered by the passing Windows discriminator.
+
+### cancellation-explicitly-kills-and-waits-group-empty | high | resolved
+
+Type: process lifecycle. `run_bounded` wraps every command group in an owned
+guard. Cancellation synchronously requests whole-group termination and moves the
+group into a retained async waiter. Explicit timeout/output termination also
+kills and waits the group. Service shutdown aborts and awaits every owned
+aggregate task, drains all retained group waiters, and reports a serve error if
+group-empty observation fails. The Unix path no longer depends on the
+command-group builder's unsupported kill-on-drop setting; Windows waits its job
+completion port. Real wrapper-plus-descendant tests prove timeout, runner-future
+abort, and service shutdown all return only after descendant heartbeat stops.
+
+### validator-causes-survive-reconciliation | medium | resolved
+
+Type: state classification. Preflight, post-install, and final Doctor/install
+validation no longer discard errors with `.ok()`. Typed malformed, schema,
+state, identity, target, unsafe-path, escape, unresolved-item, missing-item, and
+producer-error causes flow into the local receipt projection. Timeout,
+output-cap, nonzero exit, unobserved exit, runner, manifest, and final
+reconciliation causes remain distinct. No raw producer bytes are substituted
+for these types.
+
+### process-evidence-correction-validation | medium | verified
+
+Type: validation evidence. Pinned Rust 1.96 checks are green:
+`cargo check -p vaultspec-api --tests`; 29 provisioning tests including the real
+Core five-state matrix (119.53 seconds); 12 bounded-child tests; exact service
+shutdown, failed-child stream, and reparse-containment discriminators; and
+`cargo clippy -p vaultspec-api --tests -- -D warnings`. The earlier real Core,
+HTTP single-flight/posture conflict, current-only argv, capacity, and aggregate
+receipt proofs remain green in the complete provisioning filter.
+
+### process-evidence-correction-disposition | high | pending-review
+
+Type: rolling review disposition. The three HIGH and one MEDIUM findings from
+`45e6430696` are implemented and carry discriminating evidence. Closure remains
+pending the mandatory formal code re-review of the correction commit.

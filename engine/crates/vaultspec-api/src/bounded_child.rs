@@ -15,10 +15,10 @@
 //! and envelope semantics differ per route and stay at the call site.
 
 use std::process::Stdio;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 
-use command_group::AsyncCommandGroup as _;
+use command_group::{AsyncCommandGroup as _, AsyncGroupChild};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 
 /// The two bounds every spawned child carries.
@@ -89,6 +89,93 @@ pub(crate) enum BoundedFault {
     Wait(std::io::Error),
 }
 
+static REAP_TASKS: LazyLock<Mutex<Vec<tokio::task::JoinHandle<std::io::Result<()>>>>> =
+    LazyLock::new(|| Mutex::new(Vec::new()));
+
+/// Owns one process group until it has been observed empty. Cancellation of
+/// `run_bounded` drops this guard, synchronously sends the tree kill, and moves
+/// the group handle into a retained async waiter. Serve shutdown drains those
+/// waiters before returning.
+struct OwnedGroup {
+    child: Option<AsyncGroupChild>,
+}
+
+impl OwnedGroup {
+    fn new(child: AsyncGroupChild) -> Self {
+        Self { child: Some(child) }
+    }
+
+    fn inner(&mut self) -> &mut tokio::process::Child {
+        self.child.as_mut().expect("owned process group").inner()
+    }
+
+    async fn terminate_and_wait(&mut self) -> std::io::Result<()> {
+        let child = self.child.as_mut().expect("owned process group");
+        match child.start_kill() {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::InvalidInput => {}
+            Err(error) => return Err(error),
+        }
+        child.wait().await?;
+        self.child.take();
+        Ok(())
+    }
+
+    async fn wait(&mut self) -> std::io::Result<std::process::ExitStatus> {
+        let status = self
+            .child
+            .as_mut()
+            .expect("owned process group")
+            .wait()
+            .await?;
+        self.child.take();
+        Ok(status)
+    }
+}
+
+impl Drop for OwnedGroup {
+    fn drop(&mut self) {
+        let Some(mut child) = self.child.take() else {
+            return;
+        };
+        let initial_kill = child.start_kill();
+        if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+            let waiter = runtime.spawn(async move {
+                if let Err(error) = initial_kill
+                    && error.kind() != std::io::ErrorKind::InvalidInput
+                {
+                    child.start_kill()?;
+                }
+                child.wait().await.map(|_| ())
+            });
+            REAP_TASKS
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .push(waiter);
+        }
+    }
+}
+
+/// Wait for every process group whose runner future was cancelled. The loop
+/// also catches a waiter registered while an earlier batch is being joined.
+pub(crate) async fn reap_terminated_groups() -> std::io::Result<()> {
+    loop {
+        let waiters: Vec<_> = REAP_TASKS
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .drain(..)
+            .collect();
+        if waiters.is_empty() {
+            return Ok(());
+        }
+        for waiter in waiters {
+            waiter.await.map_err(|error| {
+                std::io::Error::other(format!("process-group waiter: {error}"))
+            })??;
+        }
+    }
+}
+
 /// Run `command` to completion under both bounds, draining stdout and stderr
 /// concurrently.
 ///
@@ -114,11 +201,12 @@ pub(crate) async fn run_bounded(
         .stderr(Stdio::piped());
     // Every child is a process-tree root. On Windows command-group creates the
     // process suspended, assigns it to a Job Object, and only then resumes it,
-    // closing the spawn/assignment race. `kill_on_drop` makes cancellation of
-    // this async future close the owned group instead of orphaning descendants.
+    // closing the spawn/assignment race. The local ownership guard provides
+    // the cross-platform cancellation path because the builder's
+    // `kill_on_drop` setting is not implemented by its Unix backend.
     let mut group = command.group();
     group.kill_on_drop(true);
-    let mut child = group.spawn().map_err(BoundedFault::Spawn)?;
+    let mut child = OwnedGroup::new(group.spawn().map_err(BoundedFault::Spawn)?);
 
     let stdin = child.inner().stdin.take();
     let stdout = child.inner().stdout.take().expect("piped stdout");
@@ -164,7 +252,10 @@ pub(crate) async fn run_bounded(
         Ok(reads) => reads,
         Err(_) => {
             // Timed out: kill the child so it cannot linger as a zombie.
-            child.kill().await.map_err(BoundedFault::Wait)?;
+            child
+                .terminate_and_wait()
+                .await
+                .map_err(BoundedFault::Wait)?;
             return Err(BoundedFault::Timeout);
         }
     };
@@ -175,7 +266,10 @@ pub(crate) async fn run_bounded(
 
     let at_cap = stdout.len() as u64 >= limits.cap || stderr.len() as u64 >= limits.cap;
     if at_cap {
-        child.kill().await.map_err(BoundedFault::Wait)?;
+        child
+            .terminate_and_wait()
+            .await
+            .map_err(BoundedFault::Wait)?;
         return match cap_policy {
             CapPolicy::Refuse => Err(BoundedFault::OverCap),
             CapPolicy::KeepPartial => Ok(BoundedOutcome {

@@ -1,5 +1,89 @@
 use super::*;
 
+const SHUTDOWN_TREE_ROLE: &str = "VAULTSPEC_PROVISION_SHUTDOWN_TREE_ROLE";
+const SHUTDOWN_TREE_HEARTBEAT: &str = "VAULTSPEC_PROVISION_SHUTDOWN_TREE_HEARTBEAT";
+
+#[test]
+fn provision_shutdown_tree_process() {
+    let Ok(role) = std::env::var(SHUTDOWN_TREE_ROLE) else {
+        return;
+    };
+    let heartbeat =
+        std::env::var_os(SHUTDOWN_TREE_HEARTBEAT).expect("shutdown tree heartbeat path");
+    if role == "wrapper" {
+        let mut descendant = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "routes::provision::tests::provision_shutdown_tree_process",
+                "--exact",
+                "--nocapture",
+                "--test-threads=1",
+            ])
+            .env(SHUTDOWN_TREE_ROLE, "descendant")
+            .env(SHUTDOWN_TREE_HEARTBEAT, &heartbeat)
+            .spawn()
+            .expect("spawn shutdown descendant");
+        descendant.wait().expect("wait shutdown descendant");
+        return;
+    }
+    let mut tick = 0_u64;
+    loop {
+        std::fs::write(&heartbeat, tick.to_le_bytes()).expect("shutdown descendant heartbeat");
+        tick += 1;
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+async fn wait_for_shutdown_heartbeat(path: &FsPath) {
+    for _ in 0..300 {
+        if std::fs::metadata(path).is_ok_and(|metadata| metadata.len() == 8) {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    panic!("shutdown descendant never became observable");
+}
+
+#[tokio::test]
+async fn service_shutdown_aborts_owned_runner_and_awaits_group_empty() {
+    let dir = tempfile::tempdir().expect("shutdown heartbeat directory");
+    let heartbeat = dir.path().join("shutdown-descendant-heartbeat");
+    let mut command = tokio::process::Command::new(std::env::current_exe().unwrap());
+    command
+        .args([
+            "routes::provision::tests::provision_shutdown_tree_process",
+            "--exact",
+            "--nocapture",
+            "--test-threads=1",
+        ])
+        .env(SHUTDOWN_TREE_ROLE, "wrapper")
+        .env(SHUTDOWN_TREE_HEARTBEAT, &heartbeat);
+    let owned = tokio::spawn(async move {
+        let _ = crate::bounded_child::run_bounded(
+            command,
+            None,
+            BoundedLimits {
+                cap: 4 * 1024,
+                timeout: Duration::from_secs(30),
+            },
+            CapPolicy::Refuse,
+        )
+        .await;
+    });
+    wait_for_shutdown_heartbeat(&heartbeat).await;
+    test_register_owned_task("shutdown-tree-proof", owned);
+    shutdown_jobs().await;
+    crate::bounded_child::reap_terminated_groups()
+        .await
+        .expect("service shutdown observes every group empty");
+    let stopped = std::fs::read(&heartbeat).expect("read stopped heartbeat");
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    assert_eq!(
+        std::fs::read(&heartbeat).expect("heartbeat remains readable"),
+        stopped,
+        "serve shutdown returned before its descendant process group was empty"
+    );
+}
+
 #[test]
 fn capability_carries_no_wire_deserialize_path() {
     // A capability is only ever CONSTRUCTED from a validated request; the
@@ -383,6 +467,16 @@ fn declared_items_cannot_escape_through_existing_or_missing_path_ancestors() {
         std::fs::write(&outside_file, "outside").expect("outside file");
         symlink_file(&outside_file, target.path().join("file-link")).expect("file symlink");
         symlink_dir(outside.path(), target.path().join("dir-link")).expect("directory symlink");
+        symlink_file(
+            outside.path().join("absent-file"),
+            target.path().join("dangling-file-link"),
+        )
+        .expect("dangling file symlink");
+        symlink_dir(
+            outside.path().join("absent-dir"),
+            target.path().join("dangling-dir-link"),
+        )
+        .expect("dangling directory symlink");
     }
     #[cfg(unix)]
     {
@@ -391,6 +485,16 @@ fn declared_items_cannot_escape_through_existing_or_missing_path_ancestors() {
         std::fs::write(&outside_file, "outside").expect("outside file");
         symlink(&outside_file, target.path().join("file-link")).expect("file symlink");
         symlink(outside.path(), target.path().join("dir-link")).expect("directory symlink");
+        symlink(
+            outside.path().join("absent-file"),
+            target.path().join("dangling-file-link"),
+        )
+        .expect("dangling file symlink");
+        symlink(
+            outside.path().join("absent-dir"),
+            target.path().join("dangling-dir-link"),
+        )
+        .expect("dangling directory symlink");
     }
     assert!(
         setup::declared_item_state(target.path(), "file-link").is_err(),
@@ -403,6 +507,16 @@ fn declared_items_cannot_escape_through_existing_or_missing_path_ancestors() {
     assert!(
         setup::declared_item_state(target.path(), "dir-link/missing-dir/child").is_err(),
         "a missing directory tree below an escaping ancestor cannot authorize mutation"
+    );
+    assert_eq!(
+        setup::declared_item_state(target.path(), "dangling-file-link"),
+        Err(setup::ValidationFault::ItemUnresolved),
+        "a dangling file indirection is disagreement, not an absent item"
+    );
+    assert_eq!(
+        setup::declared_item_state(target.path(), "dangling-dir-link/child"),
+        Err(setup::ValidationFault::ItemUnresolved),
+        "a dangling directory indirection cannot authorize a child mutation"
     );
 }
 
@@ -716,7 +830,11 @@ async fn real_process_malformed_timeout_and_output_cap_never_validate_as_success
     .await;
     assert_eq!(malformed.code, Some(0));
     let dir = tempfile::tempdir().expect("target");
-    assert!(validate_install_output(&malformed.stdout, Provider::Core, dir.path(), false).is_err());
+    assert_eq!(
+        validate_install_output(&malformed.stdout, Provider::Core, dir.path(), false).unwrap_err(),
+        setup::ValidationFault::Malformed,
+        "malformed producer evidence retains a typed cause"
+    );
 
     let marker = dir.path().join(".claude");
     let script = format!(
@@ -746,6 +864,38 @@ async fn real_process_malformed_timeout_and_output_cap_never_validate_as_success
     )
     .await;
     assert_eq!(over.termination, RunTermination::OutputCapped);
+}
+
+#[cfg(windows)]
+#[tokio::test]
+async fn failed_child_stderr_is_digested_but_never_served_as_receipt_evidence() {
+    let target = tempfile::tempdir().expect("failed-child target");
+    let secret = "FAILED_CHILD_RAW_STDERR_MUST_NOT_CROSS_THE_WIRE";
+    let argv = vec![
+        "powershell.exe".to_string(),
+        "-NoProfile".to_string(),
+        "-NonInteractive".to_string(),
+        "-Command".to_string(),
+        format!("[Console]::Error.Write('{secret}'); exit 7"),
+    ];
+    let (_, outcome) = setup::run_current_setup(
+        "failed-stderr",
+        true,
+        vec![(Provider::Core, argv)],
+        target.path(),
+    )
+    .await;
+    let receipt = &outcome["aggregate"]["providers"][0];
+    assert_eq!(receipt["state"], "failed", "{outcome}");
+    assert_eq!(receipt["evidence"]["run_cause"], "child_exit_nonzero");
+    assert!(
+        receipt["evidence"]["stderr_digest"]
+            .as_str()
+            .is_some_and(|digest| digest.starts_with("sha256:"))
+    );
+    assert!(receipt["evidence"].get("stderr").is_none());
+    assert!(receipt["evidence"].get("stdout").is_none());
+    assert!(!outcome.to_string().contains(secret));
 }
 
 #[cfg(windows)]

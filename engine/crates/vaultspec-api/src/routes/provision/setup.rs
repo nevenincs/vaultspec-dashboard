@@ -72,6 +72,39 @@ pub(super) struct ManifestState {
     pub(super) serial: u64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ValidationFault {
+    Malformed,
+    SchemaDisagreement,
+    StateDisagreement,
+    IdentityDisagreement,
+    TargetUnresolved,
+    TargetDisagreement,
+    UnsafeItemPath,
+    ItemEscape,
+    ItemUnresolved,
+    ItemMissing,
+    ProducerErrors,
+}
+
+impl ValidationFault {
+    pub(super) const fn kind(self) -> &'static str {
+        match self {
+            Self::Malformed => "producer_malformed",
+            Self::SchemaDisagreement => "producer_schema_disagreement",
+            Self::StateDisagreement => "producer_state_disagreement",
+            Self::IdentityDisagreement => "producer_identity_disagreement",
+            Self::TargetUnresolved => "target_unresolved",
+            Self::TargetDisagreement => "producer_target_disagreement",
+            Self::UnsafeItemPath => "producer_item_path_unsafe",
+            Self::ItemEscape => "producer_item_escape",
+            Self::ItemUnresolved => "producer_item_unresolved",
+            Self::ItemMissing => "producer_item_missing",
+            Self::ProducerErrors => "producer_reported_errors",
+        }
+    }
+}
+
 pub(super) fn read_setup_manifest(target: &FsPath) -> Result<Option<ManifestState>, String> {
     let path = target.join(".vaultspec").join("providers.json");
     let raw = match std::fs::read_to_string(&path) {
@@ -126,32 +159,30 @@ pub(super) struct ValidatedInstall {
     pub(super) all_items_exist: bool,
 }
 
-pub(super) fn safe_declared_items(envelope: &Value) -> Result<Vec<(String, String)>, String> {
+pub(super) fn safe_declared_items(
+    envelope: &Value,
+) -> Result<Vec<(String, String)>, ValidationFault> {
     let items = envelope["data"]["items"]
         .as_array()
-        .ok_or_else(|| "install items are missing".to_string())?;
+        .ok_or(ValidationFault::Malformed)?;
     if items.is_empty() {
-        return Err("install items are empty".to_string());
+        return Err(ValidationFault::Malformed);
     }
     let mut paths = Vec::with_capacity(items.len());
     for item in items {
         let pair = item
             .as_array()
             .filter(|pair| pair.len() == 2)
-            .ok_or_else(|| "install item is not an exact pair".to_string())?;
-        let rel = pair[0]
-            .as_str()
-            .ok_or_else(|| "install item path is not a string".to_string())?;
-        let label = pair[1]
-            .as_str()
-            .ok_or_else(|| "install item label is not a string".to_string())?;
+            .ok_or(ValidationFault::Malformed)?;
+        let rel = pair[0].as_str().ok_or(ValidationFault::Malformed)?;
+        let label = pair[1].as_str().ok_or(ValidationFault::Malformed)?;
         let rel_path = FsPath::new(rel);
         if rel_path.is_absolute()
             || rel_path
                 .components()
                 .any(|component| !matches!(component, Component::Normal(_)))
         {
-            return Err("install item path is not a safe relative path".to_string());
+            return Err(ValidationFault::UnsafeItemPath);
         }
         paths.push((rel.to_string(), label.to_string()));
     }
@@ -165,27 +196,42 @@ fn path_is_within(canonical_target: &FsPath, path: &FsPath) -> bool {
 /// Prove an existing item or the nearest existing ancestor of a missing item
 /// remains within the canonical target. This catches a missing child below an
 /// existing symlink/junction before that child can authorize a mutation.
-pub(super) fn declared_item_state(target: &FsPath, relative: &str) -> Result<bool, String> {
+pub(super) fn declared_item_state(
+    target: &FsPath,
+    relative: &str,
+) -> Result<bool, ValidationFault> {
     let canonical_target =
-        std::fs::canonicalize(target).map_err(|_| "setup target cannot be resolved".to_string())?;
-    let item = target.join(relative);
-    let exists = item.exists();
-    let mut ancestor = item.as_path();
-    while !ancestor.exists() {
-        ancestor = ancestor
-            .parent()
-            .ok_or_else(|| "declared item has no existing ancestor".to_string())?;
+        std::fs::canonicalize(target).map_err(|_| ValidationFault::TargetUnresolved)?;
+    let components: Vec<_> = FsPath::new(relative).components().collect();
+    let mut candidate = target.to_path_buf();
+    for (index, component) in components.iter().enumerate() {
+        let Component::Normal(component) = component else {
+            return Err(ValidationFault::UnsafeItemPath);
+        };
+        candidate.push(component);
+        match std::fs::symlink_metadata(&candidate) {
+            Ok(_) => {
+                // Canonicalization must succeed even for the final entry. A
+                // dangling symlink/junction is therefore disagreement, rather
+                // than being mistaken for an absent item.
+                let canonical = std::fs::canonicalize(&candidate)
+                    .map_err(|_| ValidationFault::ItemUnresolved)?;
+                if !path_is_within(&canonical_target, &canonical) {
+                    return Err(ValidationFault::ItemEscape);
+                }
+                if index + 1 < components.len()
+                    && !std::fs::metadata(&candidate)
+                        .map_err(|_| ValidationFault::ItemUnresolved)?
+                        .is_dir()
+                {
+                    return Err(ValidationFault::ItemUnresolved);
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+            Err(_) => return Err(ValidationFault::ItemUnresolved),
+        }
     }
-    let canonical = std::fs::canonicalize(ancestor)
-        .map_err(|_| "declared item ancestor cannot be resolved".to_string())?;
-    if !path_is_within(&canonical_target, &canonical) {
-        return Err(if exists {
-            "producer-declared install item escapes the setup target".to_string()
-        } else {
-            "missing producer-declared item has an escaping ancestor".to_string()
-        });
-    }
-    Ok(exists)
+    Ok(true)
 }
 
 pub(super) fn validate_install_output(
@@ -193,44 +239,41 @@ pub(super) fn validate_install_output(
     provider: Provider,
     target: &FsPath,
     preview: bool,
-) -> Result<ValidatedInstall, String> {
-    let envelope: Value = serde_json::from_str(raw)
-        .map_err(|_| "Core stdout is not exactly one JSON object".to_string())?;
+) -> Result<ValidatedInstall, ValidationFault> {
+    let envelope: Value = serde_json::from_str(raw).map_err(|_| ValidationFault::Malformed)?;
     if envelope["schema"] != "vaultspec.install.v1" {
-        return Err("unexpected Core install schema".to_string());
+        return Err(ValidationFault::SchemaDisagreement);
     }
     let expected_status = if preview { "unchanged" } else { "created" };
     let expected_action = if preview { "dry_run" } else { "install" };
     if envelope["status"] != expected_status || envelope["data"]["action"] != expected_action {
-        return Err("Core install status/action disagreement".to_string());
+        return Err(ValidationFault::StateDisagreement);
     }
     let path = envelope["data"]["path"]
         .as_str()
-        .ok_or_else(|| "Core install target is missing".to_string())?;
-    let actual = std::fs::canonicalize(path)
-        .map_err(|_| "Core install target cannot be resolved".to_string())?;
-    let expected =
-        std::fs::canonicalize(target).map_err(|_| "setup target cannot be resolved".to_string())?;
+        .ok_or(ValidationFault::Malformed)?;
+    let actual = std::fs::canonicalize(path).map_err(|_| ValidationFault::TargetUnresolved)?;
+    let expected = std::fs::canonicalize(target).map_err(|_| ValidationFault::TargetUnresolved)?;
     if actual != expected {
-        return Err("Core install target disagreement".to_string());
+        return Err(ValidationFault::TargetDisagreement);
     }
     if let Some(errors) = envelope["data"].get("errors") {
         match errors.as_array() {
             Some(errors) if errors.is_empty() => {}
-            Some(_) => return Err("Core install reported errors".to_string()),
-            None => return Err("Core install errors field is malformed".to_string()),
+            Some(_) => return Err(ValidationFault::ProducerErrors),
+            None => return Err(ValidationFault::Malformed),
         }
     }
     if !preview {
         let providers = envelope["data"]["providers"]
             .as_array()
-            .ok_or_else(|| "Core install provider identity is missing".to_string())?;
+            .ok_or(ValidationFault::Malformed)?;
         let valid = match provider {
             Provider::Core => providers.is_empty(),
             _ => providers.len() == 1 && providers[0] == provider.as_arg(),
         };
         if !valid {
-            return Err("Core install provider identity disagreement".to_string());
+            return Err(ValidationFault::IdentityDisagreement);
         }
     }
     let items = safe_declared_items(&envelope)?;
@@ -240,7 +283,7 @@ pub(super) fn validate_install_output(
         .collect::<Result<Vec<_>, _>>()?;
     let all_items_exist = states.iter().all(|exists| *exists);
     if !preview && !all_items_exist {
-        return Err("producer-declared install item is missing".to_string());
+        return Err(ValidationFault::ItemMissing);
     }
     Ok(ValidatedInstall {
         projection: json!({
@@ -255,11 +298,10 @@ pub(super) fn validate_install_output(
     })
 }
 
-fn parse_doctor(raw: &str) -> Result<Value, String> {
-    let envelope: Value =
-        serde_json::from_str(raw).map_err(|_| "Core doctor stdout is malformed".to_string())?;
+fn parse_doctor(raw: &str) -> Result<Value, ValidationFault> {
+    let envelope: Value = serde_json::from_str(raw).map_err(|_| ValidationFault::Malformed)?;
     if envelope["schema"] != "vaultspec.spec.doctor.v1" {
-        return Err("unexpected Core doctor schema".to_string());
+        return Err(ValidationFault::SchemaDisagreement);
     }
     Ok(envelope)
 }
@@ -277,7 +319,7 @@ pub(super) fn validate_doctor_output(
     code: Option<i32>,
     provider: Provider,
     expectation: DoctorExpectation,
-) -> Result<Value, String> {
+) -> Result<Value, ValidationFault> {
     let doctor = parse_doctor(raw)?;
     if provider == Provider::Core {
         let (expected_code, status, framework) = match expectation {
@@ -288,14 +330,14 @@ pub(super) fn validate_doctor_output(
             || doctor["status"] != status
             || doctor["data"]["framework"] != framework
         {
-            return Err("Core Doctor status/framework disagreement".to_string());
+            return Err(ValidationFault::StateDisagreement);
         }
         if expectation == DoctorExpectation::Missing
             && !doctor["data"]["providers"]
                 .as_object()
                 .is_some_and(serde_json::Map::is_empty)
         {
-            return Err("Core-missing Doctor providers are not empty".to_string());
+            return Err(ValidationFault::IdentityDisagreement);
         }
         return Ok(json!({
             "schema":"vaultspec.spec.doctor.v1",
@@ -308,21 +350,19 @@ pub(super) fn validate_doctor_output(
         || doctor["status"] != "unchanged"
         || doctor["data"]["framework"] != "present"
     {
-        return Err("provider Doctor status/framework disagreement".to_string());
+        return Err(ValidationFault::StateDisagreement);
     }
     let entry = &doctor["data"]["providers"][provider.as_arg()];
     let manifest_entry = entry["manifest_entry"]
         .as_str()
-        .ok_or_else(|| "Doctor manifest_entry is missing or mistyped".to_string())?;
+        .ok_or(ValidationFault::Malformed)?;
     let dir_state = entry["dir_state"]
         .as_str()
-        .ok_or_else(|| "Doctor dir_state is missing or mistyped".to_string())?;
-    let config = entry["config"]
-        .as_str()
-        .ok_or_else(|| "Doctor config is missing or mistyped".to_string())?;
+        .ok_or(ValidationFault::Malformed)?;
+    let config = entry["config"].as_str().ok_or(ValidationFault::Malformed)?;
     let content = entry["content"]
         .as_object()
-        .ok_or_else(|| "Doctor content is missing or mistyped".to_string())?;
+        .ok_or(ValidationFault::Malformed)?;
     let valid = match expectation {
         DoctorExpectation::Current => {
             manifest_entry == "coherent"
@@ -340,7 +380,7 @@ pub(super) fn validate_doctor_output(
         }
     };
     if !valid {
-        return Err("selected provider Doctor evidence disagrees".to_string());
+        return Err(ValidationFault::StateDisagreement);
     }
     Ok(json!({
         "schema":"vaultspec.spec.doctor.v1",
@@ -376,6 +416,19 @@ pub(super) fn preflight_failure(
         RunTermination::Indeterminate => {
             Some(("indeterminate", format!("{phase}_runner_indeterminate")))
         }
+    }
+}
+
+fn run_cause(capture: &RunCapture) -> Option<&'static str> {
+    match capture.termination {
+        RunTermination::TimeoutCancelled => Some("child_timeout_cancelled"),
+        RunTermination::OutputCapped => Some("child_output_capped"),
+        RunTermination::Indeterminate => Some("child_runner_indeterminate"),
+        RunTermination::Completed if capture.code.is_some_and(|code| code != 0) => {
+            Some("child_exit_nonzero")
+        }
+        RunTermination::Completed if capture.code.is_none() => Some("child_exit_unobserved"),
+        RunTermination::Completed => None,
     }
 }
 
@@ -605,14 +658,14 @@ pub(super) async fn run_current_setup(
                 stop = true;
                 continue;
             }
-            Err(error) => {
+            Err(_) => {
                 receipts.push(setup_receipt(
                     job_id,
                     ordinal,
                     provider,
                     "indeterminate",
                     false,
-                    json!({"error":error}),
+                    json!({"error_kind":"manifest_unreadable"}),
                     "manifest_unreadable",
                 ));
                 stop = true;
@@ -644,15 +697,13 @@ pub(super) async fn run_current_setup(
                 doctor_run.code,
                 provider,
                 DoctorExpectation::Current,
-            )
-            .ok();
+            );
             let doctor_missing = validate_doctor_output(
                 &doctor_run.stdout,
                 doctor_run.code,
                 provider,
                 DoctorExpectation::Missing,
-            )
-            .ok();
+            );
             let preview =
                 run_setup_bounded(preview_argv(&argv), started, &mut remaining_output).await;
             if let Some((state, error_kind)) = preflight_failure(&preview, "preview") {
@@ -673,19 +724,19 @@ pub(super) async fn run_current_setup(
                 continue;
             }
             let preview_validation = if preview.code == Some(0) {
-                validate_install_output(&preview.stdout, provider, target, true).ok()
+                validate_install_output(&preview.stdout, provider, target, true)
             } else {
-                None
+                Err(ValidationFault::StateDisagreement)
             };
             let decision = decide_preflight(
                 manifest.as_ref(),
-                doctor_current.is_some(),
-                doctor_missing.is_some(),
+                doctor_current.is_ok(),
+                doctor_missing.is_ok(),
                 provider,
-                preview_validation.is_some(),
+                preview_validation.is_ok(),
                 preview_validation
                     .as_ref()
-                    .is_some_and(|value| value.all_items_exist),
+                    .is_ok_and(|value| value.all_items_exist),
             );
             if decision == PreflightDecision::ReconciledExisting {
                 receipts.push(setup_receipt(
@@ -713,6 +764,9 @@ pub(super) async fn run_current_setup(
                     false,
                     json!({
                         "error_kind":"preflight_evidence_disagreement",
+                        "preview_cause":preview_validation.as_ref().err().map(|fault| fault.kind()),
+                        "doctor_current_cause":doctor_current.as_ref().err().map(|fault| fault.kind()),
+                        "doctor_missing_cause":doctor_missing.as_ref().err().map(|fault| fault.kind()),
                         "preview_digest":digest(&preview.stdout),
                         "doctor_digest":digest(&doctor_run.stdout),
                     }),
@@ -734,7 +788,7 @@ pub(super) async fn run_current_setup(
         let install = if state == "succeeded" {
             validate_install_output(&capture.stdout, provider, target, false)
         } else {
-            Err(capture.stderr.clone())
+            Err(ValidationFault::StateDisagreement)
         };
         let post_doctor =
             run_setup_bounded(doctor_argv(target), started, &mut remaining_output).await;
@@ -745,9 +799,8 @@ pub(super) async fn run_current_setup(
                 provider,
                 DoctorExpectation::Current,
             )
-            .ok()
         } else {
-            None
+            Err(ValidationFault::StateDisagreement)
         };
         let doctor_missing = if post_doctor.termination == RunTermination::Completed {
             validate_doctor_output(
@@ -756,24 +809,23 @@ pub(super) async fn run_current_setup(
                 provider,
                 DoctorExpectation::Missing,
             )
-            .ok()
         } else {
-            None
+            Err(ValidationFault::StateDisagreement)
         };
-        let post_manifest = read_setup_manifest(target).ok().flatten();
-        let post_has_unsupported = manifest_has_unsupported(post_manifest.as_ref());
+        let post_manifest_result = read_setup_manifest(target);
+        let post_manifest = match &post_manifest_result {
+            Ok(manifest) => manifest.as_ref(),
+            Err(_) => None,
+        };
+        let post_has_unsupported = manifest_has_unsupported(post_manifest);
         let post_manifest_valid = match provider {
-            Provider::Core => post_manifest
-                .as_ref()
-                .is_some_and(|m| m.version == "2.0" && m.serial > 0),
-            _ => post_manifest
-                .as_ref()
-                .is_some_and(|m| m.installed.contains(provider.as_arg())),
+            Provider::Core => post_manifest.is_some_and(|m| m.version == "2.0" && m.serial > 0),
+            _ => post_manifest.is_some_and(|m| m.installed.contains(provider.as_arg())),
         };
         let confirmed = install.is_ok()
             && !post_has_unsupported
             && post_manifest_valid
-            && doctor_current.is_some();
+            && doctor_current.is_ok();
         let final_state = if confirmed {
             "succeeded"
         } else if matches!(state, "timeout_cancelled")
@@ -787,10 +839,18 @@ pub(super) async fn run_current_setup(
             )
         {
             "indeterminate"
-        } else if state == "failed" && !post_manifest_valid && doctor_missing.is_some() {
+        } else if state == "failed" && !post_manifest_valid && doctor_missing.is_ok() {
             "failed"
         } else {
             "indeterminate"
+        };
+        let install_projection = match &install {
+            Ok(value) => Some(value.projection.clone()),
+            Err(_) => None,
+        };
+        let doctor_projection = match (&doctor_current, &doctor_missing) {
+            (Ok(value), _) | (_, Ok(value)) => Some(value.clone()),
+            _ => None,
         };
         receipts.push(setup_receipt(
             job_id,
@@ -800,11 +860,17 @@ pub(super) async fn run_current_setup(
             true,
             json!({
                 "exit_code": capture.code,
-                "install": install.as_ref().ok().map(|value| value.projection.clone()),
+                "install": install_projection,
                 "install_digest": digest(&capture.stdout),
-                "doctor": doctor_current.clone().or(doctor_missing),
+                "stderr_digest": digest(&capture.stderr),
+                "doctor": doctor_projection,
                 "doctor_digest": digest(&post_doctor.stdout),
-                "validation": install.err(),
+                "run_cause": run_cause(&capture),
+                "post_doctor_run_cause": run_cause(&post_doctor),
+                "validation_cause": install.as_ref().err().map(|fault| fault.kind()),
+                "doctor_current_cause": doctor_current.as_ref().err().map(|fault| fault.kind()),
+                "doctor_missing_cause": doctor_missing.as_ref().err().map(|fault| fault.kind()),
+                "manifest_cause": post_manifest_result.as_ref().err().map(|_| "manifest_unreadable"),
             }),
             if confirmed {
                 "confirmed_current"
@@ -822,59 +888,67 @@ pub(super) async fn run_current_setup(
                 Some("succeeded" | "reconciled_existing")
             )
         });
-    let final_manifest_current =
-        manifest_is_exact(read_setup_manifest(target).ok().flatten().as_ref());
-    let (final_doctor_current, final_doctor_failure_state, final_doctor_digest, final_projections) =
-        if candidate_complete {
-            let final_doctor =
-                run_setup_bounded(doctor_argv(target), started, &mut remaining_output).await;
-            let current = final_doctor.code == Some(0)
-                && final_doctor.termination == RunTermination::Completed
-                && CURRENT_SETUP_PROVIDERS.iter().copied().all(|provider| {
+    let final_manifest_result = read_setup_manifest(target);
+    let final_manifest_current = match &final_manifest_result {
+        Ok(manifest) => manifest_is_exact(manifest.as_ref()),
+        Err(_) => false,
+    };
+    let (
+        final_doctor_current,
+        final_doctor_failure_state,
+        final_doctor_digest,
+        final_projections,
+        final_doctor_cause,
+    ) = if candidate_complete {
+        let final_doctor =
+            run_setup_bounded(doctor_argv(target), started, &mut remaining_output).await;
+        let validation = if final_doctor.termination == RunTermination::Completed {
+            CURRENT_SETUP_PROVIDERS
+                .iter()
+                .copied()
+                .map(|provider| {
                     validate_doctor_output(
                         &final_doctor.stdout,
                         final_doctor.code,
                         provider,
                         DoctorExpectation::Current,
                     )
-                    .is_ok()
-                });
-            let projections = if current {
-                CURRENT_SETUP_PROVIDERS
-                    .iter()
-                    .copied()
-                    .map(|provider| {
-                        validate_doctor_output(
-                            &final_doctor.stdout,
-                            final_doctor.code,
-                            provider,
-                            DoctorExpectation::Current,
-                        )
-                        .expect("checked current Doctor projection")
-                    })
-                    .collect()
-            } else {
-                Vec::new()
-            };
-            let failure_state = if final_doctor.termination == RunTermination::TimeoutCancelled {
-                "timeout_cancelled"
-            } else {
-                "indeterminate"
-            };
-            (
-                current,
-                failure_state,
-                Some(digest(&final_doctor.stdout)),
-                projections,
-            )
+                })
+                .collect::<Result<Vec<_>, _>>()
         } else {
-            (false, "indeterminate", None, Vec::new())
+            Err(ValidationFault::StateDisagreement)
         };
+        let current = validation.is_ok();
+        let validation_cause = validation.as_ref().err().map(|fault| fault.kind());
+        let projections = validation.unwrap_or_default();
+        let run_failure = run_cause(&final_doctor);
+        let failure_state = if final_doctor.termination == RunTermination::TimeoutCancelled {
+            "timeout_cancelled"
+        } else {
+            "indeterminate"
+        };
+        (
+            current,
+            failure_state,
+            Some(digest(&final_doctor.stdout)),
+            projections,
+            run_failure.or(validation_cause),
+        )
+    } else {
+        (false, "indeterminate", None, Vec::new(), None)
+    };
     if let Some(final_digest) = final_doctor_digest {
         for (index, receipt) in receipts.iter_mut().enumerate() {
             receipt["reconciliation"]["final_doctor_digest"] = json!(&final_digest);
             if let Some(projection) = final_projections.get(index) {
                 receipt["reconciliation"]["final_doctor"] = projection.clone();
+            }
+            if let Some(cause) = final_doctor_cause {
+                receipt["reconciliation"]["final_doctor_cause"] = json!(cause);
+            }
+            if final_manifest_result.is_err() {
+                receipt["reconciliation"]["final_manifest_cause"] =
+                    json!("final_manifest_unreadable");
             }
         }
     }

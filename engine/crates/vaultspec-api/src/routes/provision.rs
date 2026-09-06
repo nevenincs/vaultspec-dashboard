@@ -871,26 +871,23 @@ pub(crate) fn test_job_and_task_counts(id: &str) -> (usize, usize) {
     )
 }
 
+#[cfg(test)]
+pub(crate) fn test_register_owned_task(id: &str, task: tokio::task::JoinHandle<()>) {
+    task_lock().insert(id.to_string(), task);
+}
+
 /// Join every aggregate task still owned by the provisioning plane. The shared
 /// shutdown latch makes each task drop its active bounded process-tree future
 /// first; retaining and joining the handles keeps serve shutdown from orphaning
 /// work whose single-flight registry disappears with the process.
 pub(crate) async fn shutdown_jobs() {
     let tasks: Vec<_> = task_lock().drain().map(|(_, task)| task).collect();
-    let deadline = Instant::now() + Duration::from_secs(10);
-    for mut task in tasks {
-        let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
-            task.abort();
-            let _ = task.await;
-            continue;
-        };
-        if tokio::time::timeout(remaining, &mut task).await.is_err() {
-            // Dropping the bounded runner closes its kill-on-drop process group.
-            // The registry remains indeterminate rather than publishing a
-            // cancellation result that was not observed and reaped here.
-            task.abort();
-            let _ = task.await;
-        }
+    for task in tasks {
+        // Service exit no longer needs a wire outcome. Abort is the explicit
+        // cancellation edge: it drops the active runner, whose group guard
+        // sends the whole-tree kill and retains a group-empty waiter.
+        task.abort();
+        let _ = task.await;
     }
 }
 

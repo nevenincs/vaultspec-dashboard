@@ -289,6 +289,9 @@ async fn dropping_the_runner_future_terminates_the_real_descendant_tree() {
     wait_for_heartbeat(&heartbeat).await;
     run.abort();
     let _ = run.await;
+    reap_terminated_groups()
+        .await
+        .expect("cancelled group is observed empty");
     assert_heartbeat_stopped(&heartbeat).await;
 }
 
