@@ -6,3 +6,6 @@ tsconfig.tsbuildinfo
 # Local live-verify scratch scripts + screenshots (never committed)
 verify-*.cjs
 verify-*.png
+
+# vitest localStorage persistence artifact (per-machine, never committed)
+.vitest-localstorage
