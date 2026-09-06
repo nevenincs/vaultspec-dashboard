@@ -6,7 +6,7 @@ tags:
 date: '2026-09-05'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:61c05d5308d885b35d52ff17a9488096cefbe89d88cb27b15b2a539aa90a4e7b'
+body_hash: 'sha256:40c6cbf998cc4e8a30072844a26aee96ff7e0b06e7b8877fc74cb14722499b59'
 related:
   - '[[2026-09-05-design-system-consolidation-W01-P01-S01]]'
   - '[[2026-09-05-design-system-consolidation-W01-P01-S164]]'
@@ -21,6 +21,7 @@ related:
   - '[[2026-09-05-design-system-consolidation-W01-P01-S173]]'
   - '[[2026-09-05-design-system-consolidation-W01-P01-S174]]'
   - '[[2026-09-05-design-system-consolidation-W01-P01-S175]]'
+  - '[[2026-09-05-design-system-consolidation-W01-P01-S176]]'
   - '[[2026-09-05-design-system-consolidation-adr]]'
   - '[[2026-09-05-design-system-consolidation-horizontal-polish-research]]'
   - '[[2026-09-05-design-system-consolidation-plan]]'
@@ -38,6 +39,7 @@ related:
   - '[[2026-09-06-design-system-consolidation-s173-chrome-shell-relative-value-review-audit]]'
   - '[[2026-09-06-design-system-consolidation-s174-viewer-relative-value-review-audit]]'
   - '[[2026-09-06-design-system-consolidation-s175-palette-agent-relative-value-review-audit]]'
+  - '[[2026-09-06-design-system-consolidation-s176-stage-timeline-relative-value-review-audit]]'
 ---
 
 # `design-system-consolidation` feature index
@@ -65,6 +67,7 @@ Auto-generated index of all documents tagged with `#design-system-consolidation`
 - `2026-09-06-design-system-consolidation-s173-chrome-shell-relative-value-review-audit` - `design-system-consolidation` audit: `S173 chrome and shell relative-value classification review`
 - `2026-09-06-design-system-consolidation-s174-viewer-relative-value-review-audit` - `design-system-consolidation` audit: `S174 viewer relative-value classification review`
 - `2026-09-06-design-system-consolidation-s175-palette-agent-relative-value-review-audit` - `design-system-consolidation` audit: `S175 palette and agent relative-value classification review`
+- `2026-09-06-design-system-consolidation-s176-stage-timeline-relative-value-review-audit` - `design-system-consolidation` audit: `S176 stage and timeline relative-value classification review`
 
 ### exec
 
@@ -81,6 +84,7 @@ Auto-generated index of all documents tagged with `#design-system-consolidation`
 - `2026-09-05-design-system-consolidation-W01-P01-S173` - Classify arbitrary relative values owned by shared chrome, dialogs, sheets, and shell composition
 - `2026-09-05-design-system-consolidation-W01-P01-S174` - Classify arbitrary relative values owned by viewer, reader, code, and authoring surfaces
 - `2026-09-05-design-system-consolidation-W01-P01-S175` - Classify arbitrary relative values owned by palette, search, and agent surfaces
+- `2026-09-05-design-system-consolidation-W01-P01-S176` - Classify arbitrary relative values owned by stage overlays, graph DOM chrome, filters, and timeline composition without touching scene source
 
 ### plan
 

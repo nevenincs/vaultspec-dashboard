@@ -4590,11 +4590,391 @@ export const PALETTE_AND_AGENT_RELATIVE_VALUE_LEDGER = [
   },
 ] as const satisfies readonly RelativeValueLedgerEntry[];
 
+export const STAGE_AND_TIMELINE_RELATIVE_VALUE_LEDGER = [
+  {
+    source: {
+      path: "frontend/src/app/stage/CanvasStateOverlay.tsx",
+      owner: "CanvasStateOverlay",
+      slot: "state-card-shell-metrics",
+    },
+    expression: "gap-[0.625rem] rounded-[0.625rem] px-[1.625rem] py-[1.375rem]",
+    units: ["rem"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-component",
+      path: "frontend/tokens/components.tokens.json",
+      name: "component.canvas-state-overlay.card-shell-metrics",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "The shared canvas-state card shell applies one exact spacing and radius recipe to blocking and caution states.",
+      equivalence:
+        "The planned component role preserves the 0.625rem gap and radius, 1.625rem horizontal inset, and 1.375rem vertical inset together.",
+      replacement:
+        "Generate and consume the complete exact card-shell metric binding in the shared CARD_SHELL recipe.",
+      deletion:
+        "Remove all four arbitrary utilities only after direct component-role consumption.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/stage/CanvasStateOverlay.tsx",
+      owner: "OverlayChip",
+      slot: "annotation-line-length-limit",
+    },
+    expression: "max-w-[34rem]",
+    units: ["rem"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-component",
+      path: "frontend/tokens/components.tokens.json",
+      name: "component.canvas-state-overlay.annotation-max-width",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "Canvas annotation chips use the state overlay's exact 34rem readable-width limit.",
+      equivalence:
+        "The planned component role preserves exactly 34rem for every annotation rendered through OverlayChip.",
+      replacement:
+        "Generate and consume the exact annotation max-width binding without changing chip composition.",
+      deletion: "Remove max-w-[34rem] only after direct component-role consumption.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/stage/CategoryLegend.tsx",
+      owner: "CategoryLegend",
+      slot: "active-item-destructure-scan-false-positive",
+    },
+    expression: "[activeItem, setActiveItem]",
+    units: ["em"],
+    disposition: "repair-local-defect",
+    canonicalOwner: {
+      layer: "platform-mechanism",
+      path: "frontend/dev/tooling/scan-design-system.mjs",
+      name: "scanRelativeValueSites",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "The raw baseline mistakes a React state destructure for an em-valued styling site.",
+      defect:
+        "The textual matcher reads the Item identifier suffix inside a TypeScript bracket expression as unit em.",
+      correction:
+        "Keep this dated identity in the 106-line ledger, then make the planned scanner syntax-aware without changing graph legend behavior.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/stage/CategoryLegend.tsx",
+      owner: "CategoryLegend",
+      slot: "recency-ramp-geometry",
+    },
+    expression: "h-[0.5em] w-[6em]",
+    units: ["em"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/stage/CategoryLegend.tsx",
+      name: "CategoryLegend",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "The recency ramp uses font-relative dimensions that belong to its graph-legend visualization.",
+      constraint:
+        "The 0.5em height and 6em width scale with the adjacent caption and preserve the readable cold-to-hot sample.",
+      exactValue: "Retain both em dimensions together under CategoryLegend.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/stage/CategoryLegend.tsx",
+      owner: "CategoryLegend",
+      slot: "code-module-divider-height",
+    },
+    expression: "h-[1.25em]",
+    units: ["em"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/stage/CategoryLegend.tsx",
+      name: "CategoryLegend",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "The code-module legend divider is font-relative separator geometry within the compact toolbar.",
+      constraint:
+        "Its 1.25em height tracks the legend's current line metrics rather than a global divider size.",
+      exactValue: "Retain h-[1.25em] on this CategoryLegend branch.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/stage/CategoryLegend.tsx",
+      owner: "CategoryLegend",
+      slot: "document-type-divider-height",
+    },
+    expression: "h-[1.25em]",
+    units: ["em"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/stage/CategoryLegend.tsx",
+      name: "CategoryLegend",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "The document-type legend divider uses the same local font-relative toolbar geometry.",
+      constraint:
+        "The 1.25em separator follows this legend's caption and control height without defining a general Divider contract.",
+      exactValue: "Retain h-[1.25em] on the document-type branch.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/stage/CategoryLegend.tsx",
+      owner: "CategoryLegend",
+      slot: "filter-reset-divider-height",
+    },
+    expression: "h-[1.25em]",
+    units: ["em"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/stage/CategoryLegend.tsx",
+      name: "CategoryLegend",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "The active-filter reset divider repeats CategoryLegend's local separator geometry.",
+      constraint:
+        "Its 1.25em height coordinates the optional reset action with the same legend row, not with independent surfaces.",
+      exactValue: "Retain h-[1.25em] on the filter-reset branch.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/stage/ProvisionPanel.tsx",
+      owner: "ProvisionPanelBody",
+      slot: "progress-skeleton-geometry",
+    },
+    expression: "w-[12.5rem] h-[0.625rem]",
+    units: ["rem"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/stage/ProvisionPanel.tsx",
+      name: "ProvisionPanelBody",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "The provisioning progress skeleton has exact placeholder geometry for the centered status card.",
+      constraint:
+        "Its 12.5rem width and 0.625rem height stand in for this panel's progress treatment and do not define a shared SkeletonBar role.",
+      exactValue: "Retain both dimensions together under ProvisionPanelBody.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/timeline/DateBasisSelect.tsx",
+      owner: "DateBasisSelect",
+      slot: "menu-width-comment-scan-false-positive",
+    },
+    expression: "min-w-[11rem]",
+    units: ["rem"],
+    disposition: "repair-local-defect",
+    canonicalOwner: {
+      layer: "platform-mechanism",
+      path: "frontend/dev/tooling/scan-design-system.mjs",
+      name: "scanRelativeValueSites",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "The raw baseline counts a documentation reference to the former utility as a live relative-value site.",
+      defect:
+        "The current portaled menu uses measured 176px placement geometry; min-w-[11rem] appears only in explanatory prose.",
+      correction:
+        "Preserve the dated raw identity, then exclude comments in the planned syntax-aware scanner without changing menu placement.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/timeline/TimelineRangeSelector.tsx",
+      owner: "handleFootprint",
+      slot: "responsive-handle-footprints",
+    },
+    expression: "size-[1.25rem] size-[0.875rem]",
+    units: ["rem"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/timeline/TimelineRangeSelector.tsx",
+      name: "handleFootprint",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "Timeline handles retain distinct compact and desktop footprints inside their drag contract.",
+      constraint:
+        "The 1.25rem compact target and 0.875rem desktop mark are shared by live and ghost handles and coordinate pointer geometry with the track.",
+      exactValue:
+        "Retain both variant values in handleFootprint without treating the specialized slider seam as a generic control size.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/timeline/TimelineRangeSelector.tsx",
+      owner: "DateBasisGhost",
+      slot: "leading-mark-footprint",
+    },
+    expression: "size-[0.875rem]",
+    units: ["rem"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/timeline/TimelineRangeSelector.tsx",
+      name: "DateBasisGhost",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "The leading ghost mark mirrors the date-basis trigger's structural glyph footprint.",
+      constraint:
+        "Its 0.875rem square is authored placeholder geometry coupled to DateBasisGhost, not a live control target.",
+      exactValue: "Retain size-[0.875rem] on the leading ghost mark.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/timeline/TimelineRangeSelector.tsx",
+      owner: "DateBasisGhost",
+      slot: "label-skeleton-width",
+    },
+    expression: "w-[3.5rem]",
+    units: ["rem"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/timeline/TimelineRangeSelector.tsx",
+      name: "DateBasisGhost",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "The date-basis ghost label uses an exact placeholder width for the compact pill composition.",
+      constraint:
+        "The 3.5rem bar balances the two glyph ghosts and approximates this control's label region only.",
+      exactValue: "Retain w-[3.5rem] under DateBasisGhost.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/timeline/TimelineRangeSelector.tsx",
+      owner: "DateBasisGhost",
+      slot: "trailing-mark-footprint",
+    },
+    expression: "size-[0.875rem]",
+    units: ["rem"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/timeline/TimelineRangeSelector.tsx",
+      name: "DateBasisGhost",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "The trailing ghost mark mirrors the date-basis trigger's chevron footprint.",
+      constraint:
+        "Its 0.875rem square completes this one placeholder composition and carries no independent primitive semantics.",
+      exactValue: "Retain size-[0.875rem] on the trailing ghost mark.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/timeline/TimelineRangeSelector.tsx",
+      owner: "TimelineGhost",
+      slot: "selected-summary-skeleton-width",
+    },
+    expression: "w-[6rem]",
+    units: ["rem"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/timeline/TimelineRangeSelector.tsx",
+      name: "TimelineGhost",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "The timeline ghost's summary bar reserves the exact width of the selected date-range label region.",
+      constraint:
+        "The 6rem placeholder coordinates with the ghost track and date-basis pill rather than a shared skeleton vocabulary.",
+      exactValue: "Retain w-[6rem] under TimelineGhost.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/timeline/TimelineRangeSelector.tsx",
+      owner: "TimelineRange",
+      slot: "state-strip-height",
+    },
+    expression: "h-[2.75rem]",
+    units: ["rem"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/timeline/TimelineRangeSelector.tsx",
+      name: "TimelineRange",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "Loading, degraded, and empty timeline states share the selector's exact strip height.",
+      constraint:
+        "The 2.75rem height tethers the timeline to the graph panel and is not the generic coarse-target role with the same numeric value.",
+      exactValue: "Retain h-[2.75rem] in the shared non-populated container recipe.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/timeline/TimelineRangeSelector.tsx",
+      owner: "TimelineRange",
+      slot: "populated-strip-height",
+    },
+    expression: "h-[2.75rem]",
+    units: ["rem"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/timeline/TimelineRangeSelector.tsx",
+      name: "TimelineRange",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "The populated timeline selector preserves the same exact graph-panel strip height as its state variants.",
+      constraint:
+        "The 2.75rem height is composition geometry for the graph-plus-timeline panel, not a general touch-target token.",
+      exactValue: "Retain h-[2.75rem] on the populated TimelineRange container.",
+    },
+  },
+] as const satisfies readonly RelativeValueLedgerEntry[];
+
 export const RELATIVE_VALUE_LEDGER: readonly RelativeValueLedgerEntry[] = [
   ...KIT_RELATIVE_VALUE_LEDGER,
   ...CHROME_AND_SHELL_RELATIVE_VALUE_LEDGER,
   ...VIEWER_RELATIVE_VALUE_LEDGER,
   ...PALETTE_AND_AGENT_RELATIVE_VALUE_LEDGER,
+  ...STAGE_AND_TIMELINE_RELATIVE_VALUE_LEDGER,
 ];
 export const NAMING_DEBT_LEDGER: readonly NamingDebtLedgerEntry[] = [];
 export const CONSOLIDATION_INVARIANTS: readonly ConsolidationInvariant[] = [];
