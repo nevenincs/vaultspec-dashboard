@@ -13,27 +13,12 @@ vault Markdown alongside your code.
 [![targets](https://img.shields.io/badge/targets-macOS%20arm64%20%7C%20Linux%20arm64%2Fx64%20%7C%20Windows%20x64-3F9AA6?style=flat&labelColor=24292f)](https://github.com/nevenincs/vaultspec-dashboard/releases/latest)
 [![license](https://img.shields.io/github/license/nevenincs/vaultspec-dashboard?style=flat&label=license&logo=opensourceinitiative&logoColor=white&labelColor=24292f&color=B3823C)](LICENSE)
 
-[Visual tour](#visual-tour) ·
 [Getting started](#getting-started) · [Capabilities](#capabilities) ·
+[Visual tour](#visual-tour) ·
 [Vaultspec family](#vaultspec-family) · [Documentation](#documentation) ·
 [Status](#status-and-license)
 
 ![Complete Vaultspec workspace showing the project and worktree selector, Vault and Files navigation, populated graph, timeline, and activity](docs/assets/workspace.png)
-
-## Visual tour
-
-![Markdown decision document open within its vault and repository context beside the populated graph](docs/assets/document-workspace.png)
-
-*Open a document from **Documents** > **Decisions** without losing its workspace and
-graph context.*
-
-![Search documents and code dialog with All, Docs, and Code scopes, a real query, and populated repository results](docs/assets/search.png)
-
-*Search documents and code with a real query, scoped result controls, and populated results.*
-
-![Activity and status view showing open plans and the running search service](docs/assets/status.png)
-
-*Review current open plans and search-service state from the running workspace.*
 
 <p id="project-layout"></p>
 <p id="project-responsibilities"></p>
@@ -96,39 +81,6 @@ required runtime files.
 Release binaries are unsigned. Your operating system may warn before running them.
 
 Agent-to-agent orchestration isn't available in v0.1.12.
-
-### Updating
-
-In v0.1.12, `vaultspec update` doesn't download a newer release. The installers
-also refuse to overwrite an existing installation. These commands don't provide
-an in-place upgrade. Consult the target version's
-[release notes](https://github.com/nevenincs/vaultspec-dashboard/releases)
-for upgrade instructions.
-
-<p id="removing-it-and-what-stays"></p>
-
-### Uninstall
-
-The installation commands don't save the scripts. Download
-[install.sh](https://github.com/nevenincs/vaultspec-dashboard/releases/latest/download/install.sh)
-or [install.ps1](https://github.com/nevenincs/vaultspec-dashboard/releases/latest/download/install.ps1),
-then run the saved script from its directory.
-
-On macOS or Linux:
-
-```bash
-bash ./install.sh --uninstall
-```
-
-On Windows:
-
-```powershell
-.\install.ps1 -Uninstall
-```
-
-For a custom installation, pass its directory with `--install-dir` or
-`-InstallDir`. If removal is refused, the script leaves the installation in place.
-The script doesn't delete your project files or per-user application data.
 
 ### Prepare a project
 
@@ -200,6 +152,41 @@ and Git history remain available.
 1. Choose **Docs**, enter part of the record's title, and press **Enter** on a result
    to open it.
 
+## Manage installation
+
+### Updating
+
+In v0.1.12, `vaultspec update` doesn't download a newer release. The installers
+also refuse to overwrite an existing installation. These commands don't provide
+an in-place upgrade. Consult the target version's
+[release notes](https://github.com/nevenincs/vaultspec-dashboard/releases)
+for upgrade instructions.
+
+<p id="removing-it-and-what-stays"></p>
+
+### Uninstall
+
+The installation commands don't save the scripts. Download
+[install.sh](https://github.com/nevenincs/vaultspec-dashboard/releases/latest/download/install.sh)
+or [install.ps1](https://github.com/nevenincs/vaultspec-dashboard/releases/latest/download/install.ps1),
+then run the saved script from its directory.
+
+On macOS or Linux:
+
+```bash
+bash ./install.sh --uninstall
+```
+
+On Windows:
+
+```powershell
+.\install.ps1 -Uninstall
+```
+
+For a custom installation, pass its directory with `--install-dir` or
+`-InstallDir`. If removal is refused, the script leaves the installation in place.
+The script doesn't delete your project files or per-user application data.
+
 ## Capabilities
 
 - Browse registered projects and worktrees, then open a project's `.vault/` feature records or code.
@@ -212,6 +199,21 @@ and Git history remain available.
 
 Views report unavailable data sources. If Core is missing, [prepare a project](#prepare-a-project).
 For missing RAG, follow [optional semantic search](#optional-semantic-search).
+
+## Visual tour
+
+![Markdown decision document open within its vault and repository context beside the populated graph](docs/assets/document-workspace.png)
+
+*Open a document from **Documents** > **Decisions** without losing its workspace and
+graph context.*
+
+![Search documents and code dialog with All, Docs, and Code scopes, a real query, and populated repository results](docs/assets/search.png)
+
+*Search documents and code with a real query, scoped result controls, and populated results.*
+
+![Activity and status view showing open plans and the running search service](docs/assets/status.png)
+
+*Review current open plans and search-service state from the running workspace.*
 
 ## Vaultspec family
 
