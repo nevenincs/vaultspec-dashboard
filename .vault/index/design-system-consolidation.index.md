@@ -6,7 +6,7 @@ tags:
 date: '2026-09-05'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:f16d8a14803d30608f08037aa182153c1a2245b2906bcda8678564749e79326a'
+body_hash: 'sha256:07a12f16352a6e37eb50849daef30666b4d35a2e083130c959547fa2e1cfb31c'
 related:
   - '[[2026-09-05-design-system-consolidation-W01-P01-S01]]'
   - '[[2026-09-05-design-system-consolidation-W01-P01-S04]]'
@@ -80,7 +80,7 @@ Auto-generated index of all documents tagged with `#design-system-consolidation`
 
 ### adr
 
-- `2026-09-05-design-system-consolidation-adr` - `design-system-consolidation` adr: `behavior-preserving horizontal design-system consolidation` | (**status:** `accepted`)
+- `2026-09-05-design-system-consolidation-adr` - `design-system-consolidation` adr: `critical-foundation consolidation with ledgered follow-on debt` | (**status:** `accepted`)
 
 ### audit
 
