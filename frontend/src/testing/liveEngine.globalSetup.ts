@@ -31,7 +31,51 @@ const FIXTURE_DIR = resolve(import.meta.dirname, "fixtures/live-vault");
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 const BIN_NAME = process.platform === "win32" ? "vaultspec.exe" : "vaultspec";
 const MAX_SERVE_LOG_BYTES = 1024 * 1024;
+export const UNEXPECTED_EXIT_LOG_TAIL_CHARS = 16 * 1024;
 const SETUP_COMMAND_TIMEOUT_MS = 60_000;
+
+export interface EngineExitDetails {
+  expected: boolean;
+  code: number | null;
+  signal: NodeJS.Signals | null;
+  elapsedMs: number;
+  serveLog: string;
+}
+
+type EngineExitListener = (code: number | null, signal: NodeJS.Signals | null) => void;
+
+interface EngineExitEmitter {
+  once(event: "exit", listener: EngineExitListener): unknown;
+}
+
+/** Build the bounded diagnostic for an engine exit the harness did not request. */
+export function unexpectedEngineExitDiagnostic({
+  expected,
+  code,
+  signal,
+  elapsedMs,
+  serveLog,
+}: EngineExitDetails): string | undefined {
+  if (expected) return undefined;
+  const tail = serveLog.slice(-UNEXPECTED_EXIT_LOG_TAIL_CHARS);
+  return [
+    `[live-engine] unexpected exit: code=${code ?? "null"} signal=${signal ?? "null"} elapsed_ms=${Math.max(0, Math.floor(elapsedMs))}`,
+    `[live-engine] serve-log tail (${tail.length} chars):`,
+    tail || "<empty>",
+  ].join("\n");
+}
+
+/** Attach one diagnostic observer without changing child-process lifecycle. */
+export function observeUnexpectedEngineExit(
+  child: EngineExitEmitter,
+  details: (code: number | null, signal: NodeJS.Signals | null) => EngineExitDetails,
+  report: (diagnostic: string) => void = (diagnostic) => console.error(diagnostic),
+): void {
+  child.once("exit", (code, signal) => {
+    const diagnostic = unexpectedEngineExitDiagnostic(details(code, signal));
+    if (diagnostic) report(diagnostic);
+  });
+}
 
 /** Resolve the service binary the suite runs against.
  *
@@ -122,6 +166,7 @@ let scratch: string | undefined;
 let degradedScratch: string | undefined;
 let activeBaseUrl: string | undefined;
 let activeToken = "";
+let engineExitExpected = false;
 
 function appendServeLog(current: string, chunk: Buffer): string {
   const combined = current + chunk.toString();
@@ -133,6 +178,7 @@ function appendServeLog(current: string, chunk: Buffer): string {
 async function cleanupOwnedResources(): Promise<void> {
   const ownedEngine = engine;
   const failures: Error[] = [];
+  engineExitExpected = true;
   try {
     if (
       ownedEngine?.pid &&
@@ -183,6 +229,7 @@ async function cleanupOwnedResources(): Promise<void> {
     degradedScratch = undefined;
     activeBaseUrl = undefined;
     activeToken = "";
+    engineExitExpected = false;
   }
   if (failures.length === 1) throw failures[0];
   if (failures.length > 1)
@@ -260,6 +307,7 @@ async function setupOwnedEngine(): Promise<() => Promise<void>> {
     detached: process.platform !== "win32",
   });
   let serveLog = "";
+  const engineStartedAt = Date.now();
   engine.stdout?.on(
     "data",
     (chunk: Buffer) => (serveLog = appendServeLog(serveLog, chunk)),
@@ -268,6 +316,14 @@ async function setupOwnedEngine(): Promise<() => Promise<void>> {
     "data",
     (chunk: Buffer) => (serveLog = appendServeLog(serveLog, chunk)),
   );
+  engineExitExpected = false;
+  observeUnexpectedEngineExit(engine, (code, signal) => ({
+    expected: engineExitExpected,
+    code,
+    signal,
+    elapsedMs: Date.now() - engineStartedAt,
+    serveLog,
+  }));
 
   // 4. Read the rotated service token + poll /status until the engine answers.
   const tokenPath = join(scratch, ".vault", "data", "engine-data", "service.json");
