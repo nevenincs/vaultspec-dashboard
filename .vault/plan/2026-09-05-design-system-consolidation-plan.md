@@ -8,9 +8,9 @@ related:
   - '[[2026-09-05-design-system-consolidation-adr]]'
   - '[[2026-09-05-design-system-consolidation-horizontal-polish-research]]'
   - '[[2026-09-05-design-system-consolidation-shipped-frontend-blueprint-reference]]'
-modified: '2026-09-05'
+modified: '2026-09-06'
 body_schema: body-v2
-body_hash: 'sha256:3c6aecb041eb4ecdb86ed0843696cd4beff8bbfa3e638da2d0c4442eb411685f'
+body_hash: 'sha256:2eec39a26ffb03defb4ef46321770472b28b05972e2c1c5e76bc9eae072525dd'
 ---
 
 <!-- RETIRED: S02, S03, S95, S96, S158 -->
@@ -39,7 +39,7 @@ Create the evidence and enforcement substrate required by every later Wave. All 
 
 Establish one machine-readable ledger that distinguishes migrations, retained semantic seams, exact local geometry, and unresolved design-name debt.
 
-- [ ] `W01.P01.S01` - Define the bounded ledger schema, stable source identities, allowed dispositions, canonical-owner fields, and rationale requirements; `frontend/dev/design-system/consolidation-ledger.ts`.
+- [x] `W01.P01.S01` - Define the bounded ledger schema, stable source identities, allowed dispositions, canonical-owner fields, and rationale requirements; `frontend/dev/design-system/consolidation-ledger.ts`.
 - [ ] `W01.P01.S164` - Classify kit-owned native controls and direct settings-wrapper migration candidates; `frontend/dev/design-system/consolidation-ledger.ts`.
 - [ ] `W01.P01.S165` - Classify ordinary text-field and textarea migration families across settings, dialogs, clarification, properties, review, and comments; `frontend/dev/design-system/consolidation-ledger.ts`.
 - [ ] `W01.P01.S166` - Classify menu, option-row, context-menu, filter, date-basis, command, and search-result control families; `frontend/dev/design-system/consolidation-ledger.ts`.
