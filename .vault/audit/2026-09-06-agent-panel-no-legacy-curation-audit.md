@@ -5,7 +5,7 @@ tags:
 date: '2026-09-06'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:fc0994c33f0c02b34b216c9493fe896081de648bae09d2309678dac3feeab3bd'
+body_hash: 'sha256:c7962f941e375f02c5251107cf3743b43b258e5e8b54a2258658874a929d7c6e'
 related:
   - "[[2026-08-01-a2a-agent-flow-adr]]"
   - "[[2026-08-01-agent-panel-shell-integration-adr]]"
@@ -462,3 +462,95 @@ focused warnings-denied Clippy, exact scoped ESLint and Prettier, frontend
 TypeScript/build, built-CSS discrimination, and npm audit pass. Concurrent graph
 simulation and design-system work remains excluded and preserved. Acceptance
 still requires formal review of the correction commit.
+
+## 2026-09-06 formal re-review of Dashboard setup correction
+
+Review target: `1013120a5f94cec2fe1f8364c4271cebe1d404df`, exact parent
+`c8b3248b90919cc8341aea058d64a46245b6f168`. Review covered the fifteen
+committed correction paths against D8-D10, the prior runtime review and the
+current API, CLI and frontend behavior. Concurrent graph-simulation,
+design-system, rule-projection and generated-local-storage changes were excluded
+and preserved.
+
+### setup-single-flight-admission-is-racy | high | open
+
+Type: concurrency and mutation safety. Status: review-blocking. The route checks
+`Registry::running_for()` while holding the registry mutex, drops that guard,
+then creates and inserts the new job under a later lock acquisition. Two
+simultaneous requests for the same target and `setup:current` key can both
+observe no running aggregate, receive different job ids, insert separately and
+spawn two four-command writer sequences. The unit test inserts a job first and
+then tests attach/conflict lookup; it does not exercise concurrent route
+admission and cannot discriminate this check-then-insert race.
+
+Ownership: correct the setup runtime by making match-or-reserve one atomic
+registry operation under one mutex acquisition. It must either return the
+existing same-posture id, return the different-posture conflict id, or insert
+exactly one reserved running job before releasing the lock. Add concurrent
+provider-less HTTP tests synchronized at admission that prove identical safe or
+force submissions attach to one id and one child sequence, while simultaneous
+safe/force submissions produce one writer plus one typed posture conflict.
+
+### aggregate-receipts-and-reconciliation-are-not-authoritative | high | open
+
+Type: result integrity, reconciliation, and retry safety. Status:
+review-blocking. `outcome_value()` treats every completed exit code zero as
+success even when output is non-JSON, has no `vaultspec.sync.v1` schema, or names
+an unsupported/failure status. `reconcile_setup_receipts()` then uses only the
+presence of `.vaultspec`, `.claude`, `.antigravity`, or `.codex` directories.
+It promotes an indeterminate child to `succeeded` whenever the directory was
+absent before and present afterward. A child can create a partial projection and
+then exceed output, fail read/wait, or outlive its direct process; this path can
+therefore publish `complete` without four authoritative Core receipts. A shallow
+pre/post directory marker is fresh served status evidence, but it does not prove
+the owning Core operation completed.
+
+Ownership: correct the setup runtime by strictly decoding each provider's Core
+receipt as the supported `vaultspec.sync.v1` envelope and allowed terminal
+status before counting success. Preserve malformed, missing, contradictory and
+ambiguous receipts as `indeterminate`; directory appearance alone must never
+promote them to success. Reconciliation must retain both the validated Core
+receipt and fresh served status, expose disagreement, and emit `complete` only
+for four authoritative success receipts with agreeing provider state. Add
+real-process tests for exit-zero malformed output, unsupported/failure envelope
+status, partial directory creation followed by timeout/output/read ambiguity,
+pre-existing directories, and receipt/status disagreement; prove no automatic
+replay and the exact closed terminal result in each case.
+
+### provision-test-module-extraction-preserves-existing-cases | low | verified
+
+Type: test organization. The extraction from inline `provision.rs` tests into
+`provision/tests.rs` retains all thirteen prior tests and adds four setup-focused
+cases. Production visibility remains private to the route module. The extraction
+itself changes no behavior and introduces no deprecated test API.
+
+### validation-and-no-legacy-corrections | low | verified
+
+Type: compatibility and validation. Provider-less HTTP and CLI setup, the fixed
+`core`, `claude`, `antigravity`, `codex` command order, absence of Core `all` and
+Gemini, safe/force posture labels, aggregate deadline/output arithmetic,
+per-provider ordinals, frontend recommended/force dispatch, and typed frontend
+shapes are present. The Style Dictionary unknown/object/scalar narrowing removes
+the four explicit-any lint failures; stale console suppressions are gone; and
+the built-CSS discriminator correctly rejects Dashboard alias bindings while
+allowing Tailwind-owned canonical theme names. The earlier yaml/toolchain,
+dependency-security, deprecated-warning and token-consumer corrections remain
+intact.
+
+Independent exact-commit verification produced 17 passing provisioning route
+unit tests after placing the pinned Rust toolchain on PATH, and 47 passing
+frontend tests across the four correction suites. Exact ten-file ESLint and
+Prettier checks pass. A concurrent frontend live-engine process temporarily
+locked the shared `vaultspec.exe`, so the separate CLI test relink could not be
+repeated; the committed two-test CLI result and direct parser/source inspection
+remain valid evidence for the provider-less command shape.
+
+### current-provider-setup-correction-formal-rereview | high | FAIL
+
+Type: formal implementation review disposition. The correction restores the
+current four-provider product capability and resolves the prior ESLint and CSS
+evidence inaccuracies, but it does not satisfy D9's at-most-one writer or
+authoritative-result requirements. The two HIGH findings above allow duplicate
+aggregates and false successful reconciliation. Commit `1013120a` is not
+review-passed; keep the earlier high runtime finding open until both corrections
+and a formal re-review pass. No runtime or plan row changed in this review.
