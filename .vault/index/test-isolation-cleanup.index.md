@@ -6,7 +6,7 @@ tags:
 date: '2026-09-04'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:9893533173d2ac699149f5bf91994f218f76e717dba1ab2d64cb6b89bddbe67d'
+body_hash: 'sha256:45ebf3241f71ce83438e39a03e02778e4fbb60ddc9a66becb176c680541100f5'
 related:
   - '[[2026-09-04-test-isolation-cleanup-S01]]'
   - '[[2026-09-04-test-isolation-cleanup-S02]]'
@@ -14,10 +14,12 @@ related:
   - '[[2026-09-04-test-isolation-cleanup-S04]]'
   - '[[2026-09-04-test-isolation-cleanup-S05]]'
   - '[[2026-09-04-test-isolation-cleanup-S06]]'
+  - '[[2026-09-04-test-isolation-cleanup-S07]]'
   - '[[2026-09-04-test-isolation-cleanup-adr]]'
   - '[[2026-09-04-test-isolation-cleanup-plan]]'
   - '[[2026-09-04-test-isolation-cleanup-research]]'
   - '[[2026-09-06-test-isolation-cleanup-s06-awaited-happydom-abort-review-audit]]'
+  - '[[2026-09-06-test-isolation-cleanup-s07-happydom-abort-guard-review-audit]]'
 ---
 
 # `test-isolation-cleanup` feature index
@@ -33,6 +35,7 @@ Auto-generated index of all documents tagged with `#test-isolation-cleanup`.
 ### audit
 
 - `2026-09-06-test-isolation-cleanup-s06-awaited-happydom-abort-review-audit` - `test-isolation-cleanup` audit: `S06 awaited happy-dom abort review`
+- `2026-09-06-test-isolation-cleanup-s07-happydom-abort-guard-review-audit` - `test-isolation-cleanup` audit: `S07 happy-dom abort guard review`
 
 ### exec
 
@@ -42,6 +45,7 @@ Auto-generated index of all documents tagged with `#test-isolation-cleanup`.
 - `2026-09-04-test-isolation-cleanup-S04` - Triage each newly failing suite as a surfaced pre-existing defect: fix on merits or record with evidence
 - `2026-09-04-test-isolation-cleanup-S05` - Re-run the full gate three times to confirm the barrier holds against the flake class it closes
 - `2026-09-04-test-isolation-cleanup-S06` - Await native happy-dom abort directly, remove the fixed drain, and make serial worker configuration truthful
+- `2026-09-04-test-isolation-cleanup-S07` - Add an awaited-abort and no-timer guard, and prove it fails both when awaiting is removed and when a fixed drain returns
 
 ### plan
 
