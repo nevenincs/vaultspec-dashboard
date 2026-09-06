@@ -51,7 +51,7 @@ import {
   type CreateCommentPayload,
 } from "../authoringComments";
 import { queryClient as defaultQueryClient } from "../queryClient";
-import { sseChunks, streamReducer, type StreamChunk } from "../queries";
+import { acquireSseChunks, streamReducer, type StreamChunk } from "../queries";
 
 import type {
   AcknowledgeAppliedPayload,
@@ -894,11 +894,11 @@ function startAuthoringLifecycleLoop(): () => void {
     controller = new AbortController();
     try {
       setAuthoringStreamConnected(true);
-      const response = await authoringClient.openEventStream(
-        authoringStreamCursor.lastSeq ?? 0,
+      for await (const chunk of acquireSseChunks(
+        (signal) =>
+          authoringClient.openEventStream(authoringStreamCursor.lastSeq ?? 0, signal),
         controller.signal,
-      );
-      for await (const chunk of sseChunks(response)) {
+      )) {
         if (stopped) return;
         await handleAuthoringStreamChunk(chunk, controller.signal);
       }

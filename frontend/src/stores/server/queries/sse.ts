@@ -58,12 +58,59 @@ export function parseSseFrames(buffer: string): {
   return { frames, rest };
 }
 
-function isAbort(cause: unknown): boolean {
-  return cause instanceof Error && cause.name === "AbortError";
+export type SseResponseAcquirer = (signal: AbortSignal) => Promise<Response>;
+
+/**
+ * Open and consume an SSE response without letting an owner's post-header abort
+ * destroy the resolved transport. The private request signal follows the owner
+ * only while response headers are pending; once acquired, {@link sseChunks}
+ * owns cancellation through the response reader.
+ */
+export async function* acquireSseChunks(
+  acquire: SseResponseAcquirer,
+  ownerSignal: AbortSignal,
+): AsyncGenerator<StreamChunk, void, unknown> {
+  if (ownerSignal.aborted) return;
+
+  const requestController = new AbortController();
+  let acquiring = true;
+  const abortRequest = () => {
+    if (acquiring) requestController.abort(ownerSignal.reason);
+  };
+  ownerSignal.addEventListener("abort", abortRequest, { once: true });
+
+  try {
+    let response: Response;
+    try {
+      response = await acquire(requestController.signal).then(
+        (settled) => {
+          acquiring = false;
+          ownerSignal.removeEventListener("abort", abortRequest);
+          return settled;
+        },
+        (cause: unknown) => {
+          acquiring = false;
+          ownerSignal.removeEventListener("abort", abortRequest);
+          throw cause;
+        },
+      );
+    } catch (cause) {
+      if (ownerSignal.aborted && requestController.signal.aborted) {
+        return;
+      }
+      throw cause;
+    }
+
+    yield* sseChunks(response, ownerSignal);
+  } finally {
+    acquiring = false;
+    ownerSignal.removeEventListener("abort", abortRequest);
+  }
 }
 
 export async function* sseChunks(
   response: Response,
+  ownerSignal?: AbortSignal,
 ): AsyncGenerator<StreamChunk, void, unknown> {
   if (!response.ok || !response.body) {
     throw new StreamLostError(`graph stream responded ${response.status}`);
@@ -73,14 +120,41 @@ export async function* sseChunks(
   let buffer = "";
   let bufferedWireBytes = 0;
   let delimiterSearchFrom = 0;
+  let failed = false;
+  let cancellation: Promise<{ cause?: unknown }> | null = null;
+  const cancelReader = () => {
+    if (cancellation !== null) return;
+    cancellation = reader.cancel().then(
+      () => ({}),
+      (cause: unknown) => ({ cause }),
+    );
+  };
+  const finishReader = async () => {
+    if (cancellation !== null) {
+      const outcome = await cancellation;
+      if (outcome.cause !== undefined) throw outcome.cause;
+    } else if (!failed) {
+      await reader.cancel();
+    }
+  };
+  ownerSignal?.addEventListener("abort", cancelReader, { once: true });
+  if (ownerSignal?.aborted) cancelReader();
   try {
     for (;;) {
       let chunk: ReadableStreamReadResult<Uint8Array>;
       try {
         chunk = await reader.read();
-      } catch (cause) {
-        if (isAbort(cause)) throw cause;
+      } catch {
+        if (cancellation !== null) {
+          await finishReader();
+          return;
+        }
+        failed = true;
         throw new StreamLostError("graph stream dropped");
+      }
+      if (cancellation !== null) {
+        await finishReader();
+        return;
       }
       if (chunk.done) throw new StreamLostError("graph stream ended");
       for (let offset = 0; offset < chunk.value.byteLength; ) {
@@ -99,10 +173,17 @@ export async function* sseChunks(
         buffer = rest;
         bufferedWireBytes = utf8ByteLength(rest);
         delimiterSearchFrom = 0;
-        for (const frame of frames) yield frame;
+        for (const frame of frames) {
+          if (cancellation !== null) {
+            await finishReader();
+            return;
+          }
+          yield frame;
+        }
       }
     }
   } finally {
-    await reader.cancel().catch(() => undefined);
+    ownerSignal?.removeEventListener("abort", cancelReader);
+    await finishReader();
   }
 }

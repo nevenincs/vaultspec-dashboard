@@ -17,9 +17,10 @@ import {
   stableKey,
 } from "./internal";
 import { invalidateGitRecoveryReads } from "./mutations";
-import { sseChunks, type StreamChunk } from "./sse";
+import { acquireSseChunks, type StreamChunk } from "./sse";
 
 export {
+  acquireSseChunks,
   MAX_SSE_FRAME_BYTES,
   MAX_SSE_INCOMPLETE_BYTES,
   parseSseFrames,
@@ -76,14 +77,16 @@ export function engineStreamOptions(
     // Scope joins the key for the same reason (per-scope clock).
     queryKey: engineKeys.stream(identity.channels, identity.since, identity.scope),
     queryFn: streamedQuery({
-      streamFn: async (context) =>
-        sseChunks(
-          await engineClient.openStream(
-            [...identity.channels],
-            identity.since,
-            context.signal,
-            identity.scope,
-          ),
+      streamFn: (context) =>
+        acquireSseChunks(
+          (signal) =>
+            engineClient.openStream(
+              [...identity.channels],
+              identity.since,
+              signal,
+              identity.scope,
+            ),
+          context.signal,
         ),
       reducer: streamReducer,
       initialValue: [] as StreamChunk[],

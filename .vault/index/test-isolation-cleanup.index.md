@@ -6,7 +6,7 @@ tags:
 date: '2026-09-04'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:9acd3a11fda1bd5074b072c1d31171bd668a6a739a7d07d8e250e6453d617149'
+body_hash: 'sha256:d6c89a02fc5d2fd2221c8e124d27e3e159e5bab5c97e6400fad7b1ae09d55d1a'
 related:
   - '[[2026-09-04-test-isolation-cleanup-S01]]'
   - '[[2026-09-04-test-isolation-cleanup-S02]]'
@@ -21,6 +21,7 @@ related:
   - '[[2026-09-04-test-isolation-cleanup-S12]]'
   - '[[2026-09-04-test-isolation-cleanup-S13]]'
   - '[[2026-09-04-test-isolation-cleanup-S14]]'
+  - '[[2026-09-04-test-isolation-cleanup-S16]]'
   - '[[2026-09-04-test-isolation-cleanup-adr]]'
   - '[[2026-09-04-test-isolation-cleanup-plan]]'
   - '[[2026-09-04-test-isolation-cleanup-research]]'
@@ -32,6 +33,7 @@ related:
   - '[[2026-09-06-test-isolation-cleanup-s12-per-test-abort-removal-review-audit]]'
   - '[[2026-09-06-test-isolation-cleanup-s13-per-test-window-lifecycle-guard-review-audit]]'
   - '[[2026-09-06-test-isolation-cleanup-s14-eight-file-prefix-diagnostic-review-audit]]'
+  - '[[2026-09-06-test-isolation-cleanup-s16-two-phase-sse-cancellation-review-audit]]'
 ---
 
 # `test-isolation-cleanup` feature index
@@ -54,6 +56,7 @@ Auto-generated index of all documents tagged with `#test-isolation-cleanup`.
 - `2026-09-06-test-isolation-cleanup-s12-per-test-abort-removal-review-audit` - `test-isolation-cleanup` audit: `S12 per-test abort removal review`
 - `2026-09-06-test-isolation-cleanup-s13-per-test-window-lifecycle-guard-review-audit` - `test-isolation-cleanup` audit: `S13 per-test window lifecycle guard review`
 - `2026-09-06-test-isolation-cleanup-s14-eight-file-prefix-diagnostic-review-audit` - `test-isolation-cleanup` audit: `S14 eight-file prefix diagnostic review`
+- `2026-09-06-test-isolation-cleanup-s16-two-phase-sse-cancellation-review-audit` - `test-isolation-cleanup` audit: `S16 two-phase SSE cancellation review`
 
 ### exec
 
@@ -70,6 +73,7 @@ Auto-generated index of all documents tagged with `#test-isolation-cleanup`.
 - `2026-09-04-test-isolation-cleanup-S12` - Remove the destructive per-test happy-dom abort path and its obsolete helper and guard while preserving RTL unmount and Vitest-owned file teardown
 - `2026-09-04-test-isolation-cleanup-S13` - Add a cross-test lifecycle guard proving the harness never calls happy-dom abort between cases and demonstrate it red with the removed hook restored
 - `2026-09-04-test-isolation-cleanup-S14` - Record the first exact eight-file prefix as a completed diagnostic enumeration even though the zero-diagnostic barrier is red, preserve its log, and route the attributed AgentPanel cluster plus smaller unassigned reset cluster to S15 without an unchanged rerun
+- `2026-09-04-test-isolation-cleanup-S16` - Implement and mutation-prove a shared two-phase SSE cancellation contract that aborts only pending response acquisition, then gracefully cancels the response reader, and route engine, A2A, and authoring lifecycle streams through it
 
 ### plan
 
