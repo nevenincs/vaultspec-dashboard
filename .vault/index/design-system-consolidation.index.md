@@ -6,7 +6,7 @@ tags:
 date: '2026-09-05'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:50a98eef9314c36169539deff9f8ef174696801431e2c97937bade8d1007fb22'
+body_hash: 'sha256:f16d8a14803d30608f08037aa182153c1a2245b2906bcda8678564749e79326a'
 related:
   - '[[2026-09-05-design-system-consolidation-W01-P01-S01]]'
   - '[[2026-09-05-design-system-consolidation-W01-P01-S04]]'
@@ -36,6 +36,7 @@ related:
   - '[[2026-09-05-design-system-consolidation-W02-P03-S12]]'
   - '[[2026-09-05-design-system-consolidation-W02-P03-S13]]'
   - '[[2026-09-05-design-system-consolidation-W02-P03-S14]]'
+  - '[[2026-09-05-design-system-consolidation-W02-P03-S15]]'
   - '[[2026-09-05-design-system-consolidation-adr]]'
   - '[[2026-09-05-design-system-consolidation-horizontal-polish-research]]'
   - '[[2026-09-05-design-system-consolidation-plan]]'
@@ -52,6 +53,7 @@ related:
   - '[[2026-09-06-design-system-consolidation-s12-text-field-review-audit]]'
   - '[[2026-09-06-design-system-consolidation-s13-text-field-test-review-audit]]'
   - '[[2026-09-06-design-system-consolidation-s14-text-area-review-audit]]'
+  - '[[2026-09-06-design-system-consolidation-s15-text-area-test-review-audit]]'
   - '[[2026-09-06-design-system-consolidation-s164-baseline-decision-audit]]'
   - '[[2026-09-06-design-system-consolidation-s165-classification-review-audit]]'
   - '[[2026-09-06-design-system-consolidation-s166-classification-review-audit]]'
@@ -94,6 +96,7 @@ Auto-generated index of all documents tagged with `#design-system-consolidation`
 - `2026-09-06-design-system-consolidation-s12-text-field-review-audit` - `design-system-consolidation` audit: `s12 text field review`
 - `2026-09-06-design-system-consolidation-s13-text-field-test-review-audit` - `design-system-consolidation` audit: `s13 text field test review`
 - `2026-09-06-design-system-consolidation-s14-text-area-review-audit` - `design-system-consolidation` audit: `s14 text area review`
+- `2026-09-06-design-system-consolidation-s15-text-area-test-review-audit` - `design-system-consolidation` audit: `s15 text area test review`
 - `2026-09-06-design-system-consolidation-s164-baseline-decision-audit` - `design-system-consolidation` audit: `S164 executable-control baseline decision`
 - `2026-09-06-design-system-consolidation-s165-classification-review-audit` - `design-system-consolidation` audit: `S165 ordinary field classification review`
 - `2026-09-06-design-system-consolidation-s166-classification-review-audit` - `design-system-consolidation` audit: `S166 option and menu classification review`
@@ -141,6 +144,7 @@ Auto-generated index of all documents tagged with `#design-system-consolidation`
 - `2026-09-05-design-system-consolidation-W02-P03-S12` - Implement the ordinary TextField contract with accessible labeling, focus, disabled, size, and theme behavior
 - `2026-09-05-design-system-consolidation-W02-P03-S13` - Verify TextField semantics, labeling, state treatment, ref forwarding, and value propagation
 - `2026-09-05-design-system-consolidation-W02-P03-S14` - Implement the ordinary TextArea contract without absorbing editor or composer semantics
+- `2026-09-05-design-system-consolidation-W02-P03-S15` - Verify TextArea semantics, labeling, resize policy, focus, disabled, and value propagation
 
 ### plan
 
