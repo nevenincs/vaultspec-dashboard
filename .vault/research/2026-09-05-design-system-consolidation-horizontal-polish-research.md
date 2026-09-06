@@ -3,9 +3,9 @@ tags:
   - '#research'
   - '#design-system-consolidation'
 date: '2026-09-05'
-modified: '2026-09-05'
+modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:3e267eb7b9b1a17f7a421540d1e1a474540ddb3d928b87b4d51658ce1cb0a60f'
+body_hash: 'sha256:eff79ce767620ccb7b3f958004ece20de81c9a91c78287b05526de5fe8cd7514'
 related:
   - "[[2026-06-14-dashboard-design-language-adr]]"
   - "[[2026-06-14-dashboard-design-adoption-adr]]"
@@ -31,9 +31,9 @@ The campaign should inherit this foundation rather than authorize palette, hiera
 
 Project law requires visible primitives to come from one centralized system, and the kit barrel states the same public contract. In practice, settings controls recreate `Switch`, `Slider`, and segmented-control styling and keyboard behavior; their visual class strings are also emitted from the stores layer. `ActivityIndicator` exists in the kit but is absent from its barrel. `MobileTopBar`, dialogs, sheets, menus, fields, and close/remove actions contain further locally owned treatments. `ErrorBoundary` uses framework palette colors and bespoke buttons rather than semantic tokens. `.codex/rules/design-system.md:9`, `frontend/src/app/kit/index.ts:1`, `frontend/src/app/settings/controls/SwitchControl.tsx:15`, `frontend/src/app/settings/controls/NumberControl.tsx:25`, `frontend/src/app/settings/controls/EnumControl.tsx:30`, `frontend/src/stores/view/settingsControls.ts:45`, `frontend/src/app/chrome/DataActivityIndicator.tsx:8`, `frontend/src/app/shell/MobileTopBar.tsx:50`, `frontend/src/platform/errors/ErrorBoundary.tsx:99`.
 
-A bounded scan found 128 native `button`, `input`, `select`, or `textarea` sites, 114 outside `app/kit`, across 156 production app TSX files. These are classification candidates, not assumed defects: a native element is valid inside a canonical composite when existing primitives cannot express its semantics. The campaign must classify each candidate as existing-primitive use, missing primitive, intentional composite seam, or local duplication before changing it.
+A bounded raw-text scan found 128 `button`, `input`, `select`, or `textarea` matches across 156 production app TSX files. Three matches are documentation prose rather than executable JSX: the `<input>` reference in `frontend/src/app/kit/FacetRow.tsx`, the `<button>` reference in `frontend/src/app/kit/Tab.tsx`, and the `<input type="date">` reference in `frontend/src/app/stage/FilterMenu.tsx`. A syntax-aware TypeScript AST scan therefore establishes the canonical executable baseline at 125 JSX sites: 12 inside `app/kit` and 113 outside it. These are classification candidates, not assumed defects: a native element is valid inside a canonical composite when existing primitives cannot express its semantics. The campaign must classify each candidate as existing-primitive use, missing primitive, intentional composite seam, or local duplication before changing it.
 
-The inventory is concentrated enough for bounded migration waves: 21 sites in agent surfaces, 18 in the left rail, 15 in stage surfaces, 14 in viewer surfaces, 11 in the right rail, and 10 in palettes. The dominant files are `Composer` (8), `WorktreePicker` (7), `FilterMenu` (7), `SearchPaletteSurface` (6), and `StatusTab` (5). This argues against a global mechanical replacement: these modules mix true base controls with semantic composites such as tree rows, graph controls, palette options, editable code overlays, and timeline handles.
+The inventory is concentrated enough for bounded migration waves: 21 sites in agent surfaces, 18 in the left rail, 14 in stage surfaces, 14 in viewer surfaces, 11 in the right rail, and 10 in palettes. The dominant files are `Composer` (8), `WorktreePicker` (7), `FilterMenu` (6), `SearchPaletteSurface` (6), and `StatusTab` (5). This argues against a global mechanical replacement: these modules mix true base controls with semantic composites such as tree rows, graph controls, palette options, editable code overlays, and timeline handles.
 
 The first safe clusters are narrower: settings wrappers already matching kit controls; ordinary text fields shared by settings, dialogs, clarification, and properties; ordinary textareas shared by review/comment authoring; menu/option rows shared by model, date-basis, filter, context-menu, and palette surfaces; and unlabeled icon-action chrome shared by dialog, composer, mobile topbar, and viewer surfaces. Search inputs, code-overlay textareas, graph/island controls, timeline handles, tree rows, and task checkboxes need separate semantic review rather than automatic conversion.
 

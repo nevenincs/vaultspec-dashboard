@@ -3,9 +3,9 @@ tags:
   - '#reference'
   - '#design-system-consolidation'
 date: '2026-09-05'
-modified: '2026-09-05'
+modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:460aff95357f9057a9d48d6a8f2365710a1972217f824c8d5aa814b247f68d9b'
+body_hash: 'sha256:1244c1bd9fdb118a5e665015d91a18d29914ebb4c479f58446f9ba0efea49abf'
 related:
   - "[[2026-09-05-design-system-consolidation-horizontal-polish-research]]"
   - "[[2026-06-14-dashboard-design-language-adr]]"
@@ -54,7 +54,7 @@ This is the implementation map for the shipped frontend. Repository decisions, s
 
 ### Native-control inventory by migration family
 
-The 128-site baseline comprises 101 buttons, 21 inputs, one select, and five textareas; 14 sites are inside the kit and 114 are outside it. Area totals are agent 21, left rail 18, stage 15, viewer 14, right rail 11, palette 10, settings 6, shell 5, islands 3, panels 3, timeline 3, platform errors 2, authoring 1, chrome 1, and menu 1. Counts include deliberate native controls and should be used as a classification ledger, not a zero-target metric.
+The syntax-aware executable baseline comprises 125 JSX sites: 100 buttons, 19 inputs, one select, and five textareas. Twelve sites are inside the kit and 113 are outside it. Area totals are agent 21, left rail 18, stage 14, viewer 14, right rail 11, palette 10, settings 6, shell 5, islands 3, panels 3, timeline 3, platform errors 2, authoring 1, chrome 1, menu 1, and kit 12. The dated raw-text scan returned 128 matches because documentation prose in `FacetRow.tsx`, `Tab.tsx`, and `FilterMenu.tsx` contributed one false match each. Counts include deliberate native controls and should be used as a classification ledger, not a zero-target metric.
 
 - **Direct kit migrations:** settings switch, slider, and enum wrappers; ordinary action and icon buttons already expressible by `Button` or `IconButton`.
 - **Narrow new primitives:** ordinary `TextField`, ordinary `TextArea`, and a behaviorally explicit menu/option row if the existing `ListRow` contract cannot cover it.

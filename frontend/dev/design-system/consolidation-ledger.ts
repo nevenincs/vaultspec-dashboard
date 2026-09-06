@@ -1,7 +1,7 @@
 export const CONSOLIDATION_LEDGER_SCHEMA_VERSION = 1 as const;
 
 export const CONSOLIDATION_BASELINE_COUNTS = {
-  nativeControlSites: 128,
+  nativeControlSites: 125,
   arbitraryRelativeValueSites: 106,
 } as const;
 
@@ -174,7 +174,344 @@ export interface ConsolidationLedger {
   readonly invariants: readonly ConsolidationInvariant[];
 }
 
-export const NATIVE_CONTROL_LEDGER: readonly NativeControlLedgerEntry[] = [];
+export const NATIVE_CONTROL_LEDGER = [
+  {
+    source: {
+      path: "frontend/src/app/kit/Breadcrumb.tsx",
+      owner: "Breadcrumb",
+      slot: "ancestor-navigation",
+    },
+    element: "button",
+    disposition: "canonical-owner",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/Breadcrumb.tsx",
+      name: "Breadcrumb",
+      status: "existing",
+    },
+    rationale: {
+      summary: "Breadcrumb owns its ancestor-navigation control.",
+      ownership:
+        "The button is integral to ordered breadcrumb navigation and its current-page sibling semantics.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/kit/Button.tsx",
+      owner: "Button",
+      slot: "button-root",
+    },
+    element: "button",
+    disposition: "canonical-owner",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/Button.tsx",
+      name: "Button",
+      status: "existing",
+    },
+    rationale: {
+      summary: "Button owns the shared text-button element.",
+      ownership:
+        "This root element defines the canonical variants, focus treatment, disabled treatment, and native button prop contract.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/kit/DropdownButton.tsx",
+      owner: "DropdownButton",
+      slot: "menu-trigger",
+    },
+    element: "button",
+    disposition: "canonical-owner",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/DropdownButton.tsx",
+      name: "DropdownButton",
+      status: "existing",
+    },
+    rationale: {
+      summary: "DropdownButton owns the menu-trigger element.",
+      ownership:
+        "The composite owns popup relationships, expanded state, trigger labeling, and chevron treatment beyond a generic button.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/kit/FacetRow.tsx",
+      owner: "FacetRow",
+      slot: "selection-input",
+    },
+    element: "input",
+    disposition: "canonical-owner",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/FacetRow.tsx",
+      name: "FacetRow",
+      status: "existing",
+    },
+    rationale: {
+      summary: "FacetRow owns its checkbox or radio input.",
+      ownership:
+        "The visually hidden native input supplies checked semantics and focus state to the canonical facet-row composite.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/kit/FoldSection.tsx",
+      owner: "FoldSection",
+      slot: "disclosure-trigger",
+    },
+    element: "button",
+    disposition: "canonical-owner",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/FoldSection.tsx",
+      name: "FoldSection",
+      status: "existing",
+    },
+    rationale: {
+      summary: "FoldSection owns its disclosure trigger.",
+      ownership:
+        "The button carries the controlled expanded relationship and roving-focus passthrough for the shared fold composite.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/kit/IconButton.tsx",
+      owner: "IconButton",
+      slot: "button-root",
+    },
+    element: "button",
+    disposition: "canonical-owner",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/IconButton.tsx",
+      name: "IconButton",
+      status: "existing",
+    },
+    rationale: {
+      summary: "IconButton owns the shared glyph-action element.",
+      ownership:
+        "This root element defines the canonical accessible-name, pressed-state, focus, size, and disabled contracts for icon actions.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/kit/SearchField.tsx",
+      owner: "SearchField",
+      slot: "query-input",
+    },
+    element: "input",
+    disposition: "canonical-owner",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/SearchField.tsx",
+      name: "SearchField",
+      status: "existing",
+    },
+    rationale: {
+      summary: "SearchField owns its query input.",
+      ownership:
+        "The native input participates in the search-specific value, autocomplete, active-descendant, focus, and clear-action contract.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/kit/SearchField.tsx",
+      owner: "SearchField",
+      slot: "clear-action",
+    },
+    element: "button",
+    disposition: "canonical-owner",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/SearchField.tsx",
+      name: "SearchField",
+      status: "existing",
+    },
+    rationale: {
+      summary: "SearchField owns its conditional clear action.",
+      ownership:
+        "The localized clear button is coupled to query presence and the disabled state of the canonical search composite.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/kit/Segment.tsx",
+      owner: "Segment",
+      slot: "radio-option",
+    },
+    element: "button",
+    disposition: "canonical-owner",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/Segment.tsx",
+      name: "Segment",
+      status: "existing",
+    },
+    rationale: {
+      summary: "Segment owns the segmented-radio option element.",
+      ownership:
+        "The button consumes the shared segmented context for selection, roving focus, group disabling, and full-width composition.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/kit/Slider.tsx",
+      owner: "Slider",
+      slot: "range-input",
+    },
+    element: "input",
+    disposition: "canonical-owner",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/Slider.tsx",
+      name: "Slider",
+      status: "existing",
+    },
+    rationale: {
+      summary: "Slider owns the shared range input.",
+      ownership:
+        "The native input supplies bounded drag and keyboard behavior while Slider owns labeling, value text, sizing, and readout treatment.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/kit/Switch.tsx",
+      owner: "Switch",
+      slot: "switch-trigger",
+    },
+    element: "button",
+    disposition: "canonical-owner",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/Switch.tsx",
+      name: "Switch",
+      status: "existing",
+    },
+    rationale: {
+      summary: "Switch owns the shared binary-toggle element.",
+      ownership:
+        "The button defines the canonical switch role, checked state, labeling, disabled treatment, and shape-based state cue.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/kit/Tab.tsx",
+      owner: "Tab",
+      slot: "tab-trigger",
+    },
+    element: "button",
+    disposition: "canonical-owner",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/Tab.tsx",
+      name: "Tab",
+      status: "existing",
+    },
+    rationale: {
+      summary: "Tab owns the shared tab element.",
+      ownership:
+        "The button exposes tab selection while forwarding the composing tablist's roving-focus and panel-relationship props.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/settings/controls/EnumControl.tsx",
+      owner: "EnumControl",
+      slot: "enum-option",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/Segment.tsx",
+      name: "Segment",
+      status: "existing",
+    },
+    rationale: {
+      summary: "EnumControl duplicates the canonical segmented-radio option.",
+      equivalence:
+        "Both controls are controlled radio buttons with selected state, disabled state, click selection, and arrow-key roving focus.",
+      replacement:
+        "Compose SegmentedToggle and Segment while retaining settings value derivation and string commits.",
+      deletion:
+        "Remove the native option button, local element registry, local keyboard loop, and store-provided segment classes in the settings migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/settings/controls/NumberControl.tsx",
+      owner: "NumberControl",
+      slot: "range-input",
+    },
+    element: "input",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/Slider.tsx",
+      name: "Slider",
+      status: "existing",
+    },
+    rationale: {
+      summary: "NumberControl duplicates the canonical Slider range input.",
+      equivalence:
+        "Both controls expose the same bounded native range behavior, labeling, value text, disabled state, width, and tabular readout.",
+      replacement:
+        "Compose Slider while retaining settings bounds, integer parsing, unit formatting, and decimal-string wire commits.",
+      deletion:
+        "Remove the settings-owned range element, readout markup, and duplicated visual classes in the settings migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/settings/controls/SwitchControl.tsx",
+      owner: "SwitchControl",
+      slot: "switch-trigger",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/Switch.tsx",
+      name: "Switch",
+      status: "existing",
+    },
+    rationale: {
+      summary: "SwitchControl duplicates the canonical Switch.",
+      equivalence:
+        "Both controls expose the same controlled switch role, checked state, accessible label, disabled behavior, and shape-based state treatment.",
+      replacement:
+        "Compose Switch while retaining conversion between boolean UI state and the settings string wire value.",
+      deletion:
+        "Remove the settings-owned switch button, knob markup, and store-provided class recipes in the settings migration.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/settings/controls/TextControl.tsx",
+      owner: "TextControl",
+      slot: "text-input",
+    },
+    element: "input",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/TextField.tsx",
+      name: "TextField",
+      status: "planned",
+    },
+    rationale: {
+      summary: "TextControl is a direct candidate for the planned ordinary TextField.",
+      equivalence:
+        "The settings control needs the ordinary single-line text contract: controlled value, label, placeholder, disabled state, length cap, and change propagation.",
+      replacement:
+        "Compose TextField after its canonical contract lands while retaining schema-derived maximum length and raw string commits.",
+      deletion:
+        "Remove the native input and store-provided field class recipe in the settings migration.",
+    },
+  },
+] as const satisfies readonly NativeControlLedgerEntry[];
 export const RELATIVE_VALUE_LEDGER: readonly RelativeValueLedgerEntry[] = [];
 export const NAMING_DEBT_LEDGER: readonly NamingDebtLedgerEntry[] = [];
 export const CONSOLIDATION_INVARIANTS: readonly ConsolidationInvariant[] = [];
