@@ -10,7 +10,7 @@ related:
   - '[[2026-09-05-design-system-consolidation-shipped-frontend-blueprint-reference]]'
 modified: '2026-09-06'
 body_schema: body-v2
-body_hash: 'sha256:047d33fae2247b0a6da81daedca7ef8291efd718c20172c8a88b716f6ca7e90c'
+body_hash: 'sha256:d8f85c6dc8a099029983b21d8d6c137175ab19b028f8054db032a6cf7b9e6051'
 ---
 
 <!-- RETIRED: S02, S03, S95, S96, S158 -->
@@ -53,7 +53,7 @@ Establish one machine-readable ledger that distinguishes migrations, retained se
 - [x] `W01.P01.S174` - Classify arbitrary relative values owned by viewer, reader, code, and authoring surfaces; `frontend/dev/design-system/consolidation-ledger.ts`.
 - [x] `W01.P01.S175` - Classify arbitrary relative values owned by palette, search, and agent surfaces; `frontend/dev/design-system/consolidation-ledger.ts`.
 - [x] `W01.P01.S176` - Classify arbitrary relative values owned by stage overlays, graph DOM chrome, filters, and timeline composition without touching scene source; `frontend/dev/design-system/consolidation-ledger.ts`.
-- [ ] `W01.P01.S177` - Classify arbitrary relative values owned by left rail, right rail, settings, panels, and remaining surfaces; `frontend/dev/design-system/consolidation-ledger.ts`.
+- [x] `W01.P01.S177` - Classify arbitrary relative values owned by left rail, right rail, settings, panels, and remaining surfaces; `frontend/dev/design-system/consolidation-ledger.ts`.
 - [ ] `W01.P01.S178` - Verify the relative-value family ledger accounts for the complete 106-site baseline without duplicates; `frontend/dev/design-system/consolidation-ledger.test.ts`.
 - [ ] `W01.P01.S179` - Capture immutable pre-execution hashes and preimages for all existing dirty and clean scene sources plus the SceneController contract; `frontend/dev/design-system/scene-freeze-baseline.json`.
 - [ ] `W01.P01.S04` - Record temporary code-only component names, unresolved design aliases, and campaign-scoped parity debt; `frontend/dev/design-system/consolidation-ledger.ts`.

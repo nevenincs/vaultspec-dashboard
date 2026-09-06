@@ -4969,12 +4969,593 @@ export const STAGE_AND_TIMELINE_RELATIVE_VALUE_LEDGER = [
   },
 ] as const satisfies readonly RelativeValueLedgerEntry[];
 
+export const RESIDUAL_RELATIVE_VALUE_LEDGER = [
+  {
+    source: {
+      path: "frontend/src/app/left/CodeTree.tsx",
+      owner: "DepthGuides",
+      slot: "guide-line-block-insets",
+    },
+    expression: "top-[0.3125rem] bottom-[0.3125rem]",
+    units: ["rem"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/left/CodeTree.tsx",
+      name: "DepthGuides",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "Code-tree depth guides use symmetric block insets tied to the row's visual hierarchy.",
+      constraint:
+        "The two 0.3125rem insets shorten each recursive guide inside its row while inline placement is computed from depth.",
+      exactValue: "Retain both guide-line insets together under DepthGuides.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/left/FeatureSearchField.tsx",
+      owner: "FeatureSuggestionList",
+      slot: "suggestion-popup-placement-and-height",
+    },
+    expression: "top-[calc(100%+0.25rem)] max-h-[16rem]",
+    units: ["%", "rem"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/left/FeatureSearchField.tsx",
+      name: "FeatureSuggestionList",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "The feature-suggestion popup pairs a trigger-relative offset with its own scroll-height limit.",
+      constraint:
+        "calc(100% + 0.25rem) anchors the list below this field and 16rem bounds its feature-result viewport; neither value defines the planned picker overlay role.",
+      exactValue:
+        "Retain the complete placement and height expression under FeatureSuggestionList.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/left/FeatureSearchField.tsx",
+      owner: "FeatureSuggestionList",
+      slot: "suggestion-primary-type-size",
+    },
+    expression: "text-[0.75rem]",
+    units: ["rem"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-foundation",
+      path: "frontend/tokens/type.tokens.json",
+      name: "type.role.meta.size",
+      status: "existing",
+    },
+    rationale: {
+      summary: "Feature suggestion names use the existing meta type size.",
+      equivalence:
+        "0.75rem exactly equals type.role.meta.size and preserves the compact option hierarchy.",
+      replacement: "Bind only the suggestion name size to the existing meta metric.",
+      deletion: "Remove text-[0.75rem] after direct canonical consumption.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/left/FeatureSearchField.tsx",
+      owner: "FeatureSuggestionList",
+      slot: "suggestion-secondary-type-size",
+    },
+    expression: "text-[0.6875rem]",
+    units: ["rem"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-foundation",
+      path: "frontend/tokens/type.tokens.json",
+      name: "type.role.caption.size",
+      status: "existing",
+    },
+    rationale: {
+      summary: "Feature suggestion metadata uses the existing caption type size.",
+      equivalence:
+        "0.6875rem exactly equals type.role.caption.size and retains the secondary hierarchy beneath the suggestion name.",
+      replacement: "Bind only the metadata size to the existing caption metric.",
+      deletion: "Remove text-[0.6875rem] after direct canonical consumption.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/left/FolderBrowser.tsx",
+      owner: "FolderBrowser",
+      slot: "focus-effect-dependencies-scan-false-positive",
+    },
+    expression: "[currentPath, firstRowPath, focusIntent, focusItem]",
+    units: ["em"],
+    disposition: "repair-local-defect",
+    canonicalOwner: {
+      layer: "platform-mechanism",
+      path: "frontend/dev/tooling/scan-design-system.mjs",
+      name: "scanRelativeValueSites",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "The raw matcher mistakes a React effect dependency array for an em-valued styling site.",
+      defect:
+        "The textual scan reads the focusItem identifier suffix inside a TypeScript bracket expression as unit em.",
+      correction:
+        "Preserve the dated raw identity, then exclude non-style syntax in the planned scanner without changing focus behavior.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/left/RailFilterField.tsx",
+      owner: "RailFilterField",
+      slot: "active-filter-badge-offsets",
+    },
+    expression: "right-[-0.25rem] top-[-0.25rem]",
+    units: ["rem"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/left/RailFilterField.tsx",
+      name: "RailFilterField",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "The active-filter badge overlaps the rail filter action with exact negative offsets.",
+      constraint:
+        "Both -0.25rem offsets coordinate the Badge with this IconButton corner and do not represent foundation spacing.",
+      exactValue: "Retain both offsets together under RailFilterField.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/left/railStates.tsx",
+      owner: "RAIL_SKELETON_ROWS",
+      slot: "row-one-width",
+    },
+    expression: "w-[38%]",
+    units: ["%"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/left/railStates.tsx",
+      name: "RAIL_SKELETON_ROWS",
+      status: "existing",
+    },
+    rationale: {
+      summary: "The first left-rail skeleton row uses an authored varied-width cue.",
+      constraint:
+        "Its 38% width participates in a deliberately irregular tree silhouette rather than a reusable container role.",
+      exactValue: "Retain w-[38%] in the ordered skeleton-row recipe.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/left/railStates.tsx",
+      owner: "RAIL_SKELETON_ROWS",
+      slot: "row-two-width",
+    },
+    expression: "w-[62%]",
+    units: ["%"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/left/railStates.tsx",
+      name: "RAIL_SKELETON_ROWS",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "The second left-rail skeleton row extends the authored tree silhouette.",
+      constraint:
+        "Its 62% width is coupled to this row's depth and the surrounding varied placeholders.",
+      exactValue: "Retain w-[62%] in the ordered skeleton-row recipe.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/left/railStates.tsx",
+      owner: "RAIL_SKELETON_ROWS",
+      slot: "row-three-width",
+    },
+    expression: "w-[54%]",
+    units: ["%"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/left/railStates.tsx",
+      name: "RAIL_SKELETON_ROWS",
+      status: "existing",
+    },
+    rationale: {
+      summary: "The third left-rail skeleton row varies the nested tree footprint.",
+      constraint:
+        "Its 54% width is an authored placeholder proportion tied to this sequence and depth.",
+      exactValue: "Retain w-[54%] in the ordered skeleton-row recipe.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/left/railStates.tsx",
+      owner: "RAIL_SKELETON_ROWS",
+      slot: "row-four-width",
+    },
+    expression: "w-[70%]",
+    units: ["%"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/left/railStates.tsx",
+      name: "RAIL_SKELETON_ROWS",
+      status: "existing",
+    },
+    rationale: {
+      summary: "The fourth left-rail skeleton row forms the deepest long placeholder.",
+      constraint:
+        "Its 70% width is coupled to depth two and the ordered tree-loading silhouette.",
+      exactValue: "Retain w-[70%] in the ordered skeleton-row recipe.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/left/railStates.tsx",
+      owner: "RAIL_SKELETON_ROWS",
+      slot: "row-five-width",
+    },
+    expression: "w-[46%]",
+    units: ["%"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/left/railStates.tsx",
+      name: "RAIL_SKELETON_ROWS",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "The final left-rail skeleton row closes the varied root-level silhouette.",
+      constraint:
+        "Its 46% width is an authored sequence value and carries no independent layout role.",
+      exactValue: "Retain w-[46%] in the ordered skeleton-row recipe.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/left/railStates.tsx",
+      owner: "RailSkeleton",
+      slot: "section-label-skeleton-height",
+    },
+    expression: "h-[0.625rem]",
+    units: ["rem"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/left/railStates.tsx",
+      name: "RailSkeleton",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "The left-rail skeleton header uses an exact height matching its section-label footprint.",
+      constraint:
+        "The 0.625rem bar is specific placeholder geometry paired with a quarter-width label cue.",
+      exactValue: "Retain h-[0.625rem] under RailSkeleton.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/left/WorktreePicker.tsx",
+      owner: "WorktreePicker",
+      slot: "dropdown-height-limit",
+    },
+    expression: "max-h-[18rem]",
+    units: ["rem"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-component",
+      path: "frontend/tokens/components.tokens.json",
+      name: "component.worktree-picker.dropdown-max-height",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "The worktree switcher's scrollable dropdown uses its planned exact overlay height role.",
+      equivalence:
+        "The component binding preserves exactly 18rem and leaves anchoring, overflow, and dismissal unchanged.",
+      replacement:
+        "Generate and consume the exact worktree-picker dropdown max height.",
+      deletion: "Remove max-h-[18rem] only after direct component-role consumption.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/onboarding/FirstRunOnboarding.tsx",
+      owner: "FirstRunOnboardingBody",
+      slot: "content-line-length-limit",
+    },
+    expression: "max-w-[28rem]",
+    units: ["rem"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/onboarding/FirstRunOnboarding.tsx",
+      name: "FirstRunOnboardingBody",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "The first-run message block uses an exact line-length cap for its singular full-screen welcome state.",
+      constraint:
+        "The 28rem width balances the product mark, heading, explanatory copy, and action without defining a shared overlay.",
+      exactValue: "Retain max-w-[28rem] under FirstRunOnboardingBody.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/panels/IndexLogTail.tsx",
+      owner: "IndexLogTailBody",
+      slot: "log-viewport-height-limit",
+    },
+    expression: "max-h-[16rem]",
+    units: ["rem"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/panels/IndexLogTail.tsx",
+      name: "IndexLogTailBody",
+      status: "existing",
+    },
+    rationale: {
+      summary: "The bounded index log keeps an exact scroll-viewport height limit.",
+      constraint:
+        "The 16rem cap balances this live tail against the sibling maintenance panels and is unrelated to the feature-suggestion popup with the same value.",
+      exactValue: "Retain max-h-[16rem] under IndexLogTailBody.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/panels/RagJobsTable.tsx",
+      owner: "GRID",
+      slot: "job-table-column-template",
+    },
+    expression: "grid-cols-[minmax(6rem,2fr)_6rem_minmax(6rem,2fr)_7rem_6rem]",
+    units: ["rem"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/panels/RagJobsTable.tsx",
+      name: "GRID",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "The RAG job header and rows share one exact five-column data-table template.",
+      constraint:
+        "Its two fixed 6rem columns, two flexible columns with 6rem floors, and 7rem duration column encode this table's data hierarchy.",
+      exactValue: "Retain the full grid template under the shared local GRID recipe.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/panels/RagJobsTable.tsx",
+      owner: "RagJobsTableBody",
+      slot: "filter-control-width-floor",
+    },
+    expression: "min-w-[10rem]",
+    units: ["rem"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/panels/RagJobsTable.tsx",
+      name: "RagJobsTableBody",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "The maintenance-table filter keeps an exact flex-wrap width floor beside sorting controls.",
+      constraint:
+        "The 10rem floor belongs to this panel's filter-and-sort composition rather than the shared SearchField primitive.",
+      exactValue: "Retain min-w-[10rem] on the filter wrapper.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/panels/RagJobsTable.tsx",
+      owner: "RagJobsTableBody",
+      slot: "horizontal-table-width-floor",
+    },
+    expression: "min-w-[34rem]",
+    units: ["rem"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/panels/RagJobsTable.tsx",
+      name: "RagJobsTableBody",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "The RAG jobs table keeps a horizontal width floor that protects its five-column layout.",
+      constraint:
+        "The 34rem floor coordinates with GRID and intentionally hands narrower containers to the surrounding horizontal scroller.",
+      exactValue: "Retain min-w-[34rem] under RagJobsTableBody.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/panels/SearchActivityLane.tsx",
+      owner: "GRID",
+      slot: "search-activity-column-template",
+    },
+    expression: "grid-cols-[6rem_5rem_minmax(8rem,3fr)_4.5rem_7rem]",
+    units: ["rem"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/panels/SearchActivityLane.tsx",
+      name: "GRID",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "Search activity rows use an exact five-column template for time, state, query, results, and duration.",
+      constraint:
+        "The 6rem, 5rem, flexible 8rem floor, 4.5rem, and 7rem tracks encode this lane's content rather than a reusable data-grid primitive.",
+      exactValue: "Retain the full local search-activity GRID template.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/panels/SearchActivityLane.tsx",
+      owner: "SearchActivityLaneBody",
+      slot: "horizontal-list-width-floor",
+    },
+    expression: "min-w-[30rem]",
+    units: ["rem"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/panels/SearchActivityLane.tsx",
+      name: "SearchActivityLaneBody",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "The search-activity list keeps an exact horizontal floor for its five-column rows.",
+      constraint:
+        "The 30rem floor coordinates with this lane's GRID and delegates narrower panels to the existing horizontal scroller.",
+      exactValue: "Retain min-w-[30rem] under SearchActivityLaneBody.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/right/FrameworkStatusCluster.tsx",
+      owner: "StatusChip",
+      slot: "coarse-pointer-height-floor",
+    },
+    expression: "min-h-[2.75rem]",
+    units: ["rem"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-component",
+      path: "frontend/tokens/components.tokens.json",
+      name: "component.control.coarse-target",
+      status: "planned",
+    },
+    rationale: {
+      summary: "StatusChip uses the shared 2.75rem coarse-pointer target floor.",
+      equivalence:
+        "The planned role preserves exactly 2.75rem under the current pointer-conditional policy.",
+      replacement:
+        "Consume the generated coarse-target minimum height on coarse pointers.",
+      deletion: "Remove min-h-[2.75rem] only after direct component-role consumption.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/right/menus/HoverCard.tsx",
+      owner: "HoverCard",
+      slot: "document-type-letter-spacing",
+    },
+    expression: "tracking-[0.025rem]",
+    units: ["rem"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-foundation",
+      path: "frontend/tokens/type.tokens.json",
+      name: "type.tracking.eyebrow",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "Hover-card document type copy uses the shared exact eyebrow-tracking role.",
+      equivalence:
+        "0.025rem exactly matches the planned role already used by SectionLabel and AgentTag for compact attribution copy.",
+      replacement: "Consume the exact generated eyebrow-tracking binding in HoverCard.",
+      deletion: "Remove tracking-[0.025rem] after direct foundation-role consumption.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/right/railStates.tsx",
+      owner: "RailLoading",
+      slot: "section-stack-gap",
+    },
+    expression: "gap-[1.125rem]",
+    units: ["rem"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/right/railStates.tsx",
+      name: "RailLoading",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "The activity-rail loading ghost uses an exact gap between its two card-section silhouettes.",
+      constraint:
+        "The 1.125rem gap mirrors this settled rail's section cadence and is not a general Skeleton layout role.",
+      exactValue: "Retain gap-[1.125rem] under RailLoading.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/right/railStates.tsx",
+      owner: "RailLoading",
+      slot: "first-section-label-skeleton",
+    },
+    expression: "w-[5.25rem] h-[0.5625rem]",
+    units: ["rem"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/right/railStates.tsx",
+      name: "RailLoading",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "The first activity-rail ghost heading has exact width and height for its section label.",
+      constraint:
+        "The 5.25rem by 0.5625rem bar is authored placeholder geometry for the first loading section.",
+      exactValue: "Retain both dimensions together under RailLoading.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/right/railStates.tsx",
+      owner: "RailLoading",
+      slot: "second-section-label-skeleton",
+    },
+    expression: "w-[4.125rem] h-[0.5625rem]",
+    units: ["rem"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/right/railStates.tsx",
+      name: "RailLoading",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "The second activity-rail ghost heading varies the section-label silhouette.",
+      constraint:
+        "The 4.125rem by 0.5625rem bar is authored placeholder geometry paired with the first section's longer cue.",
+      exactValue: "Retain both dimensions together under RailLoading.",
+    },
+  },
+] as const satisfies readonly RelativeValueLedgerEntry[];
+
 export const RELATIVE_VALUE_LEDGER: readonly RelativeValueLedgerEntry[] = [
   ...KIT_RELATIVE_VALUE_LEDGER,
   ...CHROME_AND_SHELL_RELATIVE_VALUE_LEDGER,
   ...VIEWER_RELATIVE_VALUE_LEDGER,
   ...PALETTE_AND_AGENT_RELATIVE_VALUE_LEDGER,
   ...STAGE_AND_TIMELINE_RELATIVE_VALUE_LEDGER,
+  ...RESIDUAL_RELATIVE_VALUE_LEDGER,
 ];
 export const NAMING_DEBT_LEDGER: readonly NamingDebtLedgerEntry[] = [];
 export const CONSOLIDATION_INVARIANTS: readonly ConsolidationInvariant[] = [];
