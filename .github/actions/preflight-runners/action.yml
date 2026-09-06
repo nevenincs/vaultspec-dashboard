@@ -91,11 +91,25 @@ runs:
         fi
         printf 'checking selector: %s\n' "${selectors[@]}"
 
+        # UNOBSERVABLE IS A FAILURE, not a skip. GITHUB_TOKEN can NEVER read
+        # actions/runners - that endpoint needs Administration:read, which no
+        # `permissions:` value grants it - so a token fallback guaranteed the
+        # 403 and this skip guaranteed a green job. Measured on a sibling
+        # release (rag run 34000421424): 403, warning, success. Every release
+        # across three repos shipped over a preflight that verified nothing.
+        #
+        # The old text argued that refusing a release on a blind check is worse
+        # than not checking. The real cost is a check that reports success
+        # having checked nothing: it consumes the attention that would have
+        # gone looking. FLEET_PREFLIGHT_TOKEN exists as of 2026-09-06, so an
+        # absent credential is now a provisioning fault, not a build condition.
+        if [ -z "${GH_TOKEN:-}" ]; then
+          echo "::error::FLEET_PREFLIGHT_TOKEN is not set. This check needs a PAT with Administration:read."
+          exit 1
+        fi
         if ! runners=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runners" --jq '.runners[] | [.status, ([.labels[].name] | map(ascii_downcase) | join(","))] | @tsv' 2>&1); then
-          echo "::warning::preflight cannot read the runner list: ${runners}"
-          echo "::warning::The default GITHUB_TOKEN cannot read actions/runners. Set FLEET_PREFLIGHT_TOKEN to a PAT with administration:read to arm this check."
-          echo "::warning::SKIPPING - unobservable is not the same as unserviceable, and refusing a release on a blind check is worse than not checking."
-          exit 0
+          echo "::error::preflight cannot read the runner list: ${runners}"
+          exit 1
         fi
         if [ -z "${runners}" ]; then
           echo "::error::no self-hosted runners are registered for this repository" >&2

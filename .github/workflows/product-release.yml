@@ -628,6 +628,47 @@ jobs:
           gh release upload "${tag}" dist/* --clobber
           echo "attached ${{ steps.gather.outputs.count }} archive(s) to ${tag}"
 
+  # PROMOTE. The last thing that happens, and the reason a defective release
+  # can no longer surface.
+  #
+  # release-please now publishes the GitHub Release as a DRAFT, so between the
+  # tag and this job the release exists but nobody can install it. Everything
+  # that could condemn it - the build matrix, both verification jobs, and the
+  # phase-zero channel feasibility proof - has to pass before this flips it
+  # live.
+  #
+  # The ordering this replaces shipped EIGHT consecutive broken releases,
+  # v0.1.5 through v0.1.12: `attach-to-release` needed only the build and
+  # verification jobs, so the release went public while `channel-feasibility`
+  # was still running beside it. Every one of those runs ended `failure` with
+  # Scoop and WinGet proofs red, and every one of those releases is still
+  # public - v0.1.12 holds `Latest`. A red run next to a shipped release stops
+  # being read after the second time.
+  #
+  # If a gate fails the release simply stays a draft: visible to maintainers,
+  # invisible to users, and reversible by deleting a draft rather than by
+  # yanking something people have already installed.
+  promote-release:
+    name: Promote the release once the gates pass
+    needs: [resolve-version, attach-to-release, channel-feasibility]
+    runs-on: [self-hosted, Linux, X64]
+    permissions:
+      contents: write
+    steps:
+      - name: Publish the draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.resolve-version.outputs.value }}
+        run: |
+          set -euo pipefail
+          tag="v${VERSION}"
+          if ! gh release view "${tag}" >/dev/null 2>&1; then
+            echo "::error::no release exists for ${tag}" >&2
+            exit 1
+          fi
+          gh release edit "${tag}" --draft=false --latest
+          echo "promoted ${tag}: every gate passed before it became visible"
+
   # POST-ATTACH CHANNEL PUBLICATION. Homebrew's formula points at the three
   # non-Windows archives ON THE RELEASE and verifies each digest by
   # re-downloading, so it can only run once `attach-to-release` has uploaded
@@ -643,7 +684,7 @@ jobs:
   # `v<version>` from exactly this value.
   homebrew-bump:
     name: Publish the Homebrew formula
-    needs: [resolve-version, attach-to-release]
+    needs: [resolve-version, promote-release]
     uses: ./.github/workflows/homebrew-bump.yml
     with:
       version: ${{ needs.resolve-version.outputs.value }}
