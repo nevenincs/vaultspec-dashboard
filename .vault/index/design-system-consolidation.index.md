@@ -6,7 +6,7 @@ tags:
 date: '2026-09-05'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:27944923b1c393c7bb1ee6b711fe1e43fd95180c9a0e33123c62348f51fab4c8'
+body_hash: 'sha256:2cc57201fd07372b9606807b2d61b9d3d3dbe7b5f138587068a8a38d4effd69f'
 related:
   - '[[2026-09-05-design-system-consolidation-W01-P01-S01]]'
   - '[[2026-09-05-design-system-consolidation-W01-P01-S04]]'
@@ -27,6 +27,7 @@ related:
   - '[[2026-09-05-design-system-consolidation-W01-P01-S177]]'
   - '[[2026-09-05-design-system-consolidation-W01-P01-S178]]'
   - '[[2026-09-05-design-system-consolidation-W01-P01-S179]]'
+  - '[[2026-09-05-design-system-consolidation-W01-P02-S06]]'
   - '[[2026-09-05-design-system-consolidation-adr]]'
   - '[[2026-09-05-design-system-consolidation-horizontal-polish-research]]'
   - '[[2026-09-05-design-system-consolidation-plan]]'
@@ -34,6 +35,7 @@ related:
   - '[[2026-09-05-design-system-consolidation-shipped-frontend-blueprint-reference]]'
   - '[[2026-09-06-design-system-consolidation-s04-naming-debt-review-audit]]'
   - '[[2026-09-06-design-system-consolidation-s05-campaign-invariants-review-audit]]'
+  - '[[2026-09-06-design-system-consolidation-s06-bounded-scanner-review-audit]]'
   - '[[2026-09-06-design-system-consolidation-s164-baseline-decision-audit]]'
   - '[[2026-09-06-design-system-consolidation-s165-classification-review-audit]]'
   - '[[2026-09-06-design-system-consolidation-s166-classification-review-audit]]'
@@ -67,6 +69,7 @@ Auto-generated index of all documents tagged with `#design-system-consolidation`
 - `2026-09-05-design-system-consolidation-s01-schema-review-audit` - `design-system-consolidation` audit: `S01 ledger schema review`
 - `2026-09-06-design-system-consolidation-s04-naming-debt-review-audit` - `design-system-consolidation` audit: `S04 campaign naming-debt review`
 - `2026-09-06-design-system-consolidation-s05-campaign-invariants-review-audit` - `design-system-consolidation` audit: `S05 campaign invariants review`
+- `2026-09-06-design-system-consolidation-s06-bounded-scanner-review-audit` - `design-system-consolidation` audit: `s06 bounded scanner review`
 - `2026-09-06-design-system-consolidation-s164-baseline-decision-audit` - `design-system-consolidation` audit: `S164 executable-control baseline decision`
 - `2026-09-06-design-system-consolidation-s165-classification-review-audit` - `design-system-consolidation` audit: `S165 ordinary field classification review`
 - `2026-09-06-design-system-consolidation-s166-classification-review-audit` - `design-system-consolidation` audit: `S166 option and menu classification review`
@@ -105,6 +108,7 @@ Auto-generated index of all documents tagged with `#design-system-consolidation`
 - `2026-09-05-design-system-consolidation-W01-P01-S177` - Classify arbitrary relative values owned by left rail, right rail, settings, panels, and remaining surfaces
 - `2026-09-05-design-system-consolidation-W01-P01-S178` - Verify the relative-value family ledger accounts for the complete 106-site baseline without duplicates
 - `2026-09-05-design-system-consolidation-W01-P01-S179` - Capture immutable pre-execution hashes and preimages for all existing dirty and clean scene sources plus the SceneController contract
+- `2026-09-05-design-system-consolidation-W01-P02-S06` - Implement the bounded native-control, arbitrary-value, kit-import, layer-direction, facade, and ledger-consistency scanner
 
 ### plan
 

@@ -10,7 +10,7 @@ related:
   - '[[2026-09-05-design-system-consolidation-shipped-frontend-blueprint-reference]]'
 modified: '2026-09-06'
 body_schema: body-v2
-body_hash: 'sha256:127d1ab8cecf540c53530478db466dd613dd2ac7606009fee49f0f846d21b8a2'
+body_hash: 'sha256:b7a2a36e867f7b775f58ce5eda78780e2dd3c92198de999c067895af19a5220a'
 ---
 
 <!-- RETIRED: S02, S03, S95, S96, S158 -->
@@ -63,7 +63,7 @@ Establish one machine-readable ledger that distinguishes migrations, retained se
 
 Add a ratcheting scanner and tests that reject unclassified sites, stale ledger entries, forbidden ownership, deep kit imports, and unauthorized migration facades.
 
-- [ ] `W01.P02.S06` - Implement the bounded native-control, arbitrary-value, kit-import, layer-direction, facade, and ledger-consistency scanner; `frontend/dev/tooling/scan-design-system.mjs`.
+- [x] `W01.P02.S06` - Implement the bounded native-control, arbitrary-value, kit-import, layer-direction, facade, and ledger-consistency scanner; `frontend/dev/tooling/scan-design-system.mjs`.
 - [ ] `W01.P02.S07` - Add valid and invalid scanner fixtures for classified seams, missing entries, stale entries, deep imports, store-to-kit imports, and compatibility facades; `frontend/dev/tooling/fixtures/design-system/`.
 - [ ] `W01.P02.S08` - Add focused scanner tests covering all ledger and ownership failure modes; `frontend/dev/tooling/scan-design-system.test.ts`.
 - [ ] `W01.P02.S09` - Register the design-system scanner as a frontend lint script while preserving unrelated package edits; `frontend/package.json`.
