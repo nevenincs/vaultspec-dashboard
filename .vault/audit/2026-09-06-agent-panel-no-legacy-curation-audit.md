@@ -5,7 +5,7 @@ tags:
 date: '2026-09-06'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:f001b12ab4b15b0caa89f7f88ad17cb4e864ca20c9ba95276e4dbe386d42ad34'
+body_hash: 'sha256:36f2110f343160f8a9dfe64f6e9a250557ad7d902ad6ec9b74568b7cefd303b7'
 related:
   - "[[2026-08-01-a2a-agent-flow-adr]]"
   - "[[2026-08-01-agent-panel-shell-integration-adr]]"
@@ -1489,3 +1489,78 @@ receipt, HTTP concurrency, and aggregate reconciliation proofs remain intact.
 Type: rolling review disposition. Both HIGH findings and the MEDIUM finding from
 `72173b06` now have bounded implementation and discriminating evidence. Closure
 remains pending formal code re-review of the correction commit.
+## 2026-09-06 formal re-review of bounded reaper correction
+
+Review target: `9b6ddef2503f8a0308c197432528f771676ea760`, exact parent
+`33606a53717bdb1c6e512db7734040bb94be5457`. Review covered the exact nine
+committed paths against the HIGH and MEDIUM findings in `72173b06`, the shared
+bounded-runner fault adapters, the resource-bound and shutdown contracts, prior
+current-only evidence/confinement fixes, and the reported validation. The
+parent design-system commit and concurrent graph, performance, RAG, lockfile,
+generated-local-storage, and design-system work were excluded.
+
+### provisioning-adapter-swaps-wait-and-capacity-causes | medium | open
+
+Type: typed failure classification. `run_capability_with_limits` maps
+`BoundedFault::Read` and `BoundedFault::Wait` to
+`RunTermination::AtCapacity`, while the actual `BoundedFault::AtCapacity` arm
+returns generic `RunTermination::Indeterminate`. A process read/reap failure is
+therefore falsely reported as capacity exhaustion, and the sixty-fifth refused
+process group loses the new typed `process_group_at_capacity` cause. The setup
+test starts from a synthetic prebuilt `RunCapture::AtCapacity`; the runner-cap
+test stops at `BoundedFault::AtCapacity`. Neither crosses the production adapter,
+so both pass while the real mapping is reversed.
+
+Ownership: map `Read`/`Wait` to `Indeterminate` and `AtCapacity` to
+`AtCapacity`. Add production-adapter discriminators for every `BoundedFault`
+variant, including separate Read, Wait, AtCapacity, Timeout, OverCap, and spawn
+cases, then prove the setup preflight wire receives
+`doctor_process_group_at_capacity` or `preview_process_group_at_capacity` from
+a real adapter refusal. Keep all causes closed and free of producer bytes.
+
+### bounded-group-ownership-and-preflight-cause | low | verified
+
+Type: resolved correction controls. A 64-permit semaphore is acquired before
+spawn. The permit remains owned by the live group and transfers with a cancelled
+group into the keyed waiter; normal group completion, explicit timeout/output
+termination, or successful waiter completion releases it. Waiters remove their
+keys during normal runtime. Shutdown aborts owned provisioning tasks, then
+drains group waiters under one absolute ten-second deadline and distinguishes
+`DeadlineExceeded` from `GroupWaitUnresolved`. The repeated-cancellation,
+sixty-fifth-admission, cooperative shutdown, and deliberately pending waiter
+proofs exercise the intended bounds. The Unix path synchronously sends the
+process-group kill without relying on unsupported builder drop behavior, and
+Windows retains the Job Object through group-empty waiting.
+
+Doctor and preview validation now prefer `run_cause`, so a completed nonzero
+preflight process retains `child_exit_nonzero` instead of collapsing into
+producer state disagreement. All earlier raw-stream closure, typed digest,
+Doctor/install projection, no-follow component confinement, dangling-link,
+hard job-cap, safe/force conflict, and real Core matrix corrections remain in
+place. No `all`, Gemini, profile, deprecated API, alias, translation, migration,
+fallback, or compatibility path was introduced, and no raw producer stream
+bytes cross the setup wire.
+
+The implementation record reports 15 bounded-child tests, 30 provisioning tests
+including the real Core matrix, targeted nonzero and service-shutdown cases,
+check, warnings-denied Clippy, Core checks, and clean diff. The reviewed commit
+is mechanically clean and its nine paths are coherent with the shared runner
+change. The validation suite lacks the production-adapter fault mapping proof
+needed to catch the open finding above.
+
+### bounded-reaper-correction-formal-disposition | medium | FAIL
+
+Type: formal implementation review disposition. Commit `9b6ddef2` resolves the
+unbounded waiter registry, unbounded group-shutdown drain, and nonzero-preflight
+cause defects in their core implementations. The production provisioning
+adapter reverses the read/wait and capacity classifications, so the promised
+typed capacity behavior is not delivered end to end. The correction is not
+review-passed. Correct the mapping, add the production-adapter fault matrix, and
+obtain another formal review before acceptance.
+
+## Bounded reaper formal re-review recommendations
+
+- Correct the `BoundedFault` to `RunTermination` mapping before further setup
+  lifecycle work.
+- Exercise every bounded-runner fault through the real provisioning adapter so
+  synthetic captures cannot mask future classification drift.
