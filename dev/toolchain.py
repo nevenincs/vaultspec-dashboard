@@ -174,6 +174,7 @@ LINT = Verb(
                 npm("lint:px"),
                 npm("lint:domains"),
                 npm("lint:modules"),
+                npm("lint:design-system"),
                 npm("format:check"),
                 npm("typecheck"),
                 npm("tokens:check"),
