@@ -140,7 +140,7 @@ describe("design-system scanner", () => {
       schema: REPORT_SCHEMA,
       status: "clean",
       summary: {
-        nativeControls: 126,
+        nativeControls: 127,
         relativeExecutableSites: 100,
         relativeClassifiedExceptions: 6,
         pendingAppKitDeepImports: 12,
@@ -236,7 +236,7 @@ describe("design-system scanner", () => {
         button: 99,
         input: 20,
         select: 1,
-        textarea: 5,
+        textarea: 6,
       },
     });
     expect(uniqueCodes(nativeBaselineReport)).toEqual(["native-baseline"]);

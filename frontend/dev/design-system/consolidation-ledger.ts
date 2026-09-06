@@ -470,6 +470,26 @@ export const NATIVE_CONTROL_LEDGER = [
   },
   {
     source: {
+      path: "frontend/src/app/kit/TextArea.tsx",
+      owner: "TextArea",
+      slot: "textarea-root",
+    },
+    element: "textarea",
+    disposition: "canonical-owner",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/TextArea.tsx",
+      name: "TextArea",
+      status: "existing",
+    },
+    rationale: {
+      summary: "TextArea owns the ordinary multiline text field.",
+      ownership:
+        "The native textarea defines the kit's accessible naming, semantic density, resize, focus-visible, invalid, disabled, and read-only contract while preserving native rows, values, and events.",
+    },
+  },
+  {
+    source: {
       path: "frontend/src/app/settings/controls/EnumControl.tsx",
       owner: "EnumControl",
       slot: "enum-option",
@@ -722,12 +742,12 @@ export const NATIVE_CONTROL_LEDGER = [
       layer: "app-kit",
       path: "frontend/src/app/kit/TextArea.tsx",
       name: "TextArea",
-      status: "planned",
+      status: "existing",
     },
     rationale: {
       summary: "RequestChangesComposer uses an ordinary review-authoring textarea.",
       equivalence:
-        "The field needs the planned TextArea contract for a controlled multiline value, visible labeling, focus treatment, resize policy, rows, autofocus, and validation relationships.",
+        "The field needs the TextArea contract for a controlled multiline value, visible labeling, focus treatment, resize policy, rows, autofocus, and validation relationships.",
       replacement:
         "Compose TextArea while retaining trimmed required-comment validation and Control-or-Command-plus-Enter submission.",
       deletion:
@@ -746,12 +766,12 @@ export const NATIVE_CONTROL_LEDGER = [
       layer: "app-kit",
       path: "frontend/src/app/kit/TextArea.tsx",
       name: "TextArea",
-      status: "planned",
+      status: "existing",
     },
     rationale: {
       summary: "CommentRow uses an ordinary textarea for editing a comment.",
       equivalence:
-        "The field needs the planned TextArea contract for a controlled multiline value, accessible label, rows, vertical resize, and focus treatment.",
+        "The field needs the TextArea contract for a controlled multiline value, accessible label, rows, vertical resize, and focus treatment.",
       replacement:
         "Compose TextArea while retaining edit-draft reset, trimmed save gating, cancellation, and comment mutation behavior.",
       deletion:
@@ -770,12 +790,12 @@ export const NATIVE_CONTROL_LEDGER = [
       layer: "app-kit",
       path: "frontend/src/app/kit/TextArea.tsx",
       name: "TextArea",
-      status: "planned",
+      status: "existing",
     },
     rationale: {
       summary: "ComposeBox uses an ordinary textarea for new comments.",
       equivalence:
-        "The field needs the planned TextArea contract for a controlled multiline value, accessible label, placeholder, rows, vertical resize, and focus treatment.",
+        "The field needs the TextArea contract for a controlled multiline value, accessible label, placeholder, rows, vertical resize, and focus treatment.",
       replacement:
         "Compose TextArea while retaining actor-readiness gating, trimmed submit behavior, anchor creation, and post-submit reset.",
       deletion:
@@ -5650,11 +5670,11 @@ export const NAMING_DEBT_LEDGER = [
       layer: "app-kit",
       path: "frontend/src/app/kit/TextArea.tsx",
       name: "TextArea",
-      status: "planned",
+      status: "existing",
     },
     rationale: {
       summary:
-        "TextArea is the campaign's code-side name for the planned ordinary multiline field primitive.",
+        "TextArea is the campaign's code-side name for the ordinary multiline field primitive.",
       unresolvedBinding:
         "The accepted research supports the primitive's behavior and reuse, but this no-Figma campaign does not establish a matching design-system node name or alias.",
       reconciliation:

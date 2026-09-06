@@ -158,7 +158,7 @@ const CAMPAIGN_COMPONENT_NAMING_DEBT = [
     name: "TextArea",
     debtKind: "code-only-name",
     layer: "app-kit",
-    status: "planned",
+    status: "existing",
   },
   {
     path: "frontend/src/app/kit/OptionRow.tsx",
@@ -761,17 +761,17 @@ describe("design-system consolidation native-control ledger", () => {
   const executable = scanExecutableControls(files);
 
   it("preserves the frozen baseline while tracking the current executable inventory", () => {
-    expect(executable).toHaveLength(126);
+    expect(executable).toHaveLength(127);
     expect(elementCounts(executable)).toEqual({
       button: 100,
       input: 20,
       select: 1,
-      textarea: 5,
+      textarea: 6,
     });
     expect(CONSOLIDATION_BASELINE_COUNTS.nativeControlSites).toBe(125);
 
     const raw = scanRawControlLexemes(files);
-    expect(raw).toHaveLength(129);
+    expect(raw).toHaveLength(130);
     const executableOffsets = new Set(
       executable.map(({ path, offset }) => JSON.stringify([path, offset])),
     );
@@ -802,11 +802,11 @@ describe("design-system consolidation native-control ledger", () => {
   });
 
   it("matches every executable site to the ledger with no missing, stale, or duplicate identity", () => {
-    expect(NATIVE_CONTROL_LEDGER).toHaveLength(126);
+    expect(NATIVE_CONTROL_LEDGER).toHaveLength(127);
     const stableKeys = NATIVE_CONTROL_LEDGER.map(({ source }) =>
       ledgerSourceKey(source),
     );
-    expect(new Set(stableKeys).size).toBe(126);
+    expect(new Set(stableKeys).size).toBe(127);
 
     const sourceIdentities = new Set(sourceStructuralIdentityKeys(executable));
     const ledgerIdentities = new Set(
@@ -815,7 +815,7 @@ describe("design-system consolidation native-control ledger", () => {
     const missing = [...sourceIdentities].filter((key) => !ledgerIdentities.has(key));
     const stale = [...ledgerIdentities].filter((key) => !sourceIdentities.has(key));
     expect({ missing, stale }).toEqual({ missing: [], stale: [] });
-    expect(ledgerIdentities.size).toBe(126);
+    expect(ledgerIdentities.size).toBe(127);
   });
 
   it("enforces the current schema, disposition, owner, and rationale contracts", () => {
