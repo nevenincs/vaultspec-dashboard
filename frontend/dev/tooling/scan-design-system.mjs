@@ -614,14 +614,20 @@ function sourceNativeKeys(controls) {
   });
 }
 
-function ledgerNativeKeys(entries, sourceControls, ledgerSourceKey, add) {
+function ledgerNativeKeys(
+  entries,
+  sourceControls,
+  ledgerSourceKey,
+  duplicateSiteBindings,
+  add,
+) {
   const groupCounts = new Map();
   for (const site of sourceControls) {
     const group = structuralGroupKey(site);
     groupCounts.set(group, (groupCounts.get(group) ?? 0) + 1);
   }
   const bound = new Map();
-  for (const [path, owner, element, slots] of DUPLICATE_SITE_BINDINGS) {
+  for (const [path, owner, element, slots] of duplicateSiteBindings) {
     const group = structuralGroupKey({ path, owner, element });
     if ((groupCounts.get(group) ?? 0) !== slots.length) {
       add(
@@ -902,6 +908,9 @@ function validateLedger(
   files,
   nativeSites,
   relativeSites,
+  expectedNativeElementCounts,
+  duplicateSiteBindings,
+  relativeExceptions,
   add,
 ) {
   const ledger = ledgerModule.CONSOLIDATION_LEDGER;
@@ -1120,7 +1129,7 @@ function validateLedger(
 
   const elementCounts = { button: 0, input: 0, select: 0, textarea: 0 };
   for (const site of nativeSites) elementCounts[site.element] += 1;
-  if (keyOf(elementCounts) !== keyOf(NATIVE_ELEMENT_COUNTS)) {
+  if (keyOf(elementCounts) !== keyOf(expectedNativeElementCounts)) {
     add("native-baseline", ledgerFile, 1, 1, `found ${keyOf(elementCounts)}`);
   }
   const sourceNative = sourceNativeKeys(nativeSites);
@@ -1128,6 +1137,7 @@ function validateLedger(
     ledger.nativeControls,
     nativeSites,
     safeSourceKey,
+    duplicateSiteBindings,
     add,
   );
   for (const key of multisetDifference(sourceNative, ledgerNative))
@@ -1135,10 +1145,7 @@ function validateLedger(
   for (const key of multisetDifference(ledgerNative, sourceNative))
     add("native-control-stale", ledgerFile, 1, 1, key);
 
-  const exceptionEntries = [
-    ...KNOWN_RELATIVE_SCANNER_DEFECTS,
-    DOCUMENTED_RELATIVE_VALUE_EXAMPLE,
-  ];
+  const exceptionEntries = relativeExceptions;
   for (const expected of exceptionEntries) {
     const expectedKey = safeSourceKey(expected, "relative exception");
     const entry = ledger.relativeValues.find(
@@ -1320,6 +1327,12 @@ export async function scanDesignSystem(options = {}) {
     files,
     nativeSites,
     relativeSites,
+    options.expectedNativeElementCounts ?? NATIVE_ELEMENT_COUNTS,
+    options.duplicateSiteBindings ?? DUPLICATE_SITE_BINDINGS,
+    options.relativeExceptions ?? [
+      ...KNOWN_RELATIVE_SCANNER_DEFECTS,
+      DOCUMENTED_RELATIVE_VALUE_EXAMPLE,
+    ],
     add,
   );
   const ownership = scanOwnership(ownershipFiles(frontendRoot), frontendRoot, add);
