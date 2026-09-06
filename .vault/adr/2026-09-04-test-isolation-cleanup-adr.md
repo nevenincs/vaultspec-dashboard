@@ -5,7 +5,7 @@ tags:
 date: '2026-09-04'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:067e5bcb0e7718ffa1a1fb50f5073074ae7326d09ab4ddeceda8549b558bd8dd'
+body_hash: 'sha256:8cccbfa3934205a3e696495f194eb8524488dfa30fc7969ffbc421e9602c2ba0'
 related:
   - "[[2026-09-04-test-isolation-cleanup-research]]"
 ---
@@ -122,6 +122,18 @@ For cancellation of a streamed response:
   shared by the general engine stream, the A2A relay, and the authoring lifecycle
   subscription.
 
+For test-owned teardown across finite and structural queries:
+
+- **Cancel and clear every QueryClient before or during unmount.** REJECTED AFTER
+  EXECUTION. TanStack can report no fetching or retained queries while response
+  work remains owned by the environment.
+- **Await every query naturally or poll until the environment is quiet.**
+  REJECTED. Structural streams are intentionally long-lived, and a timer or Happy
+  DOM drain would replace ownership with an unbounded environmental heuristic.
+- **Await finite work, unmount, await structural cancellation, then clear.**
+  CHOSEN. Explicit client enrollment and structural key classification make each
+  phase finite and attributable without changing application query semantics.
+
 ## Constraints
 
 No frontier or maturity risk. Every dependency is pinned and already in the
@@ -206,6 +218,46 @@ a native Response and ReadableStream: after headers, last-subscriber removal mus
 cancel the reader exactly once without aborting the resolved request signal. The
 test is demonstrated red when the authoring loop restores direct signal forwarding.
 
+Live-render teardown has one test-owned sequence. Every QueryClient created or used
+by AgentPanel and Composer is explicitly enrolled. Before unmount, the helper
+snapshots active query promises other than `engine/stream/*` and
+`a2a/run-relay/*`, awaits those finite promises, then takes one more snapshot. Any
+new active finite promise fails the helper immediately; there is no polling loop.
+
+Next the helper snapshots active structural-stream promises and invokes RTL
+cleanup. Unmount cancels those streams through S16 and releases the authoring
+lifecycle subscription. The helper awaits the captured stream settlements and the
+actual authoring-loop stop settlement before clearing enrolled clients and resetting
+test stores. Query rejections remain represented in TanStack query state for the
+owning test; settlement observation neither rewrites them nor filters diagnostics.
+
+`subscribeAuthoringLifecycle` continues to return `() => void` for every caller;
+neither its hook nor the comments query's React effect may receive a promise-returning
+disposer. Last-subscriber release synchronously initiates stop and stores the
+original loop-settlement promise. The separate
+`getAuthoringLifecycleStopSettlement(): Promise<void>` accessor returns that same
+original promise to the teardown helper.
+
+Production attaches a platform-logger rejection observer without storing the
+observer's derived promise in place of the original. Normal owner cancellation
+fulfills the stored settlement. A reader-cancellation failure after stop begins is
+rethrown from the stopped loop, so the stored promise and test seam reject with the
+original cause; the separate observer reports that rejection. It is never swallowed
+merely because `stopped` is true, and no retry is scheduled after stop. No timer,
+timeout, Happy DOM counter,
+global task drain, retry, or diagnostic suppression is introduced.
+
+Deterministic tests mutate each necessary edge independently: omitted client
+enrollment, finite-await moved after unmount, either structural key misclassified,
+the single post-settlement snapshot removed, structural settlement not awaited,
+authoring stop not awaited, public release changed from void to promise-returning,
+the logging observer removed, the observer's fulfilled derived promise substituted
+for the original rejecting settlement, a stopped-loop cancellation failure
+swallowed, and client clear moved before settlement. Each mutation must make the
+contract test fail on an ordered-state or error-identity assertion without sleeping
+or a deadline. Every deferred promise is settled explicitly by the test body, so a
+mutation cannot pass or fail merely by reaching the runner timeout.
+
 Files remain serial against the one shared engine. Configuration states that
 truth directly: retain `fileParallelism: false` and set `maxWorkers: 1`, removing
 the obsolete claim that four workers improved this suite. Unexpected engine exit
@@ -282,6 +334,11 @@ change, cache cancellation, and authoring last-subscriber removal in the shipped
 application as well as in tests. The added complexity is bounded to
 acquisition/reader handoff and is guarded against listener leaks and error
 reclassification.
+
+The ordered live-render helper is test-only policy over production-owned promises.
+It adds no application delay and does not redefine a successful or failed query.
+Its maintenance cost is explicit enrollment when a covered test creates another
+client; the mutation suite makes omission visible rather than silently leaking it.
 
 A deterministic pure-test failure is never classified as an engine-port failure
 merely because the engine also died during the run. Infrastructure classification

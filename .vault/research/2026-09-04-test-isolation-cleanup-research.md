@@ -5,7 +5,7 @@ tags:
 date: '2026-09-04'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:152c2ba5918e55c5dd4137631d69ba4703960bdb4d51213ce01f983a301129ba'
+body_hash: 'sha256:e38b1321256b19aa8b63783546099494d7d8a5296f2850b0946341ee6ee24448'
 related: []
 ---
 
@@ -248,6 +248,50 @@ phase: abort-before-response cancels acquisition; response-before-abort removes 
 bridge, checks the owner before the first read, and cancels the reader. There is no
 handoff interval in which both controllers own the response.
 
+### Stream ownership does not settle finite test work
+
+The first and only AgentPanel integration run after committed `S16` passed all 28
+assertions in 48.23 seconds, but still emitted 111 `socket hang up` diagnostics,
+111 matching `ECONNRESET` lines, and two synchronous `AbortError` stacks. Both
+stacks remained in Vitest file teardown; the run reported no unhandled-error
+section, worker exit, or unexpected engine exit. Execution stopped before Composer,
+the eight-file prefix, lint, or any source edit.
+
+This does not disprove the two-phase stream contract. Earlier probes established
+two distinct classes in the same test owner: one finite-query case reaches zero
+diagnostics when its promise settles naturally, while waiting for the entire file
+never completes because `engine/stream/*` and `a2a/run-relay/*` are intentionally
+long-lived. S16 gives those structural streams a graceful cancellation path, but
+it does not decide when the test owner should await finite response bodies.
+
+The bounded policy therefore follows ownership order rather than a timer. Every
+QueryClient used by AgentPanel or Composer is explicitly enrolled. While the React
+tree is still mounted, the owner snapshots and awaits all active finite-query
+promises, excluding only the two structural stream key families. It takes one
+post-settlement snapshot and fails if new finite work is active; it does not poll
+until quiet. It then snapshots active long-lived promises, runs RTL cleanup, awaits
+the S16-driven stream settlements and the authoring lifecycle loop's separately
+exposed stop settlement, and only then clears clients and resets stores.
+
+TanStack query errors remain in query state for their owning assertions. Observing
+promise settlement does not convert a rejected query into success, filter console
+output, or swallow a cancellation failure. The authoring subscription's public
+release remains `() => void`, which is required by both React effect callers. On
+last-subscriber release it synchronously initiates stop and retains the original
+loop-settlement promise behind
+`getAuthoringLifecycleStopSettlement(): Promise<void>`. A platform-logger
+rejection observer is attached to that original promise without replacing it with
+the observer's fulfilled derived promise, so production sees the failure and the
+test accessor still rejects with the same cause.
+
+Normal owner cancellation fulfills the retained stop settlement. If reader
+cancellation fails after stop begins, the stopped-loop branch rethrows that error
+instead of treating `stopped` as success or scheduling another retry; the separate
+observer supplies the production report.
+React cleanup therefore remains synchronous, while direct test ownership can await
+the separate settlement seam. No Happy DOM task count, timer, timeout, or global
+drain participates.
+
 ### Option space
 
 Three shapes, with the trade-off that distinguishes them:
@@ -296,6 +340,7 @@ with its own blast radius and belongs in its own record.
 - `C:\Users\hello\AppData\Local\Temp\vaultspec-s15-agentpanel-post-repair.log` — disproved cleanup/cancelQueries/clear candidate
 - `C:\Users\hello\AppData\Local\Temp\vaultspec-s15-agentpanel-post-cancel-state.log` — settled QueryClient and retained Happy DOM state
 - `C:\Users\hello\AppData\Local\Temp\vaultspec-s15-agentpanel-minimal-natural-settle.log` — finite natural-settlement control
+- `C:\Users\hello\AppData\Local\Temp\vaultspec-s15-agent-panel-integration.log` — first post-S16 AgentPanel integration output
 - `node_modules/@testing-library/react/dist/index.js:26` — the `typeof afterEach` guard
 - `node_modules/@testing-library/react/dist/index.js:41` — the act-environment guard
 - `node_modules/@testing-library/react/dist/act-compat.js:41` — `withGlobalActEnvironment`
@@ -320,6 +365,11 @@ with its own blast radius and belongs in its own record.
 - `frontend/src/stores/server/agent/a2aTeam.ts:1263` — A2A streamed query forwards the owner signal into fetch
 - `frontend/src/stores/server/authoring/index.ts:894` — lifecycle unsubscribe controller is forwarded through fetch into SSE consumption
 - `frontend/src/stores/server/authoring.test.ts:1` — authoring store behavioral-test home
+- `frontend/src/stores/server/queries/comments.ts:77` — React effect directly returns the synchronous public authoring release
+- `frontend/src/platform/logger/logger.ts:231` — application-wide structured reporting spine for stop-settlement rejection
+- `frontend/node_modules/@tanstack/query-core/src/query.ts:199` — active query promise observability
+- `frontend/src/stores/server/queries/internal.ts:173` — structural engine-stream key
+- `frontend/src/stores/server/agent/a2aTeam.ts:997` — structural A2A run-relay key
 - `frontend/src/stores/server/systemPrograms.live.test.ts:82` — stale unavailable-identity assertion
 - `engine/crates/vaultspec-api/src/routes/stream.rs:52` — crashed-service identity contract
 - `frontend/src/app/chrome/useReducedMotion.test.tsx` — the single suite fixed in `55b5e7a41b`

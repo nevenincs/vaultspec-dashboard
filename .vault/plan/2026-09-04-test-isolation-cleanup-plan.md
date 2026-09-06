@@ -9,7 +9,7 @@ related:
   - '[[2026-09-04-test-isolation-cleanup-research]]'
 modified: '2026-09-06'
 body_schema: body-v2
-body_hash: 'sha256:2db2958634405ca23e335d2220893b9a429f6e4c30b21ed8ceb27d9c1e48d424'
+body_hash: 'sha256:1c0700f8190ee3f9820eaf6d4f4a81d6ec9c06fe41249f5a7963abdceb463269'
 ---
 
 # `test-isolation-cleanup` plan
@@ -57,6 +57,14 @@ all three owners; `S15` remains the real-engine integration gate that must clear
 before `S10`. No Step authorizes diagnostic suppression, retry, timeout inflation,
 mocking, or assertion weakening.
 
+The first post-S16 AgentPanel integration still reached the runner with finite
+response work active. `S17` adds the bounded test-owner order: explicitly enrolled
+clients await finite work while mounted, take one post-settlement snapshot, unmount
+to cancel structural streams through S16, await stream settlement and the separately
+exposed original authoring stop promise, then clear. The public authoring disposer
+stays synchronous for both React effect callers. S15 resumes only after that
+mutation-proven contract lands.
+
 ## Steps
 
 - [x] `S01` - Add the global unmount barrier setup file and register it after the live-engine setup file; `frontend/vite.config.ts`.
@@ -73,6 +81,7 @@ mocking, or assertion weakening.
 - [x] `S13` - Add a cross-test lifecycle guard proving the harness never calls happy-dom abort between cases and demonstrate it red with the removed hook restored; `frontend/src/testing/perTestWindowLifecycle.guard.test.ts`.
 - [x] `S14` - Record the first exact eight-file prefix as a completed diagnostic enumeration even though the zero-diagnostic barrier is red, preserve its log, and route the attributed AgentPanel cluster plus smaller unassigned reset cluster to S15 without an unchanged rerun; `frontend/dev/tooling/scan-design-system.test.ts, frontend/dev/tooling/scan-localization.test.ts, frontend/src/app/agent/Composer.render.test.tsx, frontend/src/app/palette/DocumentSearchSurface.localization.test.tsx, frontend/src/app/stage/GraphControls.render.test.tsx, frontend/src/app/agent/AgentPanel.render.test.tsx, frontend/dev/tooling/token-drift-check.test.ts, frontend/src/stores/server/authoring.happyPath.live.test.ts`.
 - [x] `S16` - Implement and mutation-prove a shared two-phase SSE cancellation contract that aborts only pending response acquisition, then gracefully cancels the response reader, and route engine, A2A, and authoring lifecycle streams through it; `frontend/src/stores/server/queries/sse.ts, frontend/src/stores/server/queries/streams.ts, frontend/src/stores/server/queries/streams.test.ts, frontend/src/stores/server/agent/a2aTeam.ts, frontend/src/stores/server/authoring/index.ts, frontend/src/stores/server/authoring.test.ts`.
+- [ ] `S17` - Install and mutation-prove an owner-enrolled live-render teardown that awaits finite queries before RTL unmount, then awaits S16 stream cancellation and a separately exposed authoring stop-settlement promise before clearing clients, and apply it to AgentPanel and Composer; `frontend/src/testing/queryTeardown.ts, frontend/src/testing/queryTeardown.test.ts, frontend/src/app/agent/AgentPanel.render.test.tsx, frontend/src/app/agent/Composer.render.test.tsx, frontend/src/stores/server/authoring/index.ts, frontend/src/stores/server/authoring.test.ts`.
 - [ ] `S15` - Verify corrected stream cancellation once in AgentPanel and Composer separately, then require the exact eight-file prefix and full frontend lint to pass; stop for an in-place amendment before any residual-owner repair; `frontend/src/app/agent/AgentPanel.render.test.tsx, frontend/src/app/agent/Composer.render.test.tsx, frontend/dev/tooling/scan-design-system.test.ts, frontend/dev/tooling/scan-localization.test.ts, frontend/src/app/palette/DocumentSearchSurface.localization.test.tsx, frontend/src/app/stage/GraphControls.render.test.tsx, frontend/dev/tooling/token-drift-check.test.ts, frontend/src/stores/server/authoring.happyPath.live.test.ts`.
 - [ ] `S10` - Run one timing-enabled serialized full frontend suite and one ordinary serialized confirmation suite, recording timing and failure classification; `frontend`.
 
@@ -86,16 +95,18 @@ record the awaited-abort hypothesis and its focused evidence. The failed first
 early-file diagnostic run. `S14` may close on that evidence even while its
 zero-diagnostic outcome is red. The first `S15` isolation reached its required
 amendment boundary with both candidate files restored. `S16` now implements and
-mutation-proves the shared acquisition-versus-reader cancellation owner. `S15`
-then verifies AgentPanel and Composer separately, the exact prefix, and lint. Only
-after that corrective sequence is `S10` re-entered as the final timing-enabled and
-ordinary full-suite gate; no execution is a blind rerun of unchanged state.
+mutation-proves the shared acquisition-versus-reader cancellation owner. The next
+`S15` AgentPanel gate reached a second amendment boundary before any later gate or
+source edit. `S17` implements the finite-versus-structural test-owner sequence;
+`S15` then verifies AgentPanel and Composer separately, the exact prefix, and lint.
+Only after that corrective sequence is `S10` re-entered as the final timing-enabled
+and ordinary full-suite gate; no execution is a blind rerun of unchanged state.
 
 The suite runs online against one spawned engine with mutable fixture state, so
 files remain serial and no sibling worker or separate full/live-engine run may
-overlap `S14`, `S16`, `S15`, or `S10`. `S16` completes before any `S15`
-integration run. Performance comes from removing dead teardown time and destructive
-cancellation, never from unsafe file concurrency.
+overlap `S14`, `S16`, `S17`, `S15`, or `S10`. `S17` completes before the next
+`S15` integration run. Performance comes from removing dead teardown time and
+destructive cancellation, never from unsafe file concurrency.
 
 ## Verification
 
@@ -137,6 +148,35 @@ Composer once, one exact eight-file prefix, and full frontend lint, in that orde
 and against fresh sequential engines where applicable. Every test run must pass
 assertions and the zero-diagnostic gate. Any residual owner stops for an in-place
 amendment before repair; no identical unchanged invocation is repeated as a retry.
+
+S17 enrolls every AgentPanel and Composer QueryClient explicitly. Before RTL
+cleanup, it snapshots and awaits active finite-query promises, excluding only
+`engine/stream/*` and `a2a/run-relay/*`, then takes exactly one post-settlement
+snapshot and fails on any new active finite work. It snapshots structural-stream
+promises, unmounts, awaits their S16 cancellation and the authoring loop's returned
+stop-settlement promise through
+`getAuthoringLifecycleStopSettlement(): Promise<void>`, and only then clears clients
+and resets stores. `subscribeAuthoringLifecycle` remains `() => void` for the hook
+and comments-query React effects. Last-subscriber release synchronously starts stop
+and retains the original promise; direct test ownership awaits that exact promise
+through the separate seam.
+
+A platform-logger observer reports stop rejection in production but its derived
+promise never replaces the retained original. Normal owner cancellation fulfills;
+reader-cancellation failure after stop is rethrown with its original identity, the
+observer reports it, and the stopped loop schedules no retry. The direct test seam
+therefore rejects rather than converting that failure to fulfilled settlement.
+
+The S17 contract has no poll, timer, timeout, Happy DOM task drain, diagnostic
+filter, retry, or assertion rewrite. Query errors remain in query state. Its native
+deferred-query tests are demonstrated red for omitted client enrollment,
+finite-after-unmount ordering, either structural-key misclassification, removal of
+the one post-settlement check, skipped structural or authoring settlement, public
+release made promise-returning, missing production rejection observation, observer
+replacement of the original rejecting promise, stopped-loop cancellation failure
+swallowed, and clear-before-settlement ordering. The tests assert synchronous
+release, logger visibility, rejection identity, and ordered state; they explicitly
+settle every deferred and never rely on sleeping or a test timeout.
 
 All five files that failed in the interrupted design-system phase run must pass
 focused execution. `just lint frontend` must exit zero. Then one timing-enabled
