@@ -10,7 +10,7 @@ related:
   - '[[2026-09-05-design-system-consolidation-shipped-frontend-blueprint-reference]]'
 modified: '2026-09-06'
 body_schema: body-v2
-body_hash: 'sha256:c69113b41357bcdf41626f04b1726259361febd343d117c10759deaf0513f970'
+body_hash: 'sha256:db913a5774c4df3d13eb34b792d0d604cc9085aa96cb1bc36fd6ab0cb8f3e0be'
 ---
 
 <!-- RETIRED: W03, W04, W06, P05, P06, P07, P08, P09, P12, P13, P14, P16, P18, P19, S02, S03, S16, S17, S18, S19, S30, S31, S32, S33, S34, S35, S36, S37, S38, S39, S40, S41, S42, S43, S44, S45, S46, S47, S48, S49, S50, S51, S52, S53, S54, S55, S56, S57, S58, S59, S60, S61, S62, S63, S64, S65, S66, S67, S68, S69, S70, S71, S72, S92, S93, S94, S95, S96, S97, S98, S99, S100, S101, S102, S103, S104, S105, S106, S107, S108, S109, S110, S111, S112, S113, S114, S115, S116, S117, S127, S128, S129, S130, S131, S132, S133, S134, S135, S136, S137, S139, S140, S141, S142, S143, S144, S145, S146, S147, S148, S149, S150, S151, S152, S153, S154, S155, S156, S157, S158, S161, S181, S182, S183, S184, S185, S186, S187, S188, S189, S190, S191 -->
@@ -85,7 +85,7 @@ Pin only the shipped and already-created primitives required for settings and er
 - [x] `W02.P03.S14` - Implement the ordinary TextArea contract without absorbing editor or composer semantics; `frontend/src/app/kit/TextArea.tsx`.
 - [x] `W02.P03.S15` - Verify TextArea semantics, labeling, resize policy, focus, disabled, and value propagation; `frontend/src/app/kit/TextArea.render.test.tsx`.
 - [x] `W02.P03.S20` - Pin ActivityIndicator appearance and accessibility behavior before exposing it through the public boundary; `frontend/src/app/kit/ActivityIndicator.render.test.tsx`.
-- [ ] `W02.P03.S180` - Ledger every new code-only primitive export, design alias, and naming-contract exception before public exposure; `frontend/dev/design-system/consolidation-ledger.ts`.
+- [x] `W02.P03.S180` - Ledger every new code-only primitive export, design alias, and naming-contract exception before public exposure; `frontend/dev/design-system/consolidation-ledger.ts`.
 - [ ] `W02.P03.S21` - Export all canonical primitives and types, including ActivityIndicator, through the production kit boundary; `frontend/src/app/kit/index.ts`.
 
 ### Phase `W02.P04` - replace settings control duplication

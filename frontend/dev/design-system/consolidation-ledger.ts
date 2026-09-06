@@ -5649,11 +5649,11 @@ export const NAMING_DEBT_LEDGER = [
     },
     rationale: {
       summary:
-        "TextField is the campaign's code-side name for the ordinary single-line field primitive.",
+        "TextField is the existing, contract-tested code-side export for the ordinary single-line field primitive queued for exposure through the kit boundary.",
       unresolvedBinding:
         "The accepted research supports the primitive's behavior and reuse, but this no-Figma campaign does not establish a matching design-system node name or alias.",
       reconciliation:
-        "A separately authorized design reconciliation must confirm or rename the export and then replace this debt entry with the verified name binding.",
+        "Public exposure proceeds only under this explicit temporary naming-contract exception; a separately authorized design reconciliation must confirm or rename the export and replace this debt entry with the verified name binding.",
     },
   },
   {
@@ -5674,11 +5674,11 @@ export const NAMING_DEBT_LEDGER = [
     },
     rationale: {
       summary:
-        "TextArea is the campaign's code-side name for the ordinary multiline field primitive.",
+        "TextArea is the existing, contract-tested code-side export for the ordinary multiline field primitive queued for exposure through the kit boundary.",
       unresolvedBinding:
         "The accepted research supports the primitive's behavior and reuse, but this no-Figma campaign does not establish a matching design-system node name or alias.",
       reconciliation:
-        "A separately authorized design reconciliation must confirm or rename the export and then replace this debt entry with the verified name binding.",
+        "Public exposure proceeds only under this explicit temporary naming-contract exception; a separately authorized design reconciliation must confirm or rename the export and replace this debt entry with the verified name binding.",
     },
   },
   {
@@ -5724,11 +5724,11 @@ export const NAMING_DEBT_LEDGER = [
     },
     rationale: {
       summary:
-        "ActivityIndicator is an existing kit component whose public-barrel exposure is part of this campaign.",
+        "ActivityIndicator is the existing, contract-tested kit export whose unchanged code name is queued for exposure through the public boundary.",
       unresolvedBinding:
         "The source has no opt-in design citation, and the no-Figma fence prevents this campaign from deciding whether its code name matches or aliases a design-system node.",
       reconciliation:
-        "A separately authorized design reconciliation must resolve the design name, add any required citation or coordinated rename, and retire this debt entry.",
+        "Public exposure proceeds only under this explicit unresolved-alias exception; a separately authorized design reconciliation must resolve the design name, add any required citation or coordinated rename, and retire this debt entry.",
     },
   },
   {

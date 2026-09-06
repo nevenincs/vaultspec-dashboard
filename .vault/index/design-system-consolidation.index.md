@@ -6,7 +6,7 @@ tags:
 date: '2026-09-05'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:b53ed21f194a4362bfc6b30ada766e1d8ec9e60567bc4aa71095c8fc988b8b20'
+body_hash: 'sha256:fa841007fd7ece6f1d5d4366b006dc0be6c90b64a5d6a10cdc7c92379b00e445'
 related:
   - '[[2026-09-05-design-system-consolidation-W01-P01-S01]]'
   - '[[2026-09-05-design-system-consolidation-W01-P01-S04]]'
@@ -37,6 +37,7 @@ related:
   - '[[2026-09-05-design-system-consolidation-W02-P03-S13]]'
   - '[[2026-09-05-design-system-consolidation-W02-P03-S14]]'
   - '[[2026-09-05-design-system-consolidation-W02-P03-S15]]'
+  - '[[2026-09-05-design-system-consolidation-W02-P03-S180]]'
   - '[[2026-09-05-design-system-consolidation-W02-P03-S20]]'
   - '[[2026-09-05-design-system-consolidation-adr]]'
   - '[[2026-09-05-design-system-consolidation-horizontal-polish-research]]'
@@ -71,6 +72,7 @@ related:
   - '[[2026-09-06-design-system-consolidation-s177-residual-relative-value-review-audit]]'
   - '[[2026-09-06-design-system-consolidation-s178-relative-value-completeness-review-audit]]'
   - '[[2026-09-06-design-system-consolidation-s179-scene-freeze-baseline-review-audit]]'
+  - '[[2026-09-06-design-system-consolidation-s180-public-primitive-naming-review-audit]]'
   - '[[2026-09-06-design-system-consolidation-s20-activity-indicator-test-review-audit]]'
 ---
 
@@ -115,6 +117,7 @@ Auto-generated index of all documents tagged with `#design-system-consolidation`
 - `2026-09-06-design-system-consolidation-s177-residual-relative-value-review-audit` - `design-system-consolidation` audit: `S177 residual relative-value classification review`
 - `2026-09-06-design-system-consolidation-s178-relative-value-completeness-review-audit` - `design-system-consolidation` audit: `S178 relative-value completeness test review`
 - `2026-09-06-design-system-consolidation-s179-scene-freeze-baseline-review-audit` - `design-system-consolidation` audit: `S179 scene freeze baseline review`
+- `2026-09-06-design-system-consolidation-s180-public-primitive-naming-review-audit` - `design-system-consolidation` audit: `S180 public primitive naming-debt review`
 - `2026-09-06-design-system-consolidation-s20-activity-indicator-test-review-audit` - `design-system-consolidation` audit: `S20 ActivityIndicator render contract review`
 
 ### exec
@@ -148,6 +151,7 @@ Auto-generated index of all documents tagged with `#design-system-consolidation`
 - `2026-09-05-design-system-consolidation-W02-P03-S13` - Verify TextField semantics, labeling, state treatment, ref forwarding, and value propagation
 - `2026-09-05-design-system-consolidation-W02-P03-S14` - Implement the ordinary TextArea contract without absorbing editor or composer semantics
 - `2026-09-05-design-system-consolidation-W02-P03-S15` - Verify TextArea semantics, labeling, resize policy, focus, disabled, and value propagation
+- `2026-09-05-design-system-consolidation-W02-P03-S180` - Ledger every new code-only primitive export, design alias, and naming-contract exception before public exposure
 - `2026-09-05-design-system-consolidation-W02-P03-S20` - Pin ActivityIndicator appearance and accessibility behavior before exposing it through the public boundary
 
 ### plan
