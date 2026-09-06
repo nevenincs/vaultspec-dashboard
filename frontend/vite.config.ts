@@ -158,21 +158,18 @@ export default defineConfig(({ command }) => ({
     // Two setup files, and the ORDER matters: vitest registers their hooks in
     // listing order and runs afterEach hooks in reverse (`sequence.hooks:
     // "stack"`), so the unmount barrier declared second tears components down
-    // BEFORE liveSetup drains and aborts the window.
+    // BEFORE liveSetup awaits happy-dom's native abort and settlement.
     setupFiles: ["./src/testing/liveSetup.ts", "./src/testing/rtlCleanup.ts"],
     // All test files share ONE spawned engine with mutable state (settings,
     // session, the editor write seam). Running files sequentially makes write
     // round-trips deterministic — a parallel file can't overwrite the global a
     // sibling just wrote and is about to read back.
     fileParallelism: false,
-    // Bound the worker POOL as well as file parallelism. Observed, not theorised: an
-    // unbounded whole-suite run repeatedly killed the shared engine partway through
-    // — hundreds of ECONNREFUSED/socket-hang-up failures across surfaces the run had
-    // not touched — while the same suite under `maxWorkers: 4` completed, and faster
-    // (1722s vs 2697s). Pinned here rather than left as a flag someone has to
-    // remember: a suite that only passes when invoked correctly is the same defect
-    // class as a gate that cannot go red.
-    maxWorkers: 4,
+    // State the serial worker contract directly. `fileParallelism: false` already
+    // forces one worker because every file shares the mutable live engine; keeping
+    // the explicit bound truthful prevents the configuration from suggesting that
+    // sibling workers are available or safe.
+    maxWorkers: 1,
     // The engine cold-indexes the fixture on boot; give startup-bound suites room.
     testTimeout: 15_000,
     hookTimeout: 35_000,
