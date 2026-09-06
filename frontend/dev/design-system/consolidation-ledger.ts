@@ -3429,8 +3429,371 @@ export const KIT_RELATIVE_VALUE_LEDGER = [
   },
 ] as const satisfies readonly RelativeValueLedgerEntry[];
 
+export const CHROME_AND_SHELL_RELATIVE_VALUE_LEDGER = [
+  {
+    source: {
+      path: "frontend/src/app/chrome/BottomSheet.tsx",
+      owner: "BottomSheet",
+      slot: "panel-viewport-height-limit",
+    },
+    expression: "max-h-[85vh] pb-[max(1rem,env(safe-area-inset-bottom))]",
+    units: ["vh", "rem"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-component",
+      path: "frontend/tokens/components.tokens.json",
+      name: "component.bottom-sheet.viewport-geometry",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "The sheet's height limit and safe-area padding are reusable viewport geometry owned by the BottomSheet composite.",
+      equivalence:
+        "The planned role preserves exactly 85vh and the max(1rem, env(safe-area-inset-bottom)) floor for every BottomSheet instance.",
+      replacement:
+        "Generate exact bottom-sheet viewport-height and safe-area-padding bindings under one component geometry owner and consume both in the shared panel shell.",
+      deletion:
+        "Remove both arbitrary utilities only after BottomSheet directly consumes the exact generated bindings.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/chrome/Dialog.tsx",
+      owner: "PANEL_WIDTH",
+      slot: "default-panel-width",
+    },
+    expression: "w-[34rem]",
+    units: ["rem"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-component",
+      path: "frontend/tokens/components.tokens.json",
+      name: "component.dialog.width.default",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "The default Dialog width is a named shared-chrome variant that belongs in the component token surface.",
+      equivalence:
+        "The planned role preserves exactly 34rem and leaves the compact max-width guard unchanged.",
+      replacement:
+        "Generate the default dialog-width role and reference it from PANEL_WIDTH.",
+      deletion:
+        "Remove w-[34rem] only when the exact component role is directly consumed.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/chrome/Dialog.tsx",
+      owner: "PANEL_WIDTH",
+      slot: "medium-panel-width",
+    },
+    expression: "w-[45rem]",
+    units: ["rem"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-component",
+      path: "frontend/tokens/components.tokens.json",
+      name: "component.dialog.width.medium",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "The medium Dialog width is a named shared-chrome variant that belongs in the component token surface.",
+      equivalence:
+        "The planned role preserves exactly 45rem and leaves the compact max-width guard unchanged.",
+      replacement:
+        "Generate the medium dialog-width role and reference it from PANEL_WIDTH.",
+      deletion:
+        "Remove w-[45rem] only when the exact component role is directly consumed.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/chrome/Dialog.tsx",
+      owner: "PANEL_WIDTH",
+      slot: "wide-panel-width",
+    },
+    expression: "w-[52rem]",
+    units: ["rem"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-component",
+      path: "frontend/tokens/components.tokens.json",
+      name: "component.dialog.width.wide",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "The wide Dialog width is a named shared-chrome variant that belongs in the component token surface.",
+      equivalence:
+        "The planned role preserves exactly 52rem and leaves the compact max-width guard unchanged.",
+      replacement:
+        "Generate the wide dialog-width role and reference it from PANEL_WIDTH.",
+      deletion:
+        "Remove w-[52rem] only when the exact component role is directly consumed.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/chrome/Dialog.tsx",
+      owner: "Dialog",
+      slot: "panel-block-start-placement",
+    },
+    expression: "pt-[10vh]",
+    units: ["vh"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-component",
+      path: "frontend/tokens/components.tokens.json",
+      name: "component.dialog.block-start",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "Dialog's 10vh block-start placement is shared overlay geometry rather than caller-owned spacing.",
+      equivalence:
+        "The planned role preserves exactly 10vh and keeps the existing top-aligned scrim composition.",
+      replacement:
+        "Generate the exact dialog block-start role and consume it on the shared scrim.",
+      deletion:
+        "Remove pt-[10vh] only after direct use of the generated component role.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/chrome/Dialog.tsx",
+      owner: "Dialog",
+      slot: "panel-viewport-height-limit",
+    },
+    expression: "max-h-[80vh] max-w-[calc(100vw-2rem)]",
+    units: ["vh", "vw", "rem"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-component",
+      path: "frontend/tokens/components.tokens.json",
+      name: "component.dialog.viewport-geometry",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "Dialog's height limit and compact width guard are reusable viewport geometry owned by the shared composite.",
+      equivalence:
+        "The planned role preserves exactly 80vh and calc(100vw - 2rem), including the existing scrolling and narrow-viewport behavior.",
+      replacement:
+        "Generate exact dialog viewport-height and compact-width bindings under one component geometry owner and consume both on the shared panel.",
+      deletion:
+        "Remove both arbitrary utilities only after direct use of the generated component bindings.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/shell/WorkspaceSwitcherSheet.tsx",
+      owner: "ROW_CLASS",
+      slot: "switcher-row-coarse-target",
+    },
+    expression: "min-h-[2.75rem]",
+    units: ["rem"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-component",
+      path: "frontend/tokens/components.tokens.json",
+      name: "component.control.coarse-target",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "Workspace switcher rows use the repeated 2.75rem coarse-pointer target role.",
+      equivalence:
+        "The planned role preserves exactly 2.75rem and is shared by shell rows, dialog actions, and other coarse controls.",
+      replacement:
+        "Generate the exact coarse-target role and apply its minimum height to ROW_CLASS.",
+      deletion:
+        "Remove min-h-[2.75rem] only after the shared target role is directly consumed.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/shell/MobileTopBar.tsx",
+      owner: "MobileTopBar",
+      slot: "compact-top-bar-height",
+    },
+    expression: "h-[3.25rem]",
+    units: ["rem"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-component",
+      path: "frontend/tokens/components.tokens.json",
+      name: "component.mobile-top-bar.height",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "The 3.25rem compact top-bar height is reusable shell geometry owned by MobileTopBar.",
+      equivalence:
+        "The planned role preserves exactly 3.25rem and retains the existing 2.75rem action targets and alignment.",
+      replacement:
+        "Generate the exact mobile-top-bar height role and consume it on the shared header.",
+      deletion:
+        "Remove h-[3.25rem] only after MobileTopBar directly consumes the generated role.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/shell/IconRail.tsx",
+      owner: "IconRail",
+      slot: "active-indicator-width",
+    },
+    expression: "w-[0.1875rem]",
+    units: ["rem"],
+    disposition: "retain-exact-geometry",
+    canonicalOwner: {
+      layer: "shared-chrome",
+      path: "frontend/src/app/shell/IconRail.tsx",
+      name: "IconRail",
+      status: "existing",
+    },
+    rationale: {
+      summary:
+        "IconRail's accent sliver is exact selected-navigation geometry rather than general spacing.",
+      constraint:
+        "The 0.1875rem width balances the fixed rail and its five-unit height without introducing another shared indicator contract.",
+      exactValue:
+        "Retain w-[0.1875rem] inside IconRail until an independently reused shell-selection indicator exists.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/left/AddProjectDialog.tsx",
+      owner: "AddProjectDialogBody",
+      slot: "browser-region-height",
+    },
+    expression: "h-[22rem]",
+    units: ["rem"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-component",
+      path: "frontend/tokens/components.tokens.json",
+      name: "component.add-project-dialog.browser-height",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "The project browser's 22rem body height is a stable AddProjectDialog dimension.",
+      equivalence:
+        "The planned role preserves exactly 22rem and leaves the compact flex-column switch and internal overflow behavior unchanged.",
+      replacement:
+        "Generate the exact project-dialog browser-height role and consume it in the dialog body composition.",
+      deletion:
+        "Remove h-[22rem] only after AddProjectDialog directly consumes the generated role.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/left/CreateDocDialog.tsx",
+      owner: "CreateDocDialog",
+      slot: "related-array-scan-false-positive",
+    },
+    expression: "[...related, stem]",
+    units: ["em"],
+    disposition: "repair-local-defect",
+    canonicalOwner: {
+      layer: "platform-mechanism",
+      path: "frontend/dev/tooling/scan-design-system.mjs",
+      name: "scanRelativeValueSites",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "The raw baseline mistakes an ordinary related-document array expression for an em-valued styling site.",
+      defect:
+        "The textual matcher reads the suffix of the identifier stem as the unit em even though the bracket is executable TypeScript, not a class utility.",
+      correction:
+        "Keep this dated identity in the 106-line ledger, then make the planned scanner syntax-aware so future source discovery excludes the false positive without editing dialog behavior.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/left/CreateDocDialog.tsx",
+      owner: "DocumentStage",
+      slot: "back-action-coarse-target",
+    },
+    expression: "min-h-[2.75rem] min-w-[2.75rem]",
+    units: ["rem"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-component",
+      path: "frontend/tokens/components.tokens.json",
+      name: "component.control.coarse-target",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "The document-stage back action uses the repeated square 2.75rem coarse target.",
+      equivalence:
+        "Both minimum axes preserve exactly 2.75rem and match the shared coarse-pointer target role.",
+      replacement:
+        "Apply the generated coarse-target role to both minimum dimensions without changing the action or pointer policy.",
+      deletion:
+        "Remove the two arbitrary target utilities only after direct component-token consumption.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/left/CreateDocDialog.tsx",
+      owner: "DocumentStage",
+      slot: "linked-document-chip-coarse-height",
+    },
+    expression: "min-h-[2.75rem]",
+    units: ["rem"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-component",
+      path: "frontend/tokens/components.tokens.json",
+      name: "component.control.coarse-target",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "Linked-document chips use the shared 2.75rem coarse-pointer height floor.",
+      equivalence:
+        "The planned role preserves exactly 2.75rem while leaving chip width content-driven.",
+      replacement:
+        "Apply the generated coarse-target minimum height when coarse-pointer policy is active.",
+      deletion: "Remove min-h-[2.75rem] only after direct component-token consumption.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/left/CreateDocDialog.tsx",
+      owner: "DocumentStage",
+      slot: "remove-link-action-coarse-target",
+    },
+    expression: "min-h-[2.75rem] min-w-[2.75rem]",
+    units: ["rem"],
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "dtcg-component",
+      path: "frontend/tokens/components.tokens.json",
+      name: "component.control.coarse-target",
+      status: "planned",
+    },
+    rationale: {
+      summary:
+        "The linked-document remove action uses the repeated square 2.75rem coarse target.",
+      equivalence:
+        "Both minimum axes preserve exactly 2.75rem and match the shared coarse-pointer target role.",
+      replacement:
+        "Apply the generated coarse-target role to both minimum dimensions without changing removal behavior.",
+      deletion:
+        "Remove the two arbitrary target utilities only after direct component-token consumption.",
+    },
+  },
+] as const satisfies readonly RelativeValueLedgerEntry[];
+
 export const RELATIVE_VALUE_LEDGER: readonly RelativeValueLedgerEntry[] = [
   ...KIT_RELATIVE_VALUE_LEDGER,
+  ...CHROME_AND_SHELL_RELATIVE_VALUE_LEDGER,
 ];
 export const NAMING_DEBT_LEDGER: readonly NamingDebtLedgerEntry[] = [];
 export const CONSOLIDATION_INVARIANTS: readonly ConsolidationInvariant[] = [];
