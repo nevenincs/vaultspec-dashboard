@@ -1187,6 +1187,206 @@ export const NATIVE_CONTROL_LEDGER = [
         "Remove the settings-owned native radio option, radiogroup wrapper classes, and row-provided option classes during settings migration.",
     },
   },
+  {
+    source: {
+      path: "frontend/src/app/agent/Composer.tsx",
+      owner: "Composer",
+      slot: "prompt-entry",
+    },
+    element: "textarea",
+    disposition: "retain-semantic-seam",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/agent/Composer.tsx",
+      name: "Composer",
+      status: "existing",
+    },
+    rationale: {
+      summary: "Composer owns its specialized prompt-entry textarea.",
+      distinction:
+        "The input is an auto-growing combobox and command-entry surface with slash and mention modes, evidence attachment, Enter submission, Shift+Enter newlines, parked-run disabling, and focus return; those semantics exceed the ordinary TextArea contract.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/agent/ComposerModelPicker.tsx",
+      owner: "ComposerModelPicker",
+      slot: "provider-native-control",
+    },
+    element: "select",
+    disposition: "retain-semantic-seam",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/agent/ComposerModelPicker.tsx",
+      name: "ComposerModelPicker",
+      status: "existing",
+    },
+    rationale: {
+      summary: "ComposerModelPicker owns its served provider-native select.",
+      distinction:
+        "The select is generated from provider-described controls and opaque option identifiers, then revalidates each change against the current catalog revision; no shared kit primitive owns this dynamic native-control contract.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/palette/CommandPalette.tsx",
+      owner: "CommandPaletteSurface",
+      slot: "command-query-input",
+    },
+    element: "input",
+    disposition: "retain-semantic-seam",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/palette/CommandPalette.tsx",
+      name: "CommandPaletteSurface",
+      status: "existing",
+    },
+    rationale: {
+      summary: "CommandPaletteSurface owns its embedded command-query combobox.",
+      distinction:
+        "The bare input is structurally integrated into modal header chrome and coordinates active-descendant cursoring, command scoring, arm cancellation, feedback reset, keyboard activation, and focus restoration; the decorated standalone SearchField would change that composite.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/palette/DocumentSearchSurface.tsx",
+      owner: "DocumentSearchSurface",
+      slot: "document-query-input",
+    },
+    element: "input",
+    disposition: "retain-semantic-seam",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/palette/DocumentSearchSurface.tsx",
+      name: "DocumentSearchSurface",
+      status: "existing",
+    },
+    rationale: {
+      summary: "DocumentSearchSurface owns its embedded document-query combobox.",
+      distinction:
+        "The bare input is part of the modal header and coordinates result cursoring, active selection, Enter activation, search count, focus restoration, and dialog dismissal; the decorated standalone SearchField would alter this search-plane composition.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/palette/SearchPaletteSurface.tsx",
+      owner: "SearchPaletteSurface",
+      slot: "compact-query-input",
+    },
+    element: "input",
+    disposition: "retain-semantic-seam",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/palette/SearchPaletteSurface.tsx",
+      name: "SearchPaletteSurface",
+      status: "existing",
+    },
+    rationale: {
+      summary: "SearchPaletteSurface owns its compact query combobox.",
+      distinction:
+        "The bare input is integrated into the compact full-screen header and coordinates provider search, cursor repair, preview collapse, keyboard activation, safe-area layout, and the adjacent cancel action; the standalone SearchField would duplicate chrome and change the compact shell.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/palette/SearchPaletteSurface.tsx",
+      owner: "SearchPaletteSurface",
+      slot: "regular-query-input",
+    },
+    element: "input",
+    disposition: "retain-semantic-seam",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/palette/SearchPaletteSurface.tsx",
+      name: "SearchPaletteSurface",
+      status: "existing",
+    },
+    rationale: {
+      summary: "SearchPaletteSurface owns its regular query combobox.",
+      distinction:
+        "The bare input is integrated into the regular modal header and coordinates provider search, cursor repair, split-preview expansion, keyboard activation, corpus selection, result counts, and focus restoration; the standalone SearchField would alter this composite.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/right/PlanStepTree.tsx",
+      owner: "StepRow",
+      slot: "step-completion-checkbox",
+    },
+    element: "input",
+    disposition: "retain-semantic-seam",
+    canonicalOwner: {
+      layer: "shared-chrome",
+      path: "frontend/src/app/right/PlanStepTree.tsx",
+      name: "StepRow",
+      status: "existing",
+    },
+    rationale: {
+      summary: "StepRow owns its plan-step completion checkbox.",
+      distinction:
+        "The visually hidden checkbox is the roving-focus tab stop behind StepCheckMark and couples native Space toggling with Enter-to-open, optimistic mutation, blob-hash conflict fencing, time-travel disabling, and served-state reconciliation.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/stage/FilterMenu.tsx",
+      owner: "CustomRangeInputs",
+      slot: "date-from-input",
+    },
+    element: "input",
+    disposition: "retain-semantic-seam",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/stage/FilterMenu.tsx",
+      name: "CustomRangeInputs",
+      status: "existing",
+    },
+    rationale: {
+      summary: "CustomRangeInputs owns the native start-date boundary.",
+      distinction:
+        "The locale-aware native date picker carries canonical day strings and corpus minimum plus end-date-linked maximum constraints directly into the one date-range filter seam; it is not an ordinary free-text field.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/stage/FilterMenu.tsx",
+      owner: "CustomRangeInputs",
+      slot: "date-to-input",
+    },
+    element: "input",
+    disposition: "retain-semantic-seam",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/stage/FilterMenu.tsx",
+      name: "CustomRangeInputs",
+      status: "existing",
+    },
+    rationale: {
+      summary: "CustomRangeInputs owns the native end-date boundary.",
+      distinction:
+        "The locale-aware native date picker carries canonical day strings and start-date-linked minimum plus corpus maximum constraints directly into the one date-range filter seam; it is not an ordinary free-text field.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/viewer/HighlightedCode.tsx",
+      owner: "HighlightedTextarea",
+      slot: "transparent-code-input",
+    },
+    element: "textarea",
+    disposition: "retain-semantic-seam",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/viewer/HighlightedCode.tsx",
+      name: "HighlightedTextarea",
+      status: "existing",
+    },
+    rationale: {
+      summary: "HighlightedTextarea owns its transparent code-editing layer.",
+      distinction:
+        "The textarea overlays syntax-highlighted preformatted content, synchronizes two-axis scroll, exposes editor selection through a forwarded ref, carries formatting shortcuts and diff gutters, and renders transparent text with a themed caret; those mechanics must not enter TextArea.",
+    },
+  },
 ] as const satisfies readonly NativeControlLedgerEntry[];
 export const RELATIVE_VALUE_LEDGER: readonly RelativeValueLedgerEntry[] = [];
 export const NAMING_DEBT_LEDGER: readonly NamingDebtLedgerEntry[] = [];
