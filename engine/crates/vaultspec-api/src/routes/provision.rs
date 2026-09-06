@@ -38,7 +38,8 @@
 //! v1 excludes `uninstall` (destructive) and project-venv `uv add` dependency
 //! flows (wheel-purity: `uv-tool-acquisition-is-machine-level-only`).
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::path::Component;
 use std::path::{Path as FsPath, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
@@ -52,6 +53,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use serde::Deserialize;
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 type ApiResult = Result<Json<Value>, (StatusCode, Json<Value>)>;
 
 // --- bounds (resource-bounds: every cap explicit at creation) -----------------
@@ -282,12 +284,17 @@ impl Capability {
             CURRENT_SETUP_PROVIDERS
                 .iter()
                 .copied()
-                .map(|provider| {
-                    let argv = Capability::InstallFramework {
+                .enumerate()
+                .map(|(index, provider)| {
+                    let mut argv = Capability::InstallFramework {
                         provider,
                         force: *force,
                     }
                     .argv(target);
+                    if index > 0 {
+                        let json = argv.pop().expect("install argv ends in --json");
+                        argv.extend(["--skip".into(), "core".into(), json]);
+                    }
                     (provider, argv)
                 })
                 .collect(),
@@ -778,15 +785,22 @@ impl Registry {
 
     /// An identical running request attaches. A different posture under the
     /// same semantic identity conflicts instead of starting a competing job.
-    fn running_for(&self, key: &str, posture: &str) -> RunningMatch {
+    fn match_or_reserve(&mut self, job: Job) -> Reservation {
+        self.prune();
         match self
             .jobs
             .values()
-            .find(|j| j.state == JobState::Running && j.key == key)
+            .find(|j| j.state == JobState::Running && j.key == job.key)
         {
-            Some(job) if job.posture == posture => RunningMatch::Attach(job.id.clone()),
-            Some(job) => RunningMatch::Conflict(job.id.clone()),
-            None => RunningMatch::None,
+            Some(existing) if existing.posture == job.posture => {
+                Reservation::Attach(existing.to_wire())
+            }
+            Some(existing) => Reservation::Conflict(existing.id.clone()),
+            None => {
+                let wire = job.to_wire();
+                self.insert(job);
+                Reservation::Reserved(wire)
+            }
         }
     }
 
@@ -805,9 +819,9 @@ impl Registry {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-enum RunningMatch {
-    None,
-    Attach(String),
+enum Reservation {
+    Reserved(Value),
+    Attach(Value),
     Conflict(String),
 }
 
@@ -831,65 +845,84 @@ enum RunTermination {
     Indeterminate,
 }
 
+#[derive(Debug)]
+struct RunCapture {
+    code: Option<i32>,
+    stdout: String,
+    stderr: String,
+    termination: RunTermination,
+}
+
+impl RunCapture {
+    fn combined(&self) -> String {
+        match (self.stdout.is_empty(), self.stderr.is_empty()) {
+            (false, false) => format!("{}\n{}", self.stdout, self.stderr),
+            (false, true) => self.stdout.clone(),
+            (true, false) => self.stderr.clone(),
+            (true, true) => String::new(),
+        }
+    }
+
+    fn bytes(&self) -> u64 {
+        (self.stdout.len() + self.stderr.len()) as u64
+    }
+}
+
 /// Spawn a capability's argv bounded (output cap + wall-clock), capturing the
 /// combined streams. On a timeout the canonical runner kills and reaps the
 /// direct child and reports a timeout cancellation. An output breach or a
 /// read/wait failure is indeterminate because a console-script grandchild can
 /// outlive the direct child; callers must re-read `GET /provision/status`.
-async fn run_capability_with_limits(
-    argv: &[String],
-    limits: BoundedLimits,
-) -> (Option<i32>, String, RunTermination) {
+async fn run_capability_with_limits(argv: &[String], limits: BoundedLimits) -> RunCapture {
     let mut command = tokio::process::Command::new(&argv[0]);
     command.args(&argv[1..]);
     let outcome = match run_bounded(command, None, limits, CapPolicy::Refuse).await {
         Ok(outcome) => outcome,
         Err(BoundedFault::Spawn(error)) => {
-            return (
-                None,
-                format!("spawning {}: {error}", argv[0]),
-                RunTermination::Completed,
-            );
+            return RunCapture {
+                code: None,
+                stdout: String::new(),
+                stderr: format!("spawning {}: {error}", argv[0]),
+                termination: RunTermination::Completed,
+            };
         }
         Err(BoundedFault::Timeout) => {
-            return (
-                None,
-                format!("{} timed out after {}s", argv[0], limits.timeout.as_secs()),
-                RunTermination::TimeoutCancelled,
-            );
+            return RunCapture {
+                code: None,
+                stdout: String::new(),
+                stderr: format!("{} timed out after {}s", argv[0], limits.timeout.as_secs()),
+                termination: RunTermination::TimeoutCancelled,
+            };
         }
         Err(BoundedFault::OverCap) => {
-            return (
-                None,
-                format!(
+            return RunCapture {
+                code: None,
+                stdout: String::new(),
+                stderr: format!(
                     "{} produced over {} bytes of output (capped)",
                     argv[0], limits.cap
                 ),
-                RunTermination::Indeterminate,
-            );
+                termination: RunTermination::Indeterminate,
+            };
         }
         Err(BoundedFault::Read(error) | BoundedFault::Wait(error)) => {
-            return (
-                None,
-                format!("running {}: {error}", argv[0]),
-                RunTermination::Indeterminate,
-            );
+            return RunCapture {
+                code: None,
+                stdout: String::new(),
+                stderr: format!("running {}: {error}", argv[0]),
+                termination: RunTermination::Indeterminate,
+            };
         }
     };
-    let combined = match (outcome.stdout.is_empty(), outcome.stderr.is_empty()) {
-        (false, false) => format!(
-            "{}\n{}",
-            outcome.stdout_lossy().trim(),
-            outcome.stderr_lossy().trim()
-        ),
-        (false, true) => outcome.stdout_lossy().trim().to_string(),
-        (true, false) => outcome.stderr_lossy().trim().to_string(),
-        (true, true) => String::new(),
-    };
-    (outcome.code, combined, RunTermination::Completed)
+    RunCapture {
+        code: outcome.code,
+        stdout: outcome.stdout_lossy().into_owned(),
+        stderr: outcome.stderr_lossy().into_owned(),
+        termination: RunTermination::Completed,
+    }
 }
 
-async fn run_capability(argv: &[String]) -> (Option<i32>, String, RunTermination) {
+async fn run_capability(argv: &[String]) -> RunCapture {
     run_capability_with_limits(
         argv,
         BoundedLimits {
@@ -900,9 +933,9 @@ async fn run_capability(argv: &[String]) -> (Option<i32>, String, RunTermination
     .await
 }
 
-/// Interpret a completed run into the job outcome value + final state. A core
-/// verb emits a `vaultspec.sync.v1` envelope on stdout (parsed through verbatim);
-/// `uv` emits human text (surfaced raw). A zero exit is success; a non-zero exit
+/// Interpret a completed non-setup run into its job outcome and final state.
+/// Core JSON is parsed when present; `uv` human text is surfaced raw. A zero exit
+/// is success; a non-zero exit
 /// or a breach is failure, with `outcome_indeterminate` set when the caller must
 /// re-probe to learn the true post-state.
 fn outcome_value(
@@ -928,176 +961,13 @@ fn outcome_value(
     (state, out)
 }
 
-fn setup_receipt(
-    ordinal: usize,
-    provider: Provider,
-    code: Option<i32>,
-    combined: &str,
-    termination: RunTermination,
-) -> Value {
-    let (state, outcome) = outcome_value(code, combined, termination);
-    let receipt_state = match termination {
-        RunTermination::TimeoutCancelled => "timeout_cancelled",
-        RunTermination::Indeterminate => "indeterminate",
-        RunTermination::Completed => state.as_str(),
-    };
-    json!({
-        "ordinal": ordinal,
-        "provider": provider.as_arg(),
-        "attempted": true,
-        "state": receipt_state,
-        "outcome": outcome,
-    })
-}
+mod setup;
 
-fn reconcile_setup_receipts(receipts: &mut [Value], before: &[&str], after: &[&str]) {
-    for receipt in receipts {
-        let Some(provider) = receipt["provider"].as_str().map(str::to_string) else {
-            continue;
-        };
-        let state = receipt["state"]
-            .as_str()
-            .unwrap_or("indeterminate")
-            .to_string();
-        let was_present = before.contains(&provider.as_str());
-        let is_present = after.contains(&provider.as_str());
-        let reconciliation = match state.as_str() {
-            "not-run" => "not_attempted",
-            "succeeded" if is_present => "confirmed_present",
-            "failed" if !is_present => "confirmed_absent",
-            "timeout_cancelled" if !is_present && !was_present => "confirmed_absent",
-            "indeterminate" if is_present && !was_present => {
-                receipt["state"] = json!("succeeded");
-                "confirmed_present"
-            }
-            _ => {
-                receipt["state"] = json!("indeterminate");
-                "unresolved"
-            }
-        };
-        receipt["reconciliation"] = json!({
-            "status": reconciliation,
-            "provider_present": is_present,
-        });
-        if !receipt["outcome"].is_null() {
-            receipt["outcome"]["outcome_indeterminate"] = json!(reconciliation == "unresolved");
-        }
-    }
-}
-
-fn current_setup_outcome(receipts: Vec<Value>) -> (JobState, Value) {
-    let states: Vec<&str> = receipts
-        .iter()
-        .filter_map(|receipt| receipt["state"].as_str())
-        .collect();
-    let status = if states.contains(&"indeterminate") {
-        "indeterminate"
-    } else if states.contains(&"timeout_cancelled") {
-        "timeout_cancelled"
-    } else if states.iter().all(|state| *state == "succeeded") {
-        "complete"
-    } else {
-        "partial"
-    };
-    let job_state = if status == "complete" {
-        JobState::Succeeded
-    } else {
-        JobState::Failed
-    };
-    (
-        job_state,
-        json!({
-            "aggregate": {
-                "intent": "setup-current-providers",
-                "status": status,
-                "providers": receipts,
-            },
-            "outcome_indeterminate": matches!(status, "timeout_cancelled" | "indeterminate"),
-            "reconciliation": if status == "indeterminate" {
-                "status-required"
-            } else {
-                "completed"
-            },
-        }),
-    )
-}
-
-async fn run_current_setup(
-    commands: Vec<(Provider, Vec<String>)>,
-    target: &FsPath,
-) -> (JobState, Value) {
-    let mut receipts = Vec::with_capacity(CURRENT_SETUP_PROVIDERS.len());
-    let before = detect_providers(target);
-    let mut stop = false;
-    let started = Instant::now();
-    let mut remaining_output = JOB_OUTPUT_CAP;
-    for (index, (provider, argv)) in commands.into_iter().enumerate() {
-        let ordinal = index + 1;
-        if stop {
-            receipts.push(json!({
-                "ordinal": ordinal,
-                "provider": provider.as_arg(),
-                "attempted": false,
-                "state": "not-run",
-                "outcome": null,
-            }));
-            continue;
-        }
-        let Some(remaining_time) = JOB_TIMEOUT.checked_sub(started.elapsed()) else {
-            receipts.push(json!({
-                "ordinal": ordinal,
-                "provider": provider.as_arg(),
-                "attempted": false,
-                "state": "timeout_cancelled",
-                "outcome": {
-                    "exit_code": null,
-                    "outcome_indeterminate": true,
-                    "output": "aggregate setup deadline reached",
-                },
-            }));
-            stop = true;
-            continue;
-        };
-        if remaining_output < 3 {
-            receipts.push(json!({
-                "ordinal": ordinal,
-                "provider": provider.as_arg(),
-                "attempted": false,
-                "state": "indeterminate",
-                "outcome": {
-                    "exit_code": null,
-                    "outcome_indeterminate": true,
-                    "output": "aggregate setup output budget exhausted",
-                },
-            }));
-            stop = true;
-            continue;
-        }
-        let (code, combined, termination) = run_capability_with_limits(
-            &argv,
-            BoundedLimits {
-                // The shared runner caps stdout and stderr independently. Halve
-                // the remaining aggregate allowance so their combined maximum
-                // cannot exceed the one setup-wide output budget.
-                cap: (remaining_output - 1) / 2,
-                timeout: remaining_time,
-            },
-        )
-        .await;
-        remaining_output = remaining_output.saturating_sub(combined.len() as u64);
-        stop = termination != RunTermination::Completed;
-        receipts.push(setup_receipt(
-            ordinal,
-            provider,
-            code,
-            &combined,
-            termination,
-        ));
-    }
-    let after = detect_providers(target);
-    reconcile_setup_receipts(&mut receipts, &before, &after);
-    current_setup_outcome(receipts)
-}
+#[cfg(test)]
+use setup::{
+    ManifestState, current_setup_outcome, digest, manifest_has_unsupported, manifest_is_exact,
+    setup_receipt, validate_install_output,
+};
 
 // --- POST /provision/run ------------------------------------------------------
 
@@ -1155,39 +1025,6 @@ pub(crate) async fn provision_run(
         format!("{}:{}", target_label, capability.label())
     };
 
-    // Attach to an already-running job for the same key rather than spawn a
-    // duplicate.
-    {
-        let reg = registry_lock();
-        match reg.running_for(&key, capability.posture()) {
-            RunningMatch::Attach(existing) => {
-                let job = reg
-                    .jobs
-                    .get(&existing)
-                    .map(Job::to_wire)
-                    .unwrap_or(Value::Null);
-                drop(reg);
-                return Ok(super::envelope(
-                    json!({ "job": job, "attached": true }),
-                    super::query_tiers(&state.active_cell()),
-                    None,
-                ));
-            }
-            RunningMatch::Conflict(existing) => {
-                drop(reg);
-                return Err(super::api_error_kind(
-                    &state,
-                    StatusCode::CONFLICT,
-                    "setup_posture_conflict",
-                    format!(
-                        "setup aggregate {existing} is already running with a different force posture"
-                    ),
-                ));
-            }
-            RunningMatch::None => {}
-        }
-    }
-
     let id = next_job_id();
     let setup_commands = capability.setup_commands(target.as_deref().unwrap_or(FsPath::new(".")));
     let argv = setup_commands
@@ -1203,8 +1040,28 @@ pub(crate) async fn provision_run(
         created: Instant::now(),
         outcome: None,
     };
-    let wire = job.to_wire();
-    registry_lock().insert(job);
+    // Match and reserve atomically. No request can observe "none" and then
+    // race a second insertion for the same semantic operation.
+    let wire = match registry_lock().match_or_reserve(job) {
+        Reservation::Reserved(wire) => wire,
+        Reservation::Attach(wire) => {
+            return Ok(super::envelope(
+                json!({ "job": wire, "attached": true }),
+                super::query_tiers(&state.active_cell()),
+                None,
+            ));
+        }
+        Reservation::Conflict(existing) => {
+            return Err(super::api_error_kind(
+                &state,
+                StatusCode::CONFLICT,
+                "setup_posture_conflict",
+                format!(
+                    "setup aggregate {existing} is already running with a different force posture"
+                ),
+            ));
+        }
+    };
 
     // Run the job in the background so the request returns immediately with the
     // job id (job-shaped execution; a torch pull is minutes). The task owns its
@@ -1216,12 +1073,18 @@ pub(crate) async fn provision_run(
     tokio::spawn(async move {
         let (job_state, outcome) = match setup_commands {
             Some(commands) => {
-                run_current_setup(commands, bg_target.as_deref().expect("setup target")).await
+                setup::run_current_setup(
+                    &bg_id,
+                    matches!(capability, Capability::SetupCurrent { force: true }),
+                    commands,
+                    bg_target.as_deref().expect("setup target"),
+                )
+                .await
             }
             None => {
                 let argv = argv.expect("single capability argv");
-                let (code, combined, termination) = run_capability(&argv).await;
-                outcome_value(code, &combined, termination)
+                let capture = run_capability(&argv).await;
+                outcome_value(capture.code, &capture.combined(), capture.termination)
             }
         };
         // Reconcile before publishing the terminal job state, so a client that

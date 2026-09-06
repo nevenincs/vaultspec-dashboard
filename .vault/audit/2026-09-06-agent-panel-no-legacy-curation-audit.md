@@ -5,7 +5,7 @@ tags:
 date: '2026-09-06'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:c7962f941e375f02c5251107cf3743b43b258e5e8b54a2258658874a929d7c6e'
+body_hash: 'sha256:a01a31763e7f0fc18f3618fef991b49e835a3ec857ff1f9d72ae76d97f1a13b4'
 related:
   - "[[2026-08-01-a2a-agent-flow-adr]]"
   - "[[2026-08-01-agent-panel-shell-integration-adr]]"
@@ -13,6 +13,7 @@ related:
   - "[[2026-08-01-agent-panel-plan]]"
   - '[[2026-07-07-project-provisioning-adr]]'
 ---
+
 # `agent-panel` audit: `provider and model authority reconciliation`
 
 ## Scope
@@ -554,3 +555,101 @@ authoritative-result requirements. The two HIGH findings above allow duplicate
 aggregates and false successful reconciliation. Commit `1013120a` is not
 review-passed; keep the earlier high runtime finding open until both corrections
 and a formal re-review pass. No runtime or plan row changed in this review.
+## 2026-09-06 authoritative current-setup runtime correction
+
+Implementation target: the approved provisioning contract at
+`5d9a619c2628261462397a2727ee6c0bd58f2271` and architecture PASS audit
+`f0e399ba`. The runtime correction preserves the current-only provider set and
+contains no retired-provider translation, compatibility alias, fallback, or
+provisioning path.
+
+### setup-admission-match-or-reserve-is-atomic | high | resolved
+
+Type: concurrency and mutation safety. `POST /provision/run` now performs one
+mutex-protected match-or-reserve operation. An identical target and force posture
+attaches to the existing wire job, a different posture returns the typed 409
+conflict, and only the reserved branch can spawn the aggregate. A barrier-driven
+HTTP test proves two simultaneous setup requests return one stable job id with
+one reservation and one attachment. Exact argv tests bind that single aggregate
+to the four ordered operations for `core`, `claude`, `antigravity`, and `codex`;
+the final three carry `--skip core`, and no `install all` or retired-provider
+argument is reachable.
+
+### aggregate-producer-evidence-and-reconciliation-are-authoritative | high | resolved
+
+Type: result integrity and retry safety. Setup now strictly decodes the current
+Core `vaultspec.install.v1` envelope, accepted action and status, canonical
+target, command-bound provider identity, exact non-empty item tuples, safe
+relative item paths, and materialized producer-declared paths. It retains exact
+bounded producer stdout, its SHA-256 digest, and a clearly Dashboard-local
+receipt id for every provider and ordinal. Exit-zero malformed output, identity
+mismatch, unsafe paths, timeout, output-cap breach, and Doctor or manifest
+disagreement cannot become success. A failed child is definitive only when the
+fresh Doctor and manifest both prove the component absent; directory presence
+alone is never reconciliation.
+
+Initial and final Doctor evidence must have exit code zero and exact
+`vaultspec.spec.doctor.v1` shape. Dashboard validates only the four current
+component entries and retains only a digest, leaving unrelated open-world
+metadata unexposed. Aggregate `complete` requires four correctly ordered local
+receipts in `succeeded` or `reconciled_existing` state, exact current manifest
+membership, and a final bounded Doctor agreement. Final Doctor timeout yields
+`timeout_cancelled`; malformed or disagreeing final evidence yields
+`indeterminate`.
+
+### safe-partial-convergence-and-closed-membership | high | resolved
+
+Type: idempotency and state convergence. Before any child spawn, malformed
+manifest state or membership outside the exact current set terminates with a
+typed disagreement. Safe setup then evaluates each ordinal from strict manifest,
+Doctor, and current provider-specific dry-run evidence. It skips an already
+current ordinal as `reconciled_existing`, installs only an authoritatively missing
+ordinal, and stops rather than mutating when the read evidence is malformed,
+bounded, or contradictory. Force setup retains the approved full four-operation
+posture after the same pre-mutation membership gate. All preview, install,
+Doctor, and final reconciliation calls share one deadline and output budget.
+
+The discriminating tests cover the live-proved core-only, one-missing,
+multiple-missing, and healthy repeated shapes; terminal unsupported membership;
+malformed exit-zero output; partial directory followed by timeout; output-cap
+ambiguity; receipt/status disagreement; and four valid real-process
+`install.v1` receipts. They also prove fewer than four or identity-invalid
+receipts cannot publish complete.
+
+### provision-setup-test-extraction | low | verified
+
+Type: concurrent code organization. During this correction, a concurrent
+workstream mechanically extracted the pre-existing private route tests into
+`routes/provision/tests.rs` and the coherent setup implementation into
+`routes/provision/setup.rs`. Semantic comparison found only module-path,
+visibility, formatting, and setup-correction additions; the prior non-setup test
+behavior remains unchanged. The extraction is included so runtime and tests have
+one coherent module boundary. Unrelated graph, design-system, guard, lockfile,
+and local harness changes remain excluded.
+
+### provisioning-adr-final-newline | low | resolved
+
+Type: document hygiene. Vaultspec Core rewrote the approved provisioning ADR
+without changing its contract and restored the missing final newline reported by
+the architecture review. `git diff --check` is clean for the owned paths.
+
+### correction-validation-and-broad-run-disposition | medium | verified
+
+Type: validation. Final-tree checks passed Rust formatting,
+`cargo check -p vaultspec-api --tests`, 22 focused provisioning route tests, the
+exact concurrent HTTP attachment test, the exact four-receipt discriminator, and
+`cargo clippy -p vaultspec-api --tests -- -D warnings`, using the pinned Rust
+1.96 shims. A broad single-threaded 961-test library run reached and passed all
+22 provisioning tests but was already non-green from the unrelated existing
+`authoring::apply::tests::group1::an_indeterminate_kill_with_unreadable_post_state_fails_closed`
+failure. It was deliberately interrupted later in registry tests because its
+live A2A processes contended with the independent A2A restart review. The owned
+provisioning correction has no observed broad-suite regression; the external
+failure and incomplete broad run remain recorded limitations for their owning
+workstream.
+
+Type: implementation review disposition. The two prior HIGH runtime findings
+are resolved in code and discriminating tests against approved D8-D10. The
+correction remains pending formal code re-review and is not declared complete by
+this implementation pass.
+\n

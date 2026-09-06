@@ -65,10 +65,17 @@ fn current_setup_expands_to_exactly_four_fixed_provider_commands() {
             .collect::<Vec<_>>(),
         ["core", "claude", "antigravity", "codex"]
     );
-    for (provider, argv) in commands {
+    for (index, (provider, argv)) in commands.into_iter().enumerate() {
         assert_eq!(argv.iter().filter(|token| *token == "install").count(), 1);
         assert!(argv.contains(&provider.as_arg().to_string()));
         assert!(argv.contains(&"--force".to_string()));
+        assert_eq!(
+            argv.iter().filter(|token| *token == "--skip").count(),
+            usize::from(index > 0)
+        );
+        if index > 0 {
+            assert!(argv.windows(2).any(|pair| pair == ["--skip", "core"]));
+        }
         assert!(!argv.iter().any(|token| token == "all" || token == "gemini"));
     }
 }
@@ -213,95 +220,190 @@ fn outcome_failure_on_nonzero_and_breach_is_indeterminate() {
 }
 
 #[test]
-fn current_setup_receipts_cover_partial_timeout_and_indeterminate_outcomes() {
-    let success = |ordinal, provider| {
+fn current_setup_requires_four_validated_local_receipts() {
+    let receipt = |ordinal, provider, state| {
         setup_receipt(
+            "prov-test",
             ordinal,
             provider,
-            Some(0),
-            r#"{"status":"created"}"#,
-            RunTermination::Completed,
+            state,
+            state == "succeeded",
+            json!({}),
+            "confirmed_current",
         )
     };
-    let mut complete_receipts: Vec<Value> = CURRENT_SETUP_PROVIDERS
-        .iter()
-        .copied()
-        .enumerate()
-        .map(|(index, provider)| success(index + 1, provider))
-        .collect();
-    reconcile_setup_receipts(
-        &mut complete_receipts,
-        &[],
-        &["core", "claude", "antigravity", "codex"],
-    );
-    let (_, complete) = current_setup_outcome(complete_receipts);
+    let complete_receipts = vec![
+        receipt(1, Provider::Core, "reconciled_existing"),
+        receipt(2, Provider::Claude, "succeeded"),
+        receipt(3, Provider::Antigravity, "succeeded"),
+        receipt(4, Provider::Codex, "succeeded"),
+    ];
+    let (_, complete) = current_setup_outcome(complete_receipts.clone());
     assert_eq!(complete["aggregate"]["status"], "complete");
     assert_eq!(
-        complete["aggregate"]["providers"].as_array().unwrap().len(),
-        4
+        complete["aggregate"]["providers"][0]["receipt_authority"],
+        "dashboard-local"
     );
 
-    let failed = setup_receipt(
-        2,
-        Provider::Claude,
-        Some(1),
-        "failed",
-        RunTermination::Completed,
-    );
-    let mut partial_receipts = vec![
-        success(1, Provider::Core),
-        failed,
-        success(3, Provider::Antigravity),
-        success(4, Provider::Codex),
-    ];
-    reconcile_setup_receipts(
-        &mut partial_receipts,
-        &[],
-        &["core", "antigravity", "codex"],
-    );
-    let (_, partial) = current_setup_outcome(partial_receipts);
+    let (_, partial) = current_setup_outcome(vec![
+        complete_receipts[0].clone(),
+        receipt(2, Provider::Claude, "failed"),
+        complete_receipts[2].clone(),
+        complete_receipts[3].clone(),
+    ]);
     assert_eq!(partial["aggregate"]["status"], "partial");
-    assert_eq!(partial["aggregate"]["providers"][0]["provider"], "core");
-    assert_eq!(partial["aggregate"]["providers"][1]["provider"], "claude");
-
-    let timeout = setup_receipt(
-        3,
-        Provider::Antigravity,
-        None,
-        "timed out",
-        RunTermination::TimeoutCancelled,
-    );
-    let mut cancelled_receipts = vec![
-        success(1, Provider::Core),
-        success(2, Provider::Claude),
-        timeout,
-        json!({ "ordinal": 4, "provider": "codex", "attempted": false, "state": "not-run", "outcome": null }),
-    ];
-    reconcile_setup_receipts(&mut cancelled_receipts, &[], &["core", "claude"]);
-    let (_, cancelled) = current_setup_outcome(cancelled_receipts);
-    assert_eq!(cancelled["aggregate"]["status"], "timeout_cancelled");
-    assert_eq!(cancelled["outcome_indeterminate"], true);
-    assert_eq!(cancelled["reconciliation"], "completed");
-    assert_eq!(cancelled["aggregate"]["providers"][3]["state"], "not-run");
-
-    let indeterminate = setup_receipt(
-        2,
-        Provider::Claude,
-        None,
-        "wait failed",
-        RunTermination::Indeterminate,
-    );
-    let mut unknown_receipts = vec![
-        success(1, Provider::Core),
-        indeterminate,
-        json!({ "ordinal": 3, "provider": "antigravity", "attempted": false, "state": "not-run", "outcome": null }),
-        json!({ "ordinal": 4, "provider": "codex", "attempted": false, "state": "not-run", "outcome": null }),
-    ];
-    reconcile_setup_receipts(&mut unknown_receipts, &["claude"], &["core", "claude"]);
-    let (_, unknown) = current_setup_outcome(unknown_receipts);
+    let (_, incomplete) = current_setup_outcome(complete_receipts[..3].to_vec());
+    assert_eq!(incomplete["aggregate"]["status"], "indeterminate");
+    let (_, timeout) = current_setup_outcome(vec![
+        receipt(1, Provider::Core, "timeout_cancelled"),
+        receipt(2, Provider::Claude, "not-run"),
+        receipt(3, Provider::Antigravity, "not-run"),
+        receipt(4, Provider::Codex, "not-run"),
+    ]);
+    assert_eq!(timeout["aggregate"]["status"], "timeout_cancelled");
+    let (_, unknown) = current_setup_outcome(vec![
+        receipt(1, Provider::Core, "indeterminate"),
+        receipt(2, Provider::Claude, "not-run"),
+        receipt(3, Provider::Antigravity, "not-run"),
+        receipt(4, Provider::Codex, "not-run"),
+    ]);
     assert_eq!(unknown["aggregate"]["status"], "indeterminate");
-    assert_eq!(unknown["outcome_indeterminate"], true);
-    assert_eq!(unknown["reconciliation"], "status-required");
+}
+
+#[test]
+fn install_v1_decoder_rejects_malformed_identity_and_missing_items() {
+    let dir = tempfile::tempdir().expect("target");
+    std::fs::create_dir(dir.path().join(".vaultspec")).expect("declared item");
+    let valid = json!({
+        "schema":"vaultspec.install.v1", "status":"created",
+        "data":{"action":"install","path":dir.path(),"providers":[],"items":[[".vaultspec","core"]]}
+    })
+    .to_string();
+    assert!(validate_install_output(&valid, Provider::Core, dir.path(), false).is_ok());
+    for bad in [
+        valid.replace("vaultspec.install.v1", "vaultspec.sync.v1"),
+        valid.replace("\"providers\":[]", "\"providers\":[\"claude\"]"),
+        format!("{valid} trailing"),
+        valid.replace(".vaultspec", "../escape"),
+    ] {
+        assert!(validate_install_output(&bad, Provider::Core, dir.path(), false).is_err());
+    }
+}
+
+#[test]
+fn manifest_membership_is_closed_to_exact_current_set() {
+    let exact = ManifestState {
+        installed: ["claude", "antigravity", "codex"]
+            .into_iter()
+            .map(str::to_string)
+            .collect(),
+        version: "2.0".into(),
+        serial: 1,
+    };
+    assert!(manifest_is_exact(Some(&exact)));
+    let mut extra = exact.installed.clone();
+    extra.insert("unsupported".into());
+    let extra = ManifestState {
+        installed: extra,
+        version: "2.0".into(),
+        serial: 2,
+    };
+    assert!(manifest_has_unsupported(Some(&extra)));
+    assert!(!manifest_is_exact(Some(&extra)));
+    let refused = setup::terminal_receipts(
+        "refused",
+        "indeterminate",
+        json!({"error_kind":"manifest_membership_disagreement"}),
+        "refused_before_child_spawn",
+    );
+    assert_eq!(
+        refused.len(),
+        4,
+        "terminal refusal retains every current ordinal"
+    );
+    assert!(refused.iter().all(|receipt| receipt["attempted"] == false));
+}
+
+#[test]
+fn per_ordinal_preflight_converges_core_only_partial_and_healthy_states() {
+    fn doctor(installed: &[&str]) -> Value {
+        let entry = |provider: &str| {
+            if installed.contains(&provider) {
+                json!({"manifest_entry":"coherent","dir_state":"complete","config":"ok","content":{"current.md":"clean"}})
+            } else {
+                json!({"manifest_entry":"not_installed","dir_state":"missing","config":"ok","content":{}})
+            }
+        };
+        json!({"schema":"vaultspec.spec.doctor.v1","status":"unchanged","data":{
+            "framework":"present","providers":{
+                "claude":entry("claude"),"antigravity":entry("antigravity"),"codex":entry("codex")
+            }
+        }})
+    }
+    for (installed, expected_missing) in [
+        (vec![], vec!["claude", "antigravity", "codex"]),
+        (vec!["claude", "antigravity"], vec!["codex"]),
+        (vec!["claude"], vec!["antigravity", "codex"]),
+        (vec!["claude", "antigravity", "codex"], vec![]),
+    ] {
+        let manifest = ManifestState {
+            installed: installed.iter().map(|name| (*name).to_string()).collect(),
+            version: "2.0".into(),
+            serial: 1,
+        };
+        let doctor = doctor(&installed);
+        let mut missing = Vec::new();
+        for provider in CURRENT_SETUP_PROVIDERS {
+            let preview_valid =
+                provider == Provider::Core || installed.contains(&provider.as_arg());
+            match setup::decide_preflight(
+                Some(&manifest),
+                Some(&doctor),
+                provider,
+                true,
+                preview_valid,
+            ) {
+                setup::PreflightDecision::InstallMissing => missing.push(provider.as_arg()),
+                setup::PreflightDecision::ReconciledExisting => {}
+                setup::PreflightDecision::Indeterminate => {
+                    panic!("authoritative fixture disagreed")
+                }
+            }
+        }
+        assert_eq!(missing, expected_missing);
+    }
+    let empty = ManifestState {
+        installed: HashSet::new(),
+        version: "2.0".into(),
+        serial: 1,
+    };
+    assert_eq!(
+        setup::decide_preflight(
+            Some(&empty),
+            Some(&doctor(&[])),
+            Provider::Claude,
+            false,
+            false,
+        ),
+        setup::PreflightDecision::Indeterminate,
+        "a malformed or bounded preview cannot authorize a missing-provider mutation"
+    );
+    let claims_claude = ManifestState {
+        installed: ["claude"].into_iter().map(str::to_string).collect(),
+        version: "2.0".into(),
+        serial: 2,
+    };
+    assert_eq!(
+        setup::decide_preflight(
+            Some(&claims_claude),
+            Some(&doctor(&[])),
+            Provider::Claude,
+            true,
+            true,
+        ),
+        setup::PreflightDecision::Indeterminate,
+        "receipt, manifest, and doctor disagreement cannot become current"
+    );
 }
 
 #[test]
@@ -332,14 +434,34 @@ fn registry_bounds_and_single_flight() {
         created: Instant::now(),
         outcome: None,
     });
-    assert_eq!(
-        reg.running_for("machine:acquire:vaultspec-rag", "standard"),
-        RunningMatch::Attach("run1".into())
-    );
-    assert_eq!(
-        reg.running_for("machine:acquire:vaultspec-core", "standard"),
-        RunningMatch::None
-    );
+    let duplicate = Job {
+        id: "run2".into(),
+        label: "acquire:vaultspec-rag".into(),
+        target: "machine".into(),
+        key: "machine:acquire:vaultspec-rag".into(),
+        posture: "standard",
+        state: JobState::Running,
+        created: Instant::now(),
+        outcome: None,
+    };
+    assert!(matches!(
+        reg.match_or_reserve(duplicate),
+        Reservation::Attach(_)
+    ));
+    let distinct = Job {
+        id: "run3".into(),
+        label: "acquire:vaultspec-core".into(),
+        target: "machine".into(),
+        key: "machine:acquire:vaultspec-core".into(),
+        posture: "standard",
+        state: JobState::Running,
+        created: Instant::now(),
+        outcome: None,
+    };
+    assert!(matches!(
+        reg.match_or_reserve(distinct),
+        Reservation::Reserved(_)
+    ));
 }
 
 #[test]
@@ -360,14 +482,25 @@ fn setup_single_flight_attaches_identical_posture_and_conflicts_different_postur
         created: Instant::now(),
         outcome: None,
     });
-    assert_eq!(
-        reg.running_for(key, safe.posture()),
-        RunningMatch::Attach("setup-1".into())
+    let candidate = |id: &str, posture| Job {
+        id: id.into(),
+        label: "setup:current".into(),
+        target: "/p".into(),
+        key: key.into(),
+        posture,
+        state: JobState::Running,
+        created: Instant::now(),
+        outcome: None,
+    };
+    assert!(matches!(
+        reg.match_or_reserve(candidate("setup-2", safe.posture())),
+        Reservation::Attach(_)
+    ));
+    assert_eq!(reg.jobs.len(), 1, "attach cannot reserve a second job");
+    assert!(
+        matches!(reg.match_or_reserve(candidate("setup-3", force.posture())), Reservation::Conflict(id) if id == "setup-1")
     );
-    assert_eq!(
-        reg.running_for(key, force.posture()),
-        RunningMatch::Conflict("setup-1".into())
-    );
+    assert_eq!(reg.jobs.len(), 1, "conflict cannot reserve a second job");
 }
 
 #[test]
@@ -390,12 +523,120 @@ fn running_jobs_are_never_evicted_by_cap() {
 }
 
 #[tokio::test]
-async fn version_probe_interprets_a_real_rustc_process() {
-    let version = probe_version("rustc", &["--version"])
+async fn version_probe_interprets_a_real_process() {
+    let version = probe_version("git", &["--version"])
         .await
-        .expect("the test toolchain provides rustc on PATH");
+        .expect("the test environment provides git on PATH");
     assert!(
-        version.starts_with("rustc "),
-        "expected rustc version output, got {version:?}"
+        version.starts_with("git version "),
+        "expected git version output, got {version:?}"
+    );
+}
+
+#[cfg(windows)]
+#[tokio::test]
+async fn real_process_malformed_timeout_and_output_cap_never_validate_as_success() {
+    let command = |script: &str| {
+        vec![
+            "powershell.exe".to_string(),
+            "-NoProfile".to_string(),
+            "-NonInteractive".to_string(),
+            "-Command".to_string(),
+            script.to_string(),
+        ]
+    };
+    let malformed = run_capability_with_limits(
+        &command("[Console]::Out.Write('not-json')"),
+        BoundedLimits {
+            cap: 1024,
+            timeout: Duration::from_secs(5),
+        },
+    )
+    .await;
+    assert_eq!(malformed.code, Some(0));
+    let dir = tempfile::tempdir().expect("target");
+    assert!(validate_install_output(&malformed.stdout, Provider::Core, dir.path(), false).is_err());
+
+    let marker = dir.path().join(".claude");
+    let script = format!(
+        "New-Item -ItemType Directory -Path '{}' | Out-Null; Start-Sleep -Seconds 5",
+        marker.display()
+    );
+    let timed = run_capability_with_limits(
+        &command(&script),
+        BoundedLimits {
+            cap: 1024,
+            timeout: Duration::from_secs(2),
+        },
+    )
+    .await;
+    assert_eq!(timed.termination, RunTermination::TimeoutCancelled);
+    assert!(
+        marker.is_dir(),
+        "partial directory may exist but cannot prove success"
+    );
+
+    let over = run_capability_with_limits(
+        &command("[Console]::Out.Write(('x' * 4096))"),
+        BoundedLimits {
+            cap: 32,
+            timeout: Duration::from_secs(5),
+        },
+    )
+    .await;
+    assert_eq!(over.termination, RunTermination::Indeterminate);
+}
+
+#[cfg(windows)]
+#[tokio::test]
+async fn four_real_process_install_v1_receipts_can_form_complete_only_after_validation() {
+    let dir = tempfile::tempdir().expect("target");
+    let mut receipts = Vec::new();
+    for (index, provider) in CURRENT_SETUP_PROVIDERS.iter().copied().enumerate() {
+        let rel = format!("item-{index}");
+        std::fs::write(dir.path().join(&rel), "current").expect("declared item");
+        let providers = if provider == Provider::Core {
+            json!([])
+        } else {
+            json!([provider.as_arg()])
+        };
+        let raw = json!({"schema":"vaultspec.install.v1","status":"created","data":{
+            "action":"install","path":dir.path(),"providers":providers,"items":[[rel,"current"]]
+        }})
+        .to_string();
+        let escaped = raw.replace('\'', "''");
+        let argv = vec![
+            "powershell.exe".into(),
+            "-NoProfile".into(),
+            "-NonInteractive".into(),
+            "-Command".into(),
+            format!("[Console]::Out.Write('{escaped}')"),
+        ];
+        let capture = run_capability_with_limits(
+            &argv,
+            BoundedLimits {
+                cap: 4096,
+                timeout: Duration::from_secs(5),
+            },
+        )
+        .await;
+        assert_eq!(capture.code, Some(0));
+        validate_install_output(&capture.stdout, provider, dir.path(), false)
+            .expect("current receipt");
+        receipts.push(setup_receipt(
+            "real",
+            index + 1,
+            provider,
+            "succeeded",
+            true,
+            json!({
+                "producer_stdout": capture.stdout, "producer_stdout_digest": digest(&capture.stdout)
+            }),
+            "confirmed_current",
+        ));
+    }
+    assert_eq!(
+        current_setup_outcome(receipts).1["aggregate"]["status"],
+        "complete"
     );
 }
