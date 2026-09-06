@@ -46,6 +46,7 @@
     ".": {
       "release-type": "simple",
       "package-name": "vaultspec-dashboard",
+      "draft": true,
       "extra-files": [
         {
           "type": "toml",
