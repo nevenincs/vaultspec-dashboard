@@ -1387,6 +1387,346 @@ export const NATIVE_CONTROL_LEDGER = [
         "The textarea overlays syntax-highlighted preformatted content, synchronizes two-axis scroll, exposes editor selection through a forwarded ref, carries formatting shortcuts and diff gutters, and renders transparent text with a themed caret; those mechanics must not enter TextArea.",
     },
   },
+  {
+    source: {
+      path: "frontend/src/app/stage/CategoryLegend.tsx",
+      owner: "CategoryLegend",
+      slot: "code-module-compact-toggle",
+    },
+    element: "button",
+    disposition: "retain-semantic-seam",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/stage/CategoryLegend.tsx",
+      name: "CategoryLegend",
+      status: "existing",
+    },
+    rationale: {
+      summary: "CategoryLegend owns the code-module compact-mode disclosure.",
+      distinction:
+        "The button is the roving FocusZone anchor for the graph's module legend and changes the legend's compact-versus-expanded presentation while preserving one grouped keyboard model; it is not a standalone disclosure or generic icon action.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/stage/CategoryLegend.tsx",
+      owner: "CategoryLegend",
+      slot: "document-type-compact-toggle",
+    },
+    element: "button",
+    disposition: "retain-semantic-seam",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/stage/CategoryLegend.tsx",
+      name: "CategoryLegend",
+      status: "existing",
+    },
+    rationale: {
+      summary: "CategoryLegend owns the document-type compact-mode disclosure.",
+      distinction:
+        "The button participates in the same roving toolbar as the document facets and changes the legend's compact-versus-expanded rendering without changing filter truth; that coupled graph-toolbar contract is not a generic toggle primitive.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/stage/CategoryLegend.tsx",
+      owner: "CategoryLegend",
+      slot: "document-type-filter-option",
+    },
+    element: "button",
+    disposition: "retain-semantic-seam",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/stage/CategoryLegend.tsx",
+      name: "CategoryLegend",
+      status: "existing",
+    },
+    rationale: {
+      summary: "CategoryLegend owns its repeated document-type facet button site.",
+      distinction:
+        "Each rendered facet is a roving toolbar item whose pressed, included, degraded, and compact-label states coordinate directly with the graph's canonical document-type filter; the variable multi-select toolbar is not the single-value SegmentedToggle contract.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/stage/CategoryLegend.tsx",
+      owner: "CategoryLegend",
+      slot: "document-type-filter-reset",
+    },
+    element: "button",
+    disposition: "retain-semantic-seam",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/stage/CategoryLegend.tsx",
+      name: "CategoryLegend",
+      status: "existing",
+    },
+    rationale: {
+      summary: "CategoryLegend owns the conditional document-type facet reset.",
+      distinction:
+        "The reset is conditionally enrolled as the final item in the legend's roving FocusZone and shares degraded-state suppression with the graph facets, so replacing it with the fixed Button geometry would break the compact toolbar composition.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/stage/GraphControls.tsx",
+      owner: "FoldableCategory",
+      slot: "category-disclosure",
+    },
+    element: "button",
+    disposition: "retain-semantic-seam",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/stage/GraphControls.tsx",
+      name: "FoldableCategory",
+      status: "existing",
+    },
+    rationale: {
+      summary: "FoldableCategory owns the graph-control section disclosure.",
+      distinction:
+        "The full-width, text-aligned disclosure binds a generated panel body id, expanded state, category label, and directional twisty inside the dense graph settings hierarchy; neither Button nor IconButton expresses that composite section-header contract.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/stage/GraphControls.tsx",
+      owner: "GraphSettingsPanel",
+      slot: "reset-all-action",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/Button.tsx",
+      name: "Button",
+      status: "existing",
+    },
+    rationale: {
+      summary: "GraphSettingsPanel's reset-all control is an ordinary text action.",
+      equivalence:
+        "The native button has standard click and label semantics, while graph-state reset logic remains wholly in the caller's resetAll handler.",
+      replacement:
+        "Render the reset label and resetAll handler through the appropriate Button variant without moving graph commands or store mutations into the kit.",
+      deletion:
+        "Remove the panel-owned native button element and resetButtonClassName styling once Button supplies its shared interaction chrome.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/stage/WorkingSet.tsx",
+      owner: "WorkingSet",
+      slot: "collapse-item-action",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/IconButton.tsx",
+      name: "IconButton",
+      status: "existing",
+    },
+    rationale: {
+      summary: "WorkingSet's repeated collapse glyph is an ordinary icon action.",
+      equivalence:
+        "Each native button exposes an accessible label, a single X glyph, and one click callback; row identity and graph working-set mutation remain caller-owned.",
+      replacement:
+        "Render X through IconButton with the row's localized collapse label and existing collapseWorkingSet callback.",
+      deletion:
+        "Remove the native button and row-provided collapseButtonClassName styling after the shared icon-action geometry is adopted.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/stage/WorkingSet.tsx",
+      owner: "WorkingSet",
+      slot: "clear-action",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/Button.tsx",
+      name: "Button",
+      status: "existing",
+    },
+    rationale: {
+      summary: "WorkingSet's clear control is an ordinary text action.",
+      equivalence:
+        "The native button has a localized label and a single clearWorkingSet callback, with no custom keyboard or selection semantics.",
+      replacement:
+        "Use the compact appropriate Button variant while keeping the graph working-set command in the caller.",
+      deletion:
+        "Remove the native button and clearButtonClassName styling once Button owns its interaction chrome.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/islands/NodeInterior.tsx",
+      owner: "FeatureLifecycle",
+      slot: "document-navigation-tile",
+    },
+    element: "button",
+    disposition: "retain-semantic-seam",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/islands/NodeInterior.tsx",
+      name: "FeatureLifecycle",
+      status: "existing",
+    },
+    rationale: {
+      summary: "FeatureLifecycle owns its graph-island document navigation tile.",
+      distinction:
+        "The repeated button is a compact node-navigation tile on the canonical lifecycle axis, combining document-type identity, authored-title fallback, and asynchronous graph selection; its geometry is structural island content rather than a generic text action.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/islands/NodeInterior.tsx",
+      owner: "PlanInterior",
+      slot: "step-navigation-tile",
+    },
+    element: "button",
+    disposition: "retain-semantic-seam",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/islands/NodeInterior.tsx",
+      name: "PlanInterior",
+      status: "existing",
+    },
+    rationale: {
+      summary: "PlanInterior owns its graph-island plan-step tile.",
+      distinction:
+        "The repeated tile couples graph navigation with aria-pressed completion state, a completion glyph, and the island's fixed four-column plan layout; it is neither a form toggle nor a generic Button action.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/islands/IslandLayer.tsx",
+      owner: "Island",
+      slot: "close-action",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/IconButton.tsx",
+      name: "IconButton",
+      status: "existing",
+    },
+    rationale: {
+      summary: "Island's close glyph is an ordinary icon action.",
+      equivalence:
+        "The native button has a localized accessible label, one X glyph, and a single close callback; island anchoring and target-scoped context-menu behavior remain outside the control.",
+      replacement:
+        "Render the X glyph through IconButton with the existing close label and closeNodeIsland callback.",
+      deletion:
+        "Remove the native close button and its local hover, sizing, and focus styling after IconButton owns the action chrome.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/timeline/TimelineRangeSelector.tsx",
+      owner: "TimelineRange",
+      slot: "clear-range-action",
+    },
+    element: "button",
+    disposition: "migrate",
+    canonicalOwner: {
+      layer: "app-kit",
+      path: "frontend/src/app/kit/Button.tsx",
+      name: "Button",
+      status: "existing",
+    },
+    rationale: {
+      summary: "TimelineRange's conditional clear control is an ordinary text action.",
+      equivalence:
+        "The native button only exposes the localized clear label and invokes the range reset callback; the slider spans, pointer sessions, keyboard steps, and restore gestures remain owned by TimelineRange.",
+      replacement:
+        "Use the compact appropriate Button variant for the clear action while retaining all timeline-handle coordination in TimelineRange.",
+      deletion:
+        "Remove the native button and its local padding, typography, hover, and focus classes after Button owns the action chrome.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/left/CodeTree.tsx",
+      owner: "DirectoryRow",
+      slot: "hierarchy-row-control",
+    },
+    element: "button",
+    disposition: "retain-semantic-seam",
+    canonicalOwner: {
+      layer: "shared-chrome",
+      path: "frontend/src/app/left/CodeTree.tsx",
+      name: "DirectoryRow",
+      status: "existing",
+    },
+    rationale: {
+      summary: "DirectoryRow owns the code hierarchy's row control.",
+      distinction:
+        "The row is the recursive tree's roving tab stop and combines directory disclosure, file activation, selection, git and ignore cues, depth geometry, keyboard context-menu routing, and async child expansion; those semantics do not belong in Button.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/left/FolderBrowser.tsx",
+      owner: "FolderBrowser",
+      slot: "folder-option-row",
+    },
+    element: "button",
+    disposition: "retain-semantic-seam",
+    canonicalOwner: {
+      layer: "shared-chrome",
+      path: "frontend/src/app/left/FolderBrowser.tsx",
+      name: "FolderBrowser",
+      status: "existing",
+    },
+    rationale: {
+      summary: "FolderBrowser owns its filesystem listbox option row.",
+      distinction:
+        "The row is a role=option roving tab stop that distinguishes selection from navigation, supports Enter, Backspace, double-click, cross-axis parent/child movement, registered-folder gating, and landed-level focus transfer; it is not a menu item or generic Button.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/left/TreeBrowser.tsx",
+      owner: "VaultTreeRow",
+      slot: "hierarchy-row-control",
+    },
+    element: "button",
+    disposition: "retain-semantic-seam",
+    canonicalOwner: {
+      layer: "shared-chrome",
+      path: "frontend/src/app/left/TreeBrowser.tsx",
+      name: "VaultTreeRow",
+      status: "existing",
+    },
+    rationale: {
+      summary: "VaultTreeRow owns the document hierarchy's row control.",
+      distinction:
+        "The row coordinates recursive disclosure, roving focus, responsive tap-versus-double-click opening, highlighted-page state, depth geometry, status presentation, and keyboard context menus across several entity kinds; a generic Button cannot own that tree contract.",
+    },
+  },
+  {
+    source: {
+      path: "frontend/src/app/viewer/MarkdownReader.tsx",
+      owner: "COMPONENTS.input",
+      slot: "non-checkbox-renderer-fallback",
+    },
+    element: "input",
+    disposition: "retain-semantic-seam",
+    canonicalOwner: {
+      layer: "feature-surface",
+      path: "frontend/src/app/viewer/MarkdownReader.tsx",
+      name: "COMPONENTS.input",
+      status: "existing",
+    },
+    rationale: {
+      summary: "The Markdown renderer owns its read-only non-checkbox input fallback.",
+      distinction:
+        "The react-markdown override replaces GFM task checkboxes with StepCheckMark and preserves any other parsed input type as read-only renderer output; routing that fallback through a form-field primitive would imply editable application state and alter unknown markdown input semantics.",
+    },
+  },
 ] as const satisfies readonly NativeControlLedgerEntry[];
 export const RELATIVE_VALUE_LEDGER: readonly RelativeValueLedgerEntry[] = [];
 export const NAMING_DEBT_LEDGER: readonly NamingDebtLedgerEntry[] = [];

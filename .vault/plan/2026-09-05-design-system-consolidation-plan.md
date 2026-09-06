@@ -10,7 +10,7 @@ related:
   - '[[2026-09-05-design-system-consolidation-shipped-frontend-blueprint-reference]]'
 modified: '2026-09-06'
 body_schema: body-v2
-body_hash: 'sha256:086d785026a634e955435121e998bf425cb00448fbb39c77edcc162e83ff83e1'
+body_hash: 'sha256:a8222a8b8a90232c207e05a8b79cd3c40c3832ee594efa7cf93f3e605bdee197'
 ---
 
 <!-- RETIRED: S02, S03, S95, S96, S158 -->
@@ -45,7 +45,7 @@ Establish one machine-readable ledger that distinguishes migrations, retained se
 - [x] `W01.P01.S166` - Classify menu, option-row, context-menu, filter, date-basis, command, and search-result control families; `frontend/dev/design-system/consolidation-ledger.ts`.
 - [x] `W01.P01.S167` - Classify dialog, composer, compact-shell, settings, and viewer icon-action families; `frontend/dev/design-system/consolidation-ledger.ts`.
 - [x] `W01.P01.S168` - Classify specialized search, composer-entry, code-overlay, date-input, select, and task-checkbox native seams; `frontend/dev/design-system/consolidation-ledger.ts`.
-- [ ] `W01.P01.S169` - Classify graph, island, timeline-handle, tree-row, and renderer-coordination native seams; `frontend/dev/design-system/consolidation-ledger.ts`.
+- [x] `W01.P01.S169` - Classify graph, island, timeline-handle, tree-row, and renderer-coordination native seams; `frontend/dev/design-system/consolidation-ledger.ts`.
 - [ ] `W01.P01.S170` - Classify remaining left-rail, right-rail, panel, authoring, shell, and platform native controls; `frontend/dev/design-system/consolidation-ledger.ts`.
 - [ ] `W01.P01.S171` - Verify the native-control family ledger accounts for the complete 125-site executable JSX baseline without duplicates; `frontend/dev/design-system/consolidation-ledger.test.ts`.
 - [ ] `W01.P01.S172` - Classify arbitrary relative values owned by kit primitives and their states; `frontend/dev/design-system/consolidation-ledger.ts`.
