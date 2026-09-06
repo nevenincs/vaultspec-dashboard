@@ -122,7 +122,7 @@ jobs:
           - image: almalinux:8
             setup: dnf install -y -q tar xz
             arch: aarch64
-            runner: ubuntu-24.04-arm
+            runner: [self-hosted, ARM64, Linux]
             triple: aarch64-unknown-linux-gnu
           # The enterprise LTS releases the README names, which 2.39 excluded.
           - image: ubuntu:22.04
@@ -133,7 +133,7 @@ jobs:
           - image: ubuntu:22.04
             setup: apt-get update -qq && apt-get install -y -qq curl xz-utils
             arch: aarch64
-            runner: ubuntu-24.04-arm
+            runner: [self-hosted, ARM64, Linux]
             triple: aarch64-unknown-linux-gnu
           - image: debian:bookworm-slim
             setup: apt-get update -qq && apt-get install -y -qq curl xz-utils
@@ -143,12 +143,16 @@ jobs:
           - image: debian:bookworm-slim
             setup: apt-get update -qq && apt-get install -y -qq curl xz-utils
             arch: aarch64
-            runner: ubuntu-24.04-arm
+            runner: [self-hosted, ARM64, Linux]
             triple: aarch64-unknown-linux-gnu
-    # The ARM legs run on the GitHub-hosted ARM64 runner, not the fleet's. The
-    # fleet's ARM64 Linux runner is itself a colima container with no reachable
-    # docker daemon, so a container job there dies in `Initialize containers`
-    # before any step runs.
+    # THE ARM LEGS ARE KNOWN TO FAIL AS WRITTEN, and that is stated here rather
+    # than discovered on a release. They are container jobs on
+    # `macbook-neo-linux-arm-vaultspec`, which is itself a colima container
+    # whose `/home/runner` is a named volume, so a sibling job container mounts
+    # a path that does not exist in the VM and the job dies in
+    # `Initialize containers` before any step runs. The fix is to bind-mount the
+    # runner's home from the identical path in the VM, which needs the runner
+    # re-enrolled.
     runs-on: ${{ matrix.runner }}
     container: ${{ matrix.image }}
     steps:
