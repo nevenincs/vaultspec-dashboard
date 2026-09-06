@@ -6,7 +6,7 @@ tags:
 date: '2026-09-04'
 modified: '2026-09-06'
 body_schema: 'body-v2'
-body_hash: 'sha256:374a656c8066f44bef9e9e194b08ce62810163fe233565aeeb6cfa7bab2e50da'
+body_hash: 'sha256:0e6afa09c7f5805305a10678bc09178e0366adc51fcb4a754cd5d4b86a58ac4f'
 related:
   - '[[2026-09-04-test-isolation-cleanup-S01]]'
   - '[[2026-09-04-test-isolation-cleanup-S02]]'
@@ -16,6 +16,7 @@ related:
   - '[[2026-09-04-test-isolation-cleanup-S06]]'
   - '[[2026-09-04-test-isolation-cleanup-S07]]'
   - '[[2026-09-04-test-isolation-cleanup-S08]]'
+  - '[[2026-09-04-test-isolation-cleanup-S09]]'
   - '[[2026-09-04-test-isolation-cleanup-S11]]'
   - '[[2026-09-04-test-isolation-cleanup-adr]]'
   - '[[2026-09-04-test-isolation-cleanup-plan]]'
@@ -23,6 +24,7 @@ related:
   - '[[2026-09-06-test-isolation-cleanup-s06-awaited-happydom-abort-review-audit]]'
   - '[[2026-09-06-test-isolation-cleanup-s07-happydom-abort-guard-review-audit]]'
   - '[[2026-09-06-test-isolation-cleanup-s08-unexpected-engine-exit-diagnostics-review-audit]]'
+  - '[[2026-09-06-test-isolation-cleanup-s09-affected-suite-barrier-review-audit]]'
   - '[[2026-09-06-test-isolation-cleanup-s11-system-program-identity-review-audit]]'
 ---
 
@@ -41,6 +43,7 @@ Auto-generated index of all documents tagged with `#test-isolation-cleanup`.
 - `2026-09-06-test-isolation-cleanup-s06-awaited-happydom-abort-review-audit` - `test-isolation-cleanup` audit: `S06 awaited happy-dom abort review`
 - `2026-09-06-test-isolation-cleanup-s07-happydom-abort-guard-review-audit` - `test-isolation-cleanup` audit: `S07 happy-dom abort guard review`
 - `2026-09-06-test-isolation-cleanup-s08-unexpected-engine-exit-diagnostics-review-audit` - `test-isolation-cleanup` audit: `S08 unexpected engine exit diagnostics review`
+- `2026-09-06-test-isolation-cleanup-s09-affected-suite-barrier-review-audit` - `test-isolation-cleanup` audit: `S09 affected suite barrier review`
 - `2026-09-06-test-isolation-cleanup-s11-system-program-identity-review-audit` - `test-isolation-cleanup` audit: `S11 system program identity review`
 
 ### exec
@@ -53,6 +56,7 @@ Auto-generated index of all documents tagged with `#test-isolation-cleanup`.
 - `2026-09-04-test-isolation-cleanup-S06` - Await native happy-dom abort directly, remove the fixed drain, and make serial worker configuration truthful
 - `2026-09-04-test-isolation-cleanup-S07` - Add an awaited-abort and no-timer guard, and prove it fails both when awaiting is removed and when a fixed drain returns
 - `2026-09-04-test-isolation-cleanup-S08` - Add bounded unexpected-engine-exit diagnostics without retries or behavior changes
+- `2026-09-04-test-isolation-cleanup-S09` - Run frontend/src/app/left/AddProjectDialog.localization.test.tsx, frontend/src/app/left/CreateDocDialog.render.test.tsx, frontend/src/stores/server/comments.live.test.ts, frontend/src/stores/server/systemPrograms.live.test.ts, frontend/src/stores/server/queries/docmeta.test.ts, both barrier guards, and full frontend lint
 - `2026-09-04-test-isolation-cleanup-S11` - Correct the live system-program adapter test for running, crashed, and absent identity states
 
 ### plan

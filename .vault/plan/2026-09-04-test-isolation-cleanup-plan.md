@@ -9,7 +9,7 @@ related:
   - '[[2026-09-04-test-isolation-cleanup-research]]'
 modified: '2026-09-06'
 body_schema: body-v2
-body_hash: 'sha256:125d4306814c70ea8fa48ac9e4eb67c82d7ad6b53759bc454b32d7fdcfcd3c11'
+body_hash: 'sha256:e4dd014def4ddf1a355eb7a14443126f21a9cdc16d934abe851affc8d60c4d85'
 ---
 
 # `test-isolation-cleanup` plan
@@ -55,7 +55,7 @@ incident counts are not a new architectural premise.
 - [x] `S07` - Add an awaited-abort and no-timer guard, and prove it fails both when awaiting is removed and when a fixed drain returns; `frontend/src/testing/happyDOMAbort.guard.test.ts`.
 - [x] `S08` - Add bounded unexpected-engine-exit diagnostics without retries or behavior changes; `frontend/src/testing/liveEngine.globalSetup.ts`.
 - [x] `S11` - Correct the live system-program adapter test for running, crashed, and absent identity states; `frontend/src/stores/server/systemPrograms.live.test.ts`.
-- [ ] `S09` - Run frontend/src/app/left/AddProjectDialog.localization.test.tsx, frontend/src/app/left/CreateDocDialog.render.test.tsx, frontend/src/stores/server/comments.live.test.ts, frontend/src/stores/server/systemPrograms.live.test.ts, frontend/src/stores/server/queries/docmeta.test.ts, both barrier guards, and full frontend lint; `frontend`.
+- [x] `S09` - Run frontend/src/app/left/AddProjectDialog.localization.test.tsx, frontend/src/app/left/CreateDocDialog.render.test.tsx, frontend/src/stores/server/comments.live.test.ts, frontend/src/stores/server/systemPrograms.live.test.ts, frontend/src/stores/server/queries/docmeta.test.ts, both barrier guards, and full frontend lint; `frontend`.
 - [ ] `S10` - Run one timing-enabled serialized full frontend suite and one ordinary serialized confirmation suite, recording timing and failure classification; `frontend`.
 
 ## Parallelization
