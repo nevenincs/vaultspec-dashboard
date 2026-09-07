@@ -77,7 +77,11 @@ jobs:
   # fix is the one that ships the bug.
   derive-selectors:
     name: Derive the selectors this workflow schedules onto
-    runs-on: ubuntu-latest
+    # ON THE FLEET. This job derives the selectors the preflight below
+    # checks, and it was left hosted when that preflight was migrated -
+    # two adjacent jobs, one moved and one missed. It needs nothing the
+    # fleet lacks: a checkout and an awk.
+    runs-on: [self-hosted, Linux, X64]
     outputs:
       selectors: ${{ steps.derive.outputs.selectors }}
     steps:
