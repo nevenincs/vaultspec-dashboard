@@ -1,5 +1,5 @@
-//! Emit the exact target triple this updater is compiled for, and embed the
-//! Windows `asInvoker` application manifest.
+//! Emit the exact target triple this updater is compiled for, and embed its
+//! Windows application resources.
 //!
 //! The copied updater re-verifies the staged release against ITS OWN compiled
 //! triple (the distribution authority's closed `DistributionTarget`), never a
@@ -14,20 +14,12 @@
 //! with `ERROR_ELEVATION_REQUIRED` rather than run. The manifest covers the
 //! shipped binary and the test executables alike.
 
+#[path = "../../build/windows_resources.rs"]
+mod windows_resources;
+
 fn main() {
     let target = std::env::var("TARGET").expect("cargo sets TARGET for every build");
     println!("cargo:rustc-env=UPDATER_TARGET={target}");
 
-    if target.ends_with("windows-msvc") {
-        let manifest = std::path::Path::new(
-            &std::env::var("CARGO_MANIFEST_DIR").expect("cargo sets CARGO_MANIFEST_DIR"),
-        )
-        .join("vaultspec-updater.manifest");
-        println!("cargo:rerun-if-changed={}", manifest.display());
-        // The manifest supplies the trust info itself, so the linker must not
-        // also synthesize one (`/MANIFESTUAC:NO`) — two would conflict.
-        println!("cargo:rustc-link-arg=/MANIFEST:EMBED");
-        println!("cargo:rustc-link-arg=/MANIFESTINPUT:{}", manifest.display());
-        println!("cargo:rustc-link-arg=/MANIFESTUAC:NO");
-    }
+    windows_resources::embed_application_resources(Some("vaultspec-updater.manifest"));
 }

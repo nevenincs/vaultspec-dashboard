@@ -63,6 +63,9 @@
         Codepage='1252'
         Version='$(var.Version)'>
 
+        <Icon Id='VaultspecIcon' SourceFile='$(sys.SOURCEFILEDIR)..\..\..\assets\vaultspec.ico'/>
+        <Property Id='ARPPRODUCTICON' Value='VaultspecIcon'/>
+
         <Package Id='*'
             Keywords='Installer'
             Description='The complete vaultspec product: the dashboard, its external updater, and its release manifest, licenses, and SBOM, installed offline as one verified release set.'
@@ -177,6 +180,7 @@
                     Name='vaultspec'
                     Description='Open the vaultspec dashboard'
                     Target='[!DashboardExe]'
+                    Icon='VaultspecIcon'
                     WorkingDirectory='Bin'/>
                 <RemoveFolder Id='CleanUpShortcutFolder' Directory='ApplicationProgramsFolder' On='uninstall'/>
                 <RegistryValue Root='HKCU' Key='Software\vaultspec\dashboard' Name='installed' Type='integer' Value='1' KeyPath='yes'/>

@@ -1,4 +1,4 @@
-//! Embed the Windows `asInvoker` application manifest.
+//! Embed the Windows application resources used by the product tools.
 //!
 //! Windows installer detection escalates any un-manifested executable whose
 //! name looks like an installer. This crate builds test executables named
@@ -11,19 +11,9 @@
 //! invoking user already owns under the user-scoped app home, so these must run
 //! as the invoking user and never elevated.
 
+#[path = "../../build/windows_resources.rs"]
+mod windows_resources;
+
 fn main() {
-    let target = std::env::var("TARGET").expect("cargo sets TARGET for every build");
-    if !target.ends_with("windows-msvc") {
-        return;
-    }
-    let manifest = std::path::Path::new(
-        &std::env::var("CARGO_MANIFEST_DIR").expect("cargo sets CARGO_MANIFEST_DIR"),
-    )
-    .join("vaultspec-product.manifest");
-    println!("cargo:rerun-if-changed={}", manifest.display());
-    // The manifest supplies the trust info itself, so the linker must not also
-    // synthesize one (`/MANIFESTUAC:NO`) — two would conflict.
-    println!("cargo:rustc-link-arg=/MANIFEST:EMBED");
-    println!("cargo:rustc-link-arg=/MANIFESTINPUT:{}", manifest.display());
-    println!("cargo:rustc-link-arg=/MANIFESTUAC:NO");
+    windows_resources::embed_application_resources(Some("vaultspec-product.manifest"));
 }

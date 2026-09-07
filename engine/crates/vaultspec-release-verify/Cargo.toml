@@ -11,6 +11,9 @@ rust-version.workspace = true
 tokio = { version = "1.49.0", features = ["macros", "rt"] }
 vaultspec-distribution-authority = { workspace = true }
 
+[build-dependencies]
+winresource = "=0.1.23"
+
 [dev-dependencies]
 tempfile = "3.27.0"
 
