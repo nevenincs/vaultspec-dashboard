@@ -156,10 +156,7 @@ export const CONSOLIDATION_INVARIANT_BOUNDARIES = [
 export type ConsolidationInvariantBoundary =
   (typeof CONSOLIDATION_INVARIANT_BOUNDARIES)[number];
 
-export type ConsolidationEvidencePath =
-  | FrontendRepositoryPath
-  | `.codex/${string}`
-  | `.vault/${string}`;
+export type ConsolidationEvidencePath = FrontendRepositoryPath | `.vault/${string}`;
 
 export interface ConsolidationInvariantEvidence {
   readonly path: ConsolidationEvidencePath;
@@ -170,9 +167,7 @@ export interface ConsolidationInvariantEvidence {
 export function invariantEvidenceKey(evidence: ConsolidationInvariantEvidence): string {
   const pathSegments = evidence.path.split("/");
   if (
-    !["frontend/", ".codex/", ".vault/"].some((root) =>
-      evidence.path.startsWith(root),
-    ) ||
+    !["frontend/", ".vault/"].some((root) => evidence.path.startsWith(root)) ||
     evidence.path.includes("\\") ||
     pathSegments.some(
       (segment) => segment === "" || segment === "." || segment === "..",
@@ -5827,8 +5822,8 @@ export const CONSOLIDATION_INVARIANTS = [
         slot: "graph-state-semantics",
       },
       {
-        path: ".codex/rules/architecture-boundaries.md",
-        owner: "architecture-boundaries",
+        path: ".vault/adr/2026-09-05-design-system-consolidation-adr.md",
+        owner: "design-system-consolidation",
         slot: "scene-contract-freeze",
       },
     ],
@@ -5852,8 +5847,8 @@ export const CONSOLIDATION_INVARIANTS = [
         slot: "filter-selection-policy",
       },
       {
-        path: ".codex/rules/architecture-boundaries.md",
-        owner: "architecture-boundaries",
+        path: ".vault/adr/2026-09-05-design-system-consolidation-adr.md",
+        owner: "design-system-consolidation",
         slot: "stores-own-state-not-presentation",
       },
     ],
@@ -5877,8 +5872,8 @@ export const CONSOLIDATION_INVARIANTS = [
         slot: "wire-model-shapes",
       },
       {
-        path: ".codex/rules/wire-contract.md",
-        owner: "wire-contract",
+        path: ".vault/adr/2026-09-05-design-system-consolidation-adr.md",
+        owner: "design-system-consolidation",
         slot: "tiers-served-state-stable-identities",
       },
     ],
@@ -5927,8 +5922,8 @@ export const CONSOLIDATION_INVARIANTS = [
         slot: "no-figma-scope-grounding",
       },
       {
-        path: ".codex/rules/design-system.md",
-        owner: "design-system",
+        path: ".vault/adr/2026-09-05-design-system-consolidation-adr.md",
+        owner: "design-system-consolidation",
         slot: "long-term-figma-authority",
       },
     ],

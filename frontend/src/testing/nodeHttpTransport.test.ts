@@ -576,7 +576,10 @@ describe("nodeHttpTransport wire ownership", () => {
       await observed;
       controller.abort(reason);
       await expect(pending).rejects.toBe(reason);
-      expect(server.sockets.size).toBe(0);
+      // The abort rejects as soon as the CLIENT destroys its socket; the server
+      // learns of the close an event-loop turn or more later, so the drain is
+      // awaited rather than asserted against the platform's teardown timing.
+      await vi.waitFor(() => expect(server.sockets.size).toBe(0));
     } finally {
       await server.close();
     }

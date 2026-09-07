@@ -1183,9 +1183,11 @@ describe("design-system consolidation campaign invariants", () => {
     }
     expect(duplicateKeys(allEvidenceKeys)).toEqual([]);
     expect(allEvidencePaths.some((path) => path.startsWith(".vault/adr/"))).toBe(true);
-    expect(allEvidencePaths.some((path) => path.startsWith(".codex/rules/"))).toBe(
-      true,
-    );
+    expect(
+      allEvidencePaths.filter(
+        (path) => !path.startsWith("frontend/") && !path.startsWith(".vault/"),
+      ),
+    ).toEqual([]);
   });
 
   it("links the scene freeze to its exact worktree fingerprint and controller contract", () => {
@@ -1277,7 +1279,7 @@ describe("design-system consolidation campaign invariants", () => {
     expect(invariant?.evidence.map(({ path }) => path)).toEqual([
       ".vault/adr/2026-09-05-design-system-consolidation-adr.md",
       ".vault/research/2026-09-05-design-system-consolidation-horizontal-polish-research.md",
-      ".codex/rules/design-system.md",
+      ".vault/adr/2026-09-05-design-system-consolidation-adr.md",
     ]);
   });
 });

@@ -222,6 +222,12 @@ export const nodeHttpTransport: FetchLike = async (input, init) => {
       response.pause();
       let controller: ReadableStreamDefaultController<Uint8Array> | null = null;
       let completed = false;
+      // The stream settled ITSELF (the reader cancelled). `finish` defers its
+      // settle action across `waitForSocketClose`, and a keep-alive socket holds
+      // that await open long enough for a cancel to land in the middle: closing
+      // or erroring the controller afterwards throws ERR_INVALID_STATE as an
+      // unhandled rejection, which fails the run even though every test passed.
+      let selfSettled = false;
 
       const removeResponseListeners = () => {
         response.removeListener("data", onData);
@@ -236,6 +242,7 @@ export const nodeHttpTransport: FetchLike = async (input, init) => {
         if (destroy) destroyResources();
         await waitForSocketClose();
         cleanup();
+        if (selfSettled) return;
         action();
       };
       const onData = (chunk: Buffer) => {
@@ -257,6 +264,7 @@ export const nodeHttpTransport: FetchLike = async (input, init) => {
           if (!completed) response.resume();
         },
         async cancel() {
+          selfSettled = true;
           await finish(() => undefined, true);
         },
       });
