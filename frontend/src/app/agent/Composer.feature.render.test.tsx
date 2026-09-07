@@ -9,14 +9,20 @@
 // REAL Composer over SERVED preset shapes and check the rendered chip, the held start,
 // and — the load-bearing one — the actual run-start request body.
 //
-// The wire is intercepted at `fetch`, so the assertion is about what would leave the
-// browser, not about what an adapter was asked to build.
+// The wire is intercepted at the CLIENT TRANSPORT SEAM (`useTransport`), the same
+// seam `liveSetup` binds and `TeamRunProgressContext.test.tsx` already records at,
+// so the assertion is about what would leave the client, not about what an adapter
+// was asked to build. It cannot be intercepted at `fetch`: `liveTransport` speaks
+// Node http directly, so a `vi.stubGlobal("fetch")` here is never consulted and the
+// run reaches the real engine instead of this recorder.
 
 import { QueryClientProvider, QueryClient } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { I18nextProvider } from "react-i18next";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { a2aTeamClient } from "../../stores/server/agent";
+import { liveTransport } from "../../testing/liveClient";
 import { createTestLocalizationRuntime } from "../../localization/testing";
 import {
   a2aKeys,
@@ -130,7 +136,7 @@ function seed(presets: TeamPreset[], activeDocId: string | null): void {
 
 beforeEach(() => {
   fetchCalls = [];
-  vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+  a2aTeamClient.useTransport(async (input, init) => {
     const url = String(input);
     let body: unknown;
     try {
@@ -148,6 +154,9 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  // Hand the singleton back to the harness transport so the recorder cannot
+  // outlive this file's tests.
+  a2aTeamClient.useTransport(liveTransport);
   vi.unstubAllGlobals();
   client?.clear();
 });
