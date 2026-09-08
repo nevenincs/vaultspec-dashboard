@@ -136,9 +136,7 @@ def _sweepable(repo_root: Path) -> list[Path]:
         globs to nothing would retire this guard silently, so the caller
         asserts on the count.
     """
-    candidates: list[Path] = [
-        path for path in repo_root.glob("*") if path.is_file()
-    ]
+    candidates: list[Path] = [path for path in repo_root.glob("*") if path.is_file()]
     for name in SWEPT_ROOTS:
         tree = repo_root / name
         if tree.is_dir():
