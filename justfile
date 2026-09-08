@@ -206,15 +206,6 @@ check-workflow:
 check-guards:
     {{dev}} lint guards
 
-# ADVISORY, and therefore deliberately NOT a member of `check-all`: it reports
-# leads to confirm rather than a verdict, and chaining it in would fail the
-# build on an unused export.
-
-# Report unused SPA files, exports, and dependencies; advisory, exits 0.
-[group('audit')]
-check-knip:
-    {{dev}} lint knip
-
 # AGGREGATES RUN EVERY STEP and exit with the first non-zero status; they do
 # not stop at the first failure. An aggregate is asked for a complete picture,
 # and fail-fast costs a CI round-trip per defect. That is why this dispatches
@@ -222,7 +213,9 @@ check-knip:
 # dependency chain cannot express run-all-then-report. The membership lives in
 # `dev/toolchain.py` as references to the same targets the individual recipes
 # above run, so this aggregate and those gates cannot disagree.
-# Advisory `check-knip` is deliberately not a member - see the note above it.
+# Advisory `audit-knip` is deliberately not a member: it reports leads to
+# confirm rather than a verdict, and chaining it in would fail the build on
+# an unused export.
 
 # Run every blocking linter.
 [group('check')]
@@ -286,6 +279,18 @@ audit-rust:
 [group('audit')]
 audit-node-tooling:
     {{dev}} audit node-tooling
+
+# ADVISORY in fact, not only in prose: a finding exits 0, and a knip that could
+# not RUN exits TOOL_BROKEN rather than FAILED. It shells to `npx --yes knip@5`
+# on every invocation, so gating on it would fail the build on a proxy hiccup
+# instead of on a finding - which is a different claim from the one a gate
+# makes. The registry verb behind it is still `lint`; the name and group state
+# the consequence, which is what a reader is choosing between.
+
+# Report unused SPA files, exports, and dependencies; advisory, exits 0.
+[group('audit')]
+audit-knip:
+    {{dev}} lint knip
 
 # Run every gating supply-chain audit. Advisory `audit-node-tooling` is
 # deliberately not a member.

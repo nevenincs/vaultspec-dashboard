@@ -57,14 +57,21 @@ def test_every_verb_has_a_recipe(recipe_bodies: dict[str, list[str]]) -> None:
 
 #: Recipes whose name deliberately does not begin with the verb they dispatch.
 #: Each is a domain-named entry point rather than an action-named gate, or the
-#: composed pipeline itself, and each is listed by name so a fifth cannot appear
+#: composed pipeline itself, and each is listed by name so a sixth cannot appear
 #: by accident.
+#:
+#: `audit-knip` is the one that is not merely domain-named: it dispatches the
+#: `lint` verb but is named and grouped for its CONSEQUENCE, which is advisory.
+#: Its target carries `advisory=True`, so a finding exits 0 and only a knip that
+#: could not run fails - filing it under `check` would promise a gate that the
+#: target cannot deliver.
 _RENAMED_ENTRY_POINTS: dict[str, str] = {
     "ci": "ci",
     "fix-tokens": "tokens",
     "dev-serve": "serve",
     "dev-review": "review",
     "build-clean": "clean",
+    "audit-knip": "lint",
 }
 
 
