@@ -15,7 +15,7 @@ four citations survived it.
 
 from __future__ import annotations
 
-from pathlib import Path
+from pathlib import Path  # noqa: TC003  (a runtime value, not only an annotation)
 
 import pytest
 
@@ -25,8 +25,35 @@ import pytest
 #: strings would appear in this file and the sweep below would flag its own
 #: source - the guard failing on itself is how the first version behaved.
 RETIRED_INVOCATIONS: tuple[str, ...] = tuple(
-    "just " + verb + " " for verb in ('lint', 'fix', 'audit', 'test', 'deps', 'vault', 'docs', 'build', 'precommit', 'dev')
+    "just " + verb + " "
+    for verb in (
+        "lint",
+        "fix",
+        "audit",
+        "test",
+        "deps",
+        "vault",
+        "docs",
+        "build",
+        "precommit",
+        "dev",
+    )
 )
+
+#: The contexts a real citation appears in. Bare prose is deliberately NOT one
+#: of them: "or we can just test that the parser works" is English, not a stale
+#: recipe, and an unanchored sweep flags it. Every genuine citation in these
+#: trees is either inside backticks, a shell prompt, or a workflow `run:` step.
+CITATION_CONTEXTS: tuple[str, ...] = ("`", "$ ", "run: ", "  ")
+
+
+def _retired_citations() -> tuple[str, ...]:
+    """Return every retired invocation as it would really be written."""
+    return tuple(
+        context + invocation
+        for invocation in RETIRED_INVOCATIONS
+        for context in CITATION_CONTEXTS
+    )
 
 #: Trees excluded from the sweep. `.vault/` records state what was true when
 #: they were written and are deliberately never rewritten; the rest are
@@ -99,7 +126,16 @@ SWEPT_ROOTS: tuple[str, ...] = (
 
 
 def _sweepable(repo_root: Path) -> list[Path]:
-    """Return every source file worth sweeping, under the bounded roots."""
+    """Return every source file worth sweeping, under the bounded roots.
+
+    Args:
+        repo_root: The tree to sweep.
+
+    Returns:
+        Every sweepable file. Never empty for a real checkout: a corpus that
+        globs to nothing would retire this guard silently, so the caller
+        asserts on the count.
+    """
     candidates: list[Path] = [
         path for path in repo_root.glob("*") if path.is_file()
     ]
@@ -107,13 +143,18 @@ def _sweepable(repo_root: Path) -> list[Path]:
         tree = repo_root / name
         if tree.is_dir():
             candidates.extend(tree.rglob("*"))
-    return [
+    sweepable = [
         path
         for path in candidates
         if path.is_file()
         and path.suffix in CITATION_SUFFIXES
         and not CITATION_EXCLUDED & set(path.relative_to(repo_root).parts)
     ]
+    assert sweepable, (
+        f"no sweepable source found under {repo_root}; an empty corpus retires "
+        "this guard silently rather than failing it"
+    )
+    return sweepable
 
 
 def test_no_live_source_cites_a_retired_invocation(repo_root: Path) -> None:
@@ -122,10 +163,16 @@ def test_no_live_source_cites_a_retired_invocation(repo_root: Path) -> None:
     Args:
         repo_root: The repository root.
     """
+    swept = _sweepable(repo_root)
+    assert len(swept) > 50, (
+        f"the sweep found only {len(swept)} files under {SWEPT_ROOTS}; a corpus "
+        "this small means a renamed tree retired the guard rather than failing it"
+    )
+    citations = _retired_citations()
     offenders: list[str] = []
-    for path in _sweepable(repo_root):
+    for path in swept:
         text = path.read_text(encoding="utf-8", errors="replace")
-        if any(retired in text for retired in RETIRED_INVOCATIONS):
+        if any(citation in text for citation in citations):
             offenders.append(str(path.relative_to(repo_root)))
     assert not offenders, (
         f"these cite a retired invocation {RETIRED_INVOCATIONS}: {sorted(offenders)}"
