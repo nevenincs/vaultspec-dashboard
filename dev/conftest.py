@@ -1,7 +1,10 @@
-"""Repository-root pytest configuration.
+"""Pytest configuration for the harness suite.
 
-Holds the one session-level behaviour that must apply to every invocation,
-however a lane reaches pytest.
+This is the collection root for `testpaths = ["dev"]`, so it is an INITIAL
+conftest: it is loaded before the builtin plugins read their options, which is
+what lets the JUnit option below take effect. It lives here rather than at the
+repository root because the harness has one home under `dev/`, and a loose
+root-level module is a guarded violation of it.
 """
 
 from __future__ import annotations
