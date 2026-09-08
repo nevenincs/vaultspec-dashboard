@@ -6,10 +6,15 @@ Install the toolchain and dependencies, then start the development servers:
 
 ```console
 mise install
-just bootstrap
-npm --prefix frontend ci
+just init
 just dev-serve
 ```
+
+`just init` provisions everything a fresh worktree needs — the locked Python
+toolchain, the SPA's `node_modules`, the framework enrollment, the git hooks,
+and `.env`. It is safe to run again at any time and costs nothing when there is
+nothing to do. `just init-check` reports whether a worktree is ready without
+changing anything.
 
 Run the relevant quality checks before submitting changes:
 
