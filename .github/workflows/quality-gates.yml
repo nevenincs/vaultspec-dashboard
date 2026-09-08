@@ -291,8 +291,8 @@ jobs:
         run: |
           log="${RUNNER_TEMP}/frontend-suite.log"
           uv run --no-sync python -m dev.classify_failure "$log" | tee -a "${GITHUB_STEP_SUMMARY}"
-      - name: Unused code (just check-knip — advisory)
-        run: just check-knip
+      - name: Unused code (just audit-knip — advisory)
+        run: just audit-knip
         continue-on-error: true
       - name: Reclaim runner disk (always)
         if: always()
