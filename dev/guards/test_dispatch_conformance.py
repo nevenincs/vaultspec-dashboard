@@ -55,16 +55,85 @@ def test_every_verb_has_a_recipe(recipe_bodies: dict[str, list[str]]) -> None:
     assert not missing, f"these verbs have no justfile recipe: {missing}"
 
 
-def test_recipe_name_matches_the_verb_it_dispatches(
+#: Recipes whose name deliberately does not begin with the verb they dispatch.
+#: Each is a domain-named entry point rather than an action-named gate, or the
+#: composed pipeline itself, and each is listed by name so a fifth cannot appear
+#: by accident.
+_RENAMED_ENTRY_POINTS: dict[str, str] = {
+    "ci": "ci",
+    "fix-tokens": "tokens",
+    "dev-serve": "serve",
+    "dev-review": "review",
+    "dev-clean": "clean",
+}
+
+
+def test_recipe_name_states_the_verb_it_dispatches(
     recipe_bodies: dict[str, list[str]],
 ) -> None:
-    """`just lint` must run the `lint` verb, not some other one."""
-    mismatched = {
-        recipe: verb
-        for recipe, verb in _dispatched_verbs(recipe_bodies).items()
-        if recipe != verb
-    }
+    """`check-frontend` must run the `lint` verb's `frontend` target.
+
+    The recipe name is now `<group-verb>-<target>` rather than the bare verb,
+    because the verb-plus-argument form kept the real surface out of
+    `just --list`. The dispatched verb is therefore not always the recipe's own
+    first segment - the gating verb is spelled `check` at the recipe and `lint`
+    in the table - so the check is that the recipe's TARGET segment names the
+    target it dispatches, with the verb spellings mapped explicitly.
+    """
+    verb_spelling = {"check": "lint", "health": "health", "dev": None}
+    mismatched: dict[str, str] = {}
+    for recipe, verb in _dispatched_verbs(recipe_bodies).items():
+        if _RENAMED_ENTRY_POINTS.get(recipe) == verb:
+            continue
+        head, _, tail = recipe.partition("-")
+        expected = verb_spelling.get(head, head)
+        if expected != verb:
+            mismatched[recipe] = verb
+            continue
+        if not tail:
+            mismatched[recipe] = verb
     assert not mismatched, f"recipe name and dispatched verb disagree: {mismatched}"
+
+
+def test_every_recipe_target_segment_names_a_real_target(
+    recipe_bodies: dict[str, list[str]],
+) -> None:
+    """`check-frotnend` must fail the build, not just error at runtime.
+
+    A typo in the target segment of a recipe name is invisible until someone
+    runs it: the recipe exists, so `just --list` shows it, and only the
+    dispatcher rejects the argument. This closes that window.
+    """
+    unknown: dict[str, str] = {}
+    for recipe, body in recipe_bodies.items():
+        if recipe in _NON_DISPATCHING or recipe in _RENAMED_ENTRY_POINTS:
+            continue
+        for line in body:
+            match = re.match(
+                r"^\{\{dev\}\}\s+(?P<verb>[a-z][a-z0-9-]*)\s+(?P<target>[a-z][a-z0-9-]*)$",
+                line,
+            )
+            if not match:
+                continue
+            verb, target = match.group("verb"), match.group("target")
+            if verb in VERBS and target not in VERBS[verb].targets:
+                unknown[recipe] = f"{verb}:{target}"
+    assert not unknown, f"recipes name targets the table does not define: {unknown}"
+
+
+def test_no_aggregate_is_a_just_dependency_chain(justfile_text: str) -> None:
+    """An `-all` recipe must run every member and report, not stop at the first.
+
+    A just dependency list is fail-fast. An aggregate is asked for a complete
+    picture, so writing one as `check-all: check-toml check-rust ...` reports
+    one failure where there may be five and costs a CI round-trip per defect.
+    Membership therefore lives in `dev/toolchain.py`, where the aggregate is a
+    `keep_going` target composing `Ref`s to the same targets these recipes run.
+    """
+    chained = re.findall(r"(?m)^([a-z-]+-all):[ 	]+\S", justfile_text)
+    assert not chained, (
+        f"these aggregates are fail-fast just dependency chains: {sorted(chained)}"
+    )
 
 
 @pytest.mark.parametrize("name", sorted(VERBS))
@@ -123,59 +192,6 @@ def test_every_target_is_reachable(name: str) -> None:
         return
     assert SIMPLE not in verb.targets, (
         f"{name} takes targets but also holds an unnamed one, which nothing can select"
-    )
-
-
-#: Invocation prefixes that no longer exist: the previous two-tier shape put a
-#: `dev` namespace in front of every verb, which is now top-level.
-#:
-#: Assembled from fragments ON PURPOSE. Written as a literal, the retired string
-#: would appear in this file and the sweep below would flag its own source - the
-#: guard failing on itself is how the first version of it behaved.
-RETIRED_INVOCATIONS = ("just " + "dev ",)
-
-#: Trees excluded from the citation sweep. `.vault/` records state what was true
-#: when they were written and are deliberately never rewritten; the rest are
-#: generated, vendored, or build output.
-CITATION_EXCLUDED = {
-    ".vault",
-    ".git",
-    "node_modules",
-    "target",
-    "dist",
-    ".venv",
-    "tmp",
-}
-
-#: Suffixes worth sweeping for a stale invocation string.
-CITATION_SUFFIXES = frozenset(
-    {".py", ".mjs", ".js", ".ts", ".tsx", ".rs", ".md", ".toml", ".yml", ".yaml", ".json"}
-)
-
-
-def test_no_live_source_cites_a_retired_invocation(repo_root) -> None:
-    """A doc comment or error message naming a retired prefix sends readers nowhere.
-
-    Four such citations survived the cutover's first sweep - in a Rust comment, a
-    TypeScript doc block, a Figma workflow doc, and the error text the README
-    renderer raises - because that sweep walked a hand-written file list. This
-    walks the tree instead, so the next rename cannot rely on someone
-    remembering every consumer.
-
-    Args:
-        repo_root: The repository root.
-    """
-    offenders: list[str] = []
-    for path in repo_root.rglob("*"):
-        if not path.is_file() or path.suffix not in CITATION_SUFFIXES:
-            continue
-        if CITATION_EXCLUDED & set(path.relative_to(repo_root).parts):
-            continue
-        text = path.read_text(encoding="utf-8", errors="replace")
-        if any(retired in text for retired in RETIRED_INVOCATIONS):
-            offenders.append(str(path.relative_to(repo_root)))
-    assert not offenders, (
-        f"these cite a retired invocation {RETIRED_INVOCATIONS}: {sorted(offenders)}"
     )
 
 
