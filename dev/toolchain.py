@@ -221,6 +221,7 @@ LINT = Verb(
                 Ref("typos"),
                 Ref("guards"),
             ),
+            keep_going=True,
         ),
     },
     default="all",
@@ -258,6 +259,7 @@ FIX = Verb(
         "all": Target(
             "Every fixer, in one pass.",
             (Ref("toml"), Ref("markdown"), Ref("vault"), Ref("rust"), Ref("frontend")),
+            keep_going=True,
         ),
     },
     default="all",
@@ -309,6 +311,7 @@ AUDIT = Verb(
         "node-tooling": Target(
             "ADVISORY. Report advisories against the SPA's build tooling.",
             (Cmd(("npm", "--prefix", "frontend", "audit")),),
+            advisory=True,
         ),
         "all": Target(
             "Every gating supply-chain audit. Advisory 'node-tooling' is "
@@ -319,6 +322,7 @@ AUDIT = Verb(
                 Echo("=== rust licences, bans and sources ==="),
                 Ref("rust"),
             ),
+            keep_going=True,
         ),
     },
     default="all",
@@ -368,6 +372,7 @@ TEST = Verb(
         "all": Target(
             "The engine and SPA suites, plus the guards.",
             (Ref("rust"), Ref("frontend"), Ref("guards")),
+            keep_going=True,
         ),
     },
     default="all",
@@ -406,7 +411,11 @@ BUILD = Verb(
                 ),
             ),
         ),
-        "all": Target("The engine and the SPA.", (Ref("rust"), Ref("frontend"))),
+        "all": Target(
+            "The engine and the SPA.",
+            (Ref("rust"), Ref("frontend")),
+            keep_going=True,
+        ),
     },
     default="all",
 )
@@ -418,7 +427,11 @@ DOCS = Verb(
             "Re-render the README's CLI-output SVGs from a real binary.",
             (uv_run("python", "-m", "dev.readme_assets"),),
         ),
-        "all": Target("Every documentation asset.", (Ref("readme-assets"),)),
+        "all": Target(
+            "Every documentation asset.",
+            (Ref("readme-assets"),),
+            keep_going=True,
+        ),
     },
     default="all",
 )

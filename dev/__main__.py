@@ -8,7 +8,15 @@ drift from the recipes they described.
 
 Steps run in order and execution stops at the first non-zero exit, which is the
 behaviour a reader assumes from a list of commands. A gate behind a failed gate
-never runs, so it must never be reported as having passed.
+never runs, so it must never be reported as having passed. An ``all`` aggregate
+is the exception: it sets ``keep_going`` and runs every step, reporting the
+first non-zero status it saw, because an aggregate is asked for a complete
+picture.
+
+``dev/EXIT-CODES.md`` states the fleet-wide exit-code contract and
+``dev/exit_codes.py`` is its machine-readable form. An advisory target
+suppresses its FINDINGS and nothing else: a tool that failed to RUN reports
+``ADVISORY_BROKEN``, because "reported nothing" is not "found nothing".
 """
 
 from __future__ import annotations
@@ -16,6 +24,7 @@ from __future__ import annotations
 import sys
 from typing import TYPE_CHECKING
 
+from dev.exit_codes import advisory_result, selection_result
 from dev.runner import (
     Cmd,
     Echo,
@@ -107,7 +116,7 @@ def _run_step(step: Step, verb: Verb, verb_name: str, seen: frozenset[str]) -> i
 
 
 def _run_target(name: str, verb: Verb, target: str, seen: frozenset[str]) -> int:
-    """Execute one target's steps in order, stopping at the first failure.
+    """Execute one target's steps, applying the exit-code contract.
 
     Args:
         name: The verb's name.
@@ -116,18 +125,28 @@ def _run_target(name: str, verb: Verb, target: str, seen: frozenset[str]) -> int
         seen: The ``verb:target`` pairs already on the resolution stack.
 
     Returns:
-        The first non-zero exit code, or zero when every step succeeded.
+        The exit code required by ``dev/EXIT-CODES.md``: the first non-zero
+        status for a gating target, ``ADVISORY_BROKEN`` when an advisory
+        target's tool failed to run, ``NOTHING_SELECTED`` when nothing ran,
+        and zero otherwise.
     """
     key = f"{name}:{target}"
     if key in seen:
         print(f"cyclic reference through {key}", file=sys.stderr, flush=True)
         return USAGE_ERROR
     stack = seen | {key}
-    for step in verb.targets[target].steps:
+    body = verb.targets[target]
+    worst = 0
+    for step in body.steps:
         code = _run_step(step, verb, name, stack)
         if code != 0:
-            return code
-    return 0
+            # FIRST non-zero wins: the earliest failure is the one that may
+            # explain the rest.
+            worst = worst or code
+            if not body.keep_going:
+                break
+    worst = selection_result(worst)
+    return advisory_result(worst) if body.advisory else worst
 
 
 def main(argv: Sequence[str]) -> int:
