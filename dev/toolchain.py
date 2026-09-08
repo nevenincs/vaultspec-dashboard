@@ -69,11 +69,23 @@ class Target:
 
     Args:
         summary: One line, shown by ``just <verb> help``.
-        steps: The ordered steps. Execution stops at the first non-zero exit.
+        steps: The ordered steps. Execution stops at the first non-zero exit
+            unless ``keep_going`` is set.
+        advisory: When true the target reports findings without gating. It
+            suppresses ``FINDINGS_CODES`` ONLY: a tool that crashed or was
+            never installed still propagates, as ``ADVISORY_BROKEN``. See
+            ``dev/EXIT-CODES.md``.
+        keep_going: When true a failing step does not stop the remaining ones,
+            and the target reports the FIRST non-zero status it saw. Every
+            ``all`` aggregate sets this: an aggregate's purpose is a complete
+            picture per invocation, and fail-fast costs one CI round-trip per
+            defect while hiding the correlation between them.
     """
 
     summary: str
     steps: tuple[Step, ...]
+    advisory: bool = False
+    keep_going: bool = False
 
 
 @dataclass(frozen=True)
@@ -254,17 +266,33 @@ FIX = Verb(
 AUDIT = Verb(
     "Audit the supply chain. A published advisory against a pinned version gates.",
     {
-        # The runtime (published-wheel) surface is the hard gate. Dev-group
-        # advisories are excluded because torch and vaultspec-rag are dev-only
-        # (published-wheel-purity) - torch is never imported or shipped, since
-        # rag is consumed over loopback HTTP, so a torch advisory cannot reach
-        # the wheel. Run plain `uv audit` to inspect the dev surface too.
-        "python": Target(
-            "Audit the locked runtime Python dependencies.",
-            (Cmd(("uv", "audit", "--no-dev", "--preview-features", "audit")),),
+        # THE gate. `dev/audit/dependency_audit.py` resolves every pinned
+        # coordinate out of the committed lockfiles - uv.lock,
+        # frontend/package-lock.json, engine/Cargo.lock - and queries OSV for
+        # all of them in one pass, so Python, Node and Rust are audited by one
+        # implementation with one verdict. It replaced a bare
+        # `uv audit --no-dev`, which exits 0 even when it prints advisories and
+        # therefore could not fail; the verdict is now a property of the
+        # finding set, not of a preview tool's exit code. Accepted advisories
+        # live in `dependency-audit-allowlist.toml`, each with a reason and an
+        # expiry, and an expired acceptance fails the gate.
+        "deps": Target(
+            "Audit every locked dependency ecosystem for advisories (GATES).",
+            (Cmd(("uv", "run", "--no-sync", "python", "-m", "dev.audit.dependency_audit")),),
         ),
+        # Kept as the names CI and muscle memory already use; both now resolve
+        # to the one cross-ecosystem gate rather than to two partial ones.
+        "python": Target(
+            "Audit the locked dependencies (alias for 'deps').", (Ref("deps"),)
+        ),
+        "node": Target(
+            "Audit the locked dependencies (alias for 'deps').", (Ref("deps"),)
+        ),
+        # Not a duplicate of `deps`: cargo-deny checks licences, bans and
+        # sources, which OSV knows nothing about. Its advisory dimension
+        # overlaps, and that redundancy is cheap.
         "rust": Target(
-            "Audit the engine's crates (advisories, licences, bans, sources).",
+            "Audit the engine's crates (licences, bans, sources).",
             (
                 ToolOrHint(
                     tool="cargo-deny",
@@ -273,19 +301,11 @@ AUDIT = Verb(
                 ),
             ),
         ),
-        # Same rule as `python` above, applied to the SPA: what reaches a user
-        # is the built bundle embedded in the engine binary, so the runtime
-        # dependency tree is the one that gates. Build tooling is audited too
-        # and stays visible, but an advisory there is a maintenance signal
-        # about our own build box, not a reason to refuse a release. CI has
-        # drawn this line since the job was written - `npm audit --omit=dev`
-        # gating, the full tree `continue-on-error` - and this target gated on
-        # the full tree, so `just audit all` went red over build-time
-        # advisories that no release is blocked on.
-        "node": Target(
-            "Audit the SPA's shipped dependencies.",
-            (Cmd(("npm", "--prefix", "frontend", "audit", "--omit=dev")),),
-        ),
+        # What reaches a user is the built bundle embedded in the engine
+        # binary, so `deps` is what gates. npm's own view of the SPA's build
+        # tooling stays visible but advisory: an advisory there is a
+        # maintenance signal about our own build box, not a reason to refuse a
+        # release.
         "node-tooling": Target(
             "ADVISORY. Report advisories against the SPA's build tooling.",
             (Cmd(("npm", "--prefix", "frontend", "audit")),),
@@ -294,12 +314,10 @@ AUDIT = Verb(
             "Every gating supply-chain audit. Advisory 'node-tooling' is "
             "deliberately excluded.",
             (
-                Echo("=== python ==="),
-                Ref("python"),
-                Echo("=== rust ==="),
+                Echo("=== dependency advisories (python, node, rust) ==="),
+                Ref("deps"),
+                Echo("=== rust licences, bans and sources ==="),
                 Ref("rust"),
-                Echo("=== node ==="),
-                Ref("node"),
             ),
         ),
     },
