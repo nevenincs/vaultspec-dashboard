@@ -151,7 +151,11 @@ def _run_target(name: str, verb: Verb, target: str, seen: frozenset[str]) -> int
             if not body.keep_going:
                 break
     worst = selection_result(worst)
-    return advisory_result(worst) if body.advisory else worst
+    return (
+        advisory_result(worst, body.findings_codes)
+        if body.advisory
+        else worst
+    )
 
 
 def main(argv: Sequence[str]) -> int:

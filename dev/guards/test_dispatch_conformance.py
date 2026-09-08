@@ -64,7 +64,7 @@ _RENAMED_ENTRY_POINTS: dict[str, str] = {
     "fix-tokens": "tokens",
     "dev-serve": "serve",
     "dev-review": "review",
-    "dev-clean": "clean",
+    "build-clean": "clean",
 }
 
 

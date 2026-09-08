@@ -38,6 +38,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from dev.exit_codes import FINDINGS_CODES
 from dev.runner import (
     Cmd,
     Echo,
@@ -75,6 +76,10 @@ class Target:
             suppresses ``FINDINGS_CODES`` ONLY: a tool that crashed or was
             never installed still propagates, as ``ADVISORY_BROKEN``. See
             ``dev/EXIT-CODES.md``.
+        findings_codes: The statuses THIS target's tool uses to mean "I found
+            something", overriding the ``FINDINGS_CODES`` default. vulture
+            reports dead code with 3, so a tool that does not use 1 must say
+            so rather than be read as broken.
         keep_going: When true a failing step does not stop the remaining ones,
             and the target reports the FIRST non-zero status it saw. Every
             ``all`` aggregate sets this: an aggregate's purpose is a complete
@@ -85,6 +90,7 @@ class Target:
     summary: str
     steps: tuple[Step, ...]
     advisory: bool = False
+    findings_codes: frozenset[int] = FINDINGS_CODES
     keep_going: bool = False
 
 
