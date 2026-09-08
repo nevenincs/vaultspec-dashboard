@@ -15,7 +15,7 @@ src/**  ──may import──▶  dev/**        ❌  build failure
 
 Production code must never reach into this tree, and must never carry an affordance that
 exists only to serve it — no preview props, no dev-only override branches. Both directions
-are enforced by `dev/tooling/scan-domains.mjs`, wired into `just lint frontend`.
+are enforced by `dev/tooling/scan-domains.mjs`, wired into `just check-frontend`.
 
 Dev-domain modules reach production code through the `@app` alias.
 
@@ -41,7 +41,7 @@ authored under `src/` would breach the latter.
 
 ## Visual review desk
 
-`just review` (or `npm run dev:visual-review`) → `http://localhost:8777/visual-review/`
+`just dev-review` (or `npm run dev:visual-review`) → `http://localhost:8777/visual-review/`
 
 Every principal UI surface, rendered across the four review states — **normal /
 loading / empty / degraded** — under the light, dark, and high-contrast themes. Pick a

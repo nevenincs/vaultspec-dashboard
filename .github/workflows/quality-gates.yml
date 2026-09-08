@@ -172,10 +172,10 @@ jobs:
   guards:
     # The repository-health guards under `dev/guards` — and, until this job
     # existed, the one part of the local gate that CI never ran. They are
-    # reachable as `just lint guards` and `just test guards`, both of which
+    # reachable as `just check-guards` and `just test-guards`, both of which
     # expand to the same pytest invocation, and NO workflow in .github/ invoked
-    # either: a grep of this directory for `pytest`, `dev/guards`, `just lint`
-    # and `just test` returned the frontend job and nothing else. So the
+    # either: a grep of this directory for `pytest`, `dev/guards`, `just check-`
+    # and `just test-` returned the frontend job and nothing else. So the
     # invariants they assert — that every justfile recipe dispatches into
     # `dev/`, that the recipes and `dev/toolchain.py`'s target table describe
     # the same commands, that the src/dev/harness import fence holds, that
@@ -205,7 +205,7 @@ jobs:
     # toolchain and stays one of the cheap ones. It does need Node and the
     # frontend dependencies: the design-system guard parses frontend sources
     # with the TypeScript compiler rather than a regex.
-    name: Repo guards (just lint guards · pytest)
+    name: Repo guards (just check-guards · pytest)
     runs-on: [self-hosted, Linux, X64]
     steps:
       # Before checkout, because checkout is the step the EACCES lands on.
@@ -225,8 +225,8 @@ jobs:
       - run: npm --prefix frontend ci
       - name: Provision the dev toolchain
         run: just bootstrap
-      - name: Guards (just lint guards)
-        run: just lint guards
+      - name: Guards (just check-guards)
+        run: just check-guards
       - name: Reclaim runner disk (always)
         if: always()
         shell: bash
@@ -237,7 +237,7 @@ jobs:
           df -h . 2>/dev/null | tail -1
 
   frontend:
-    name: Frontend (just lint frontend · vitest)
+    name: Frontend (just check-frontend · vitest)
     runs-on: [self-hosted, Linux, X64]
     steps:
       # Before checkout, because checkout is the step the EACCES lands on.
@@ -254,7 +254,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm --prefix frontend ci
       # The gate is INVOKED, never re-listed. This job previously named three
-      # npm scripts by hand while `just lint frontend` ran nine, so six gates —
+      # npm scripts by hand while `just check-frontend` ran nine, so six gates —
       # localization, px, domains, module size, token drift, and figma names —
       # never ran on a pull request at all. A gate reimplemented in YAML cannot
       # be verified to match the gate; only calling the same entry point can.
@@ -262,8 +262,8 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - name: Provision the dev toolchain
         run: just bootstrap
-      - name: Lint (just lint frontend)
-        run: just lint frontend
+      - name: Lint (just check-frontend)
+        run: just check-frontend
       # The frontend suite is online-live by design (no in-memory doubles): its
       # vitest global setup spawns a REAL `vaultspec serve` and runs
       # `vaultspec-core install` against a scratch vault. Provision both — the
@@ -305,11 +305,11 @@ jobs:
       # Captured to a file rather than piped, so the suite's OWN exit code is
       # what fails the step, and so the classifier below has the output to read
       # even when the job is killed before anything else can inspect it.
-      - name: Unit tests (just test frontend)
+      - name: Unit tests (just test-frontend)
         shell: bash
         run: |
           set +e
-          just test frontend > "${RUNNER_TEMP}/frontend-suite.log" 2>&1
+          just test-frontend > "${RUNNER_TEMP}/frontend-suite.log" 2>&1
           status=$?
           cat "${RUNNER_TEMP}/frontend-suite.log"
           exit $status
@@ -331,8 +331,8 @@ jobs:
         run: |
           log="${RUNNER_TEMP}/frontend-suite.log"
           uv run --no-sync python -m dev.classify_failure "$log" | tee -a "${GITHUB_STEP_SUMMARY}"
-      - name: Unused code (just lint knip — advisory)
-        run: just lint knip
+      - name: Unused code (just check-knip — advisory)
+        run: just check-knip
         continue-on-error: true
       - name: Reclaim runner disk (always)
         if: always()

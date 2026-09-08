@@ -17,7 +17,7 @@ import shutil
 import sys
 from pathlib import Path
 
-#: The built SPA bundle, produced by `just build frontend`.
+#: The built SPA bundle, produced by `just build-frontend`.
 SOURCE = Path("frontend/dist")
 
 #: The staging directory inside the api crate that `embed-spa` compiles in.

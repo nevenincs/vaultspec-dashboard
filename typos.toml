@@ -1,6 +1,6 @@
 # typos — repo-wide source spell check (Rust-based, fast).
 # Run:   typos            (check)   /   typos -w   (fix)
-# Front: just lint typos
+# Front: just check-typos
 #
 # Checks code, config, and prose. Generated artefacts, lockfiles, binary assets,
 # and the engine/rag data dirs are excluded; domain terms that read as typos are

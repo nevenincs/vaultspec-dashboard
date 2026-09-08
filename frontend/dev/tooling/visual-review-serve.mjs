@@ -6,7 +6,7 @@
 // (`dev/visual-review/hermetic.ts`). There is no engine to start, no demo corpus to
 // point at, and no backend whose slowness or absence could blank a cell — which is
 // the property the desk exists to guarantee. This wrapper survives only so the
-// `just review` recipe keeps one stable entry point.
+// `just dev-review` recipe keeps one stable entry point.
 
 import { spawn } from "node:child_process";
 import { dirname, join } from "node:path";

@@ -44,5 +44,5 @@
   the gate does. Keeping dev prose out of `src/` is also what keeps `lint:localization` and
   `lint:px` meaningful — both sit at zero findings.
 - Guard: `frontend/dev/tooling/scan-domains.mjs` (`npm run lint:domains`, in
-  `just lint frontend`). It carries a RATCHET of known-pending violations, each naming
+  `just check-frontend`). It carries a RATCHET of known-pending violations, each naming
   the step that retires it; entries may only be removed, never added.

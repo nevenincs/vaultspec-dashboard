@@ -8,23 +8,23 @@ Install the toolchain and dependencies, then start the development servers:
 mise install
 just bootstrap
 npm --prefix frontend ci
-just serve
+just dev-serve
 ```
 
 Run the relevant quality checks before submitting changes:
 
 ```console
 just ci
-just test e2e
+just test-e2e
 ```
 
 `just ci` runs lint and vault checks, the Rust and Vitest suites, and repository guards.
-Browser end-to-end tests run separately with `just test e2e`.
+Browser end-to-end tests run separately with `just test-e2e`.
 
 Build the Dashboard binary with the web interface embedded:
 
 ```console
-just build package
+just build-package
 ```
 
 This does not build the updater or manifests needed for a complete release installation.
@@ -48,10 +48,10 @@ Release Please update the [engine changelog](engine/CHANGELOG.md).
 Regenerate terminal README assets with:
 
 ```console
-just docs readme-assets
+just docs-readme-assets
 ```
 
-To regenerate application captures, keep `just serve` running in one terminal. Run the
+To regenerate application captures, keep `just dev-serve` running in one terminal. Run the
 capture task in another:
 
 ```console

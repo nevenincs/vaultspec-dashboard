@@ -33,7 +33,7 @@ function port(envVar: string, fallback: number): number {
 }
 
 export const DEV_PORTS = {
-  /** Main SPA dev server — `npm run dev` / `just serve`. */
+  /** Main SPA dev server — `npm run dev` / `just dev-serve`. */
   spa: port("VAULTSPEC_DEV_SPA_PORT", 8770),
   /** Rust engine (`vaultspec serve`) the SPA dev server proxies `/api` to. */
   engine: port("VAULTSPEC_DEV_PORT", 8767),
