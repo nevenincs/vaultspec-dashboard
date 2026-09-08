@@ -220,9 +220,11 @@ def audit(root: Path) -> list[Finding]:
         for needle, why in BANNED_INSTALLS:
             for number, line in enumerate(text.splitlines(), start=1):
                 if needle in line and not line.lstrip().startswith("#"):
-                    findings.append(Finding(path, number, "install", f"{needle}: {why}"))
+                    detail = f"{needle}: {why}"
+                    findings.append(Finding(path, number, "install", detail))
 
-        calls_just = any(_first_word(command) == "just" for _, _, command in _run_commands(text))
+        commands = _run_commands(text)
+        calls_just = any(_first_word(c) == "just" for _, _, c in commands)
         if calls_just:
             if JUST_INSTALL_USES not in text:
                 findings.append(
