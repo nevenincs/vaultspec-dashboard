@@ -193,7 +193,7 @@ LINT = Verb(
         ),
         "guards": Target(
             "Assert the src / dev / harness boundaries hold.",
-            (uv_run("pytest", "dev/guards", "-q"),),
+            (uv_run("pytest", "dev/guards"),),
         ),
         "knip": Target(
             "ADVISORY. Report unused SPA files, exports, and dependencies.",
@@ -336,7 +336,7 @@ TEST = Verb(
         "frontend": Target("Run the SPA unit suite.", (npm("test"),)),
         "guards": Target(
             "Run the architectural guards alone.",
-            (uv_run("pytest", "dev/guards", "-q"),),
+            (uv_run("pytest", "dev/guards"),),
         ),
         # Separate from 'all' because it drives a live `vaultspec serve` origin
         # and a real browser. The install is idempotent.

@@ -55,8 +55,32 @@ dev = [
 # read-only by another process in this shared worktree, after which every run
 # emitted access-denied warnings, and the guards gain nothing from a cache.
 [tool.pytest.ini_options]
-addopts = "-q -p no:cacheprovider"
+# The fleet-standard reporting set, stated once here rather than retyped on
+# every guard lane: a lane passes only what SELECTS it - paths and markers -
+# never how pytest reports.
+#
+# `-ra` is the load-bearing entry. pytest's default `-r` value is `fE`, so a
+# run reports failures and errors and stays SILENT about skips; under `-q`
+# that makes a guard lane which skipped everything read exactly like one that
+# passed. `--strict-markers` and `--strict-config` turn a typo into an error
+# rather than a silent empty selection that exits 5 and looks clean.
+addopts = [
+  "-q",
+  "-ra",
+  "--tb=short",
+  "--durations=10",
+  "--strict-markers",
+  "--strict-config",
+  "--capture=sys",
+  "-p",
+  "no:cacheprovider",
+]
 testpaths = ["dev"]
+# No `timeout`/`timeout_func_only` here: pytest-timeout is not in this
+# repository's dev group, and `--strict-config` correctly refuses an ini key
+# no installed plugin owns. The guards are pure-stdlib and sub-second.
+tmp_path_retention_count = 1
+tmp_path_retention_policy = "failed"
 
   [[tool.uv.index]]
   explicit = true
