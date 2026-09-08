@@ -76,6 +76,10 @@ addopts = [
   "no:cacheprovider",
 ]
 testpaths = ["dev"]
+# `--strict-markers` above means every marker must be declared. `unit` names a
+# pure test with no network and no subprocess; the dependency-audit gate's
+# guards carry it so the same test file is identical in every repository.
+markers = ["unit: pure test - no network, no subprocess, no external tool"]
 # No `timeout`/`timeout_func_only` here: pytest-timeout is not in this
 # repository's dev group, and `--strict-config` correctly refuses an ini key
 # no installed plugin owns. The guards are pure-stdlib and sub-second.
