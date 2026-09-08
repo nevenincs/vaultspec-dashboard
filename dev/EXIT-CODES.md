@@ -28,14 +28,14 @@ whether that gates is already carried by the target's declaration.
 
 ## Verb classes, keyed to CONSEQUENCE
 
-| Verb class | Gates? | 0 means | Non-zero means |
-|---|---|---|---|
-| `check-*` | yes | read-only inspection found nothing | a finding, or the checker could not run |
-| `fix-*` | on failure only | the repair pass completed | the repair pass failed; `5` under `VAULTSPEC_FIX_STRICT` when it had to change something |
-| `test-*` | yes | tests ran and passed | a failure, or `8` when nothing ran |
-| `audit-*` | **no**, except dependency audit | the scan completed | `7` when the scanner could not run; for the dependency audit, `1` on a published advisory |
-| `build-*` | yes | artefacts produced | the build failed |
-| `health-*` | never | always; the output is the product | — |
+| Verb class | Gates?                          | 0 means                            | Non-zero means                                                                            |
+| ---------- | ------------------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------- |
+| `check-*`  | yes                             | read-only inspection found nothing | a finding, or the checker could not run                                                   |
+| `fix-*`    | on failure only                 | the repair pass completed          | the repair pass failed; `5` under `VAULTSPEC_FIX_STRICT` when it had to change something  |
+| `test-*`   | yes                             | tests ran and passed               | a failure, or `8` when nothing ran                                                        |
+| `audit-*`  | **no**, except dependency audit | the scan completed                 | `7` when the scanner could not run; for the dependency audit, `1` on a published advisory |
+| `build-*`  | yes                             | artefacts produced                 | the build failed                                                                          |
+| `health-*` | never                           | always; the output is the product  | —                                                                                         |
 
 `check` is read-only and `fix` mutates: that is the whole of the difference
 between them, and it is why `fix` may not be used as a gate. A `fix` that
@@ -66,18 +66,18 @@ summary AND the exit code, never from the exit code alone.
 
 ## The numbers
 
-| Code | Name | Meaning |
-|---|---|---|
-| 0 | `OK` | ran; nothing that gates |
-| 1 | `FAILED` | ran; reported a gating result |
-| 2 | `INIT_HOST_TOOL_MISSING` | `just init`: a required host tool is absent (L6) |
-| 3 | `INIT_STALE` | `just init`: environment stale relative to its inputs (L6) |
-| 4 | `INIT_STEP_FAILED` | `just init`: one bootstrap step failed (L6) |
-| 5 | `DRIFT` | managed content differs from its generated form (L6; also `fix` under `VAULTSPEC_FIX_STRICT`) |
-| 6 | `INIT_LOCKED` | `just init`: the environment is held open by another process (L6) |
-| 7 | `TOOL_BROKEN` (`ADVISORY_BROKEN`) | the tool failed to RUN: it started and could not do its job |
-| 8 | `NOTHING_SELECTED` | nothing ran: empty selection, or every test skipped |
-| 127 | `TOOL_MISSING` | required tool absent, no fallback |
+| Code | Name                              | Meaning                                                                                       |
+| ---- | --------------------------------- | --------------------------------------------------------------------------------------------- |
+| 0    | `OK`                              | ran; nothing that gates                                                                       |
+| 1    | `FAILED`                          | ran; reported a gating result                                                                 |
+| 2    | `INIT_HOST_TOOL_MISSING`          | `just init`: a required host tool is absent (L6)                                              |
+| 3    | `INIT_STALE`                      | `just init`: environment stale relative to its inputs (L6)                                    |
+| 4    | `INIT_STEP_FAILED`                | `just init`: one bootstrap step failed (L6)                                                   |
+| 5    | `DRIFT`                           | managed content differs from its generated form (L6; also `fix` under `VAULTSPEC_FIX_STRICT`) |
+| 6    | `INIT_LOCKED`                     | `just init`: the environment is held open by another process (L6)                             |
+| 7    | `TOOL_BROKEN` (`ADVISORY_BROKEN`) | the tool failed to RUN: it started and could not do its job                                   |
+| 8    | `NOTHING_SELECTED`                | nothing ran: empty selection, or every test skipped                                           |
+| 127  | `TOOL_MISSING`                    | required tool absent, no fallback                                                             |
 
 2–6 are L6's `just init` codes, adopted unchanged. Outside `init`, an absent
 executable found at dispatch time is `127` — the shell's own
@@ -106,6 +106,26 @@ The consequence for construction: an `-all` aggregate is a target inside `dev/`
 with `keep_going=True`, composing the others by reference. It is **not** a
 `just` dependency chain, because `just` dependencies are unconditionally
 fail-fast and cannot express this rule.
+
+### What is an aggregate, and what is a pipeline
+
+The rule above governs AGGREGATES, and the test for one is whether its steps
+are independent measurements. `check-all`, `fix-all`, `test-all`, `audit-all`
+and `build-all` all pass it: the type checker's verdict does not depend on the
+linter's, and a reader who ran one of them wants every answer, not the first.
+
+`ci` and `init` fail that test and are deliberately FAIL-FAST. Their first step
+provisions the environment the rest run inside — `uv sync` for `ci`,
+`init-python` for `init` — so a later step is not an independent measurement of
+anything: it is a step whose result is unreadable once the step before it
+failed. Running `init-node` after `init-python` failed does not add a second
+data point, it adds a second error message about the same cause. Reporting
+"nine steps failed" where one thing broke is the same loss of signal that
+fail-fast aggregation causes, arrived at from the other direction.
+
+So: run every step when each step ANSWERS SOMETHING; stop at the first failure
+when each step DEPENDS ON the one before it. The test is the dependency, not
+the verb.
 
 ## Partial and skipped work
 
