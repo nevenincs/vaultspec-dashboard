@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from dev import ci_formats
 from dev.exit_codes import TOOL_MISSING as _TOOL_MISSING
 
 if TYPE_CHECKING:
@@ -168,6 +169,11 @@ def run(argv: Sequence[str], env: Mapping[str, str] | None = None) -> int:
         does not exist.
     """
     merged = {**os.environ, **(env or {})}
+    # What a tool PRINTS is decided in one place, from one environment
+    # variable; unset, this returns the command untouched. It never changes
+    # what the process EXITS with.
+    ci_formats.ensure_reports_dir(merged)
+    argv = ci_formats.augment(argv, merged)
     print(f"$ {' '.join(argv)}", flush=True)
     resolved = _resolve(argv[0], merged)
     if resolved is None:
