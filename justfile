@@ -83,16 +83,48 @@ default:
 #  setup
 # ===========================================================================
 
-# The literal `uv sync` here is deliberate, and is the one recipe that does NOT
-# route through `{{dev}}`: it is the only step that must work before a virtual
-# environment exists, and `{{dev}}` presumes one. Every other recipe may assume
-# this has run. `dev/guards` records the exemption by name, so a second
-# non-dispatching recipe still fails the build.
+# `init` is the one command a fresh worktree needs, and the command git
+# tooling and the worktree provisioner call after creating one. It cannot
+# route through `{{dev}}`, which presumes the environment `init` is
+# responsible for creating; it runs on an ephemeral interpreter instead, and
+# `dev/init/` is stdlib-only for exactly that reason.
+#
+# Idempotent: a second run costs a stamp comparison and touches nothing.
+# `just init-check` verifies without mutating, exiting 3 when the worktree is
+# not initialized, which is what a hook or a provisioner calls. Set
+# VAULTSPEC_INIT_JSON=1 for an NDJSON event stream, VAULTSPEC_INIT_FORCE=1 to
+# ignore the stamp. Every run writes `.venv/init-report.json`.
+#
+# The phases run in dependency order and stop at the first failure: unlike the
+# `-all` aggregates, which chain independent inspectors and run every one,
+# these build one artifact, and `init-tools` runs executables out of the
+# environment `init-python` creates. The report still lists every phase, with
+# the ones that were not attempted naming the failure that stopped them.
 
-# Provision a fresh clone or worktree: install the locked dev toolchain.
+# Initialize a fresh clone or worktree: Python, the SPA, hooks, and .env.
 [group('setup')]
-bootstrap:
-    uv sync --locked --group dev
+init:
+    uv run --no-project --python 3.13 -- python -m dev.init all
+
+# Resolve the locked Python development toolchain into .venv.
+[group('setup')]
+init-python:
+    uv run --no-project --python 3.13 -- python -m dev.init python
+
+# Restore the SPA's pinned npm dependency graph under frontend/.
+[group('setup')]
+init-node:
+    uv run --no-project --python 3.13 -- python -m dev.init node
+
+# Enroll the Vaultspec framework and install the committed git hooks.
+[group('setup')]
+init-tools:
+    uv run --no-project --python 3.13 -- python -m dev.init tools
+
+# Report whether this worktree is initialized. Mutates nothing; exits 3 if not.
+[group('setup')]
+init-check:
+    uv run --no-project --python 3.13 -- python -m dev.init check
 
 # Install the locked dev dependency group.
 [group('setup')]

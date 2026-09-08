@@ -38,12 +38,23 @@ FORBIDDEN_EXPRESSIONS = ("os()", "os_family()", "windows-shell", "if ")
 #: that cannot be satisfied by the dispatcher itself:
 #:
 #: * ``default`` asks `just` to list its own recipes.
-#: * ``bootstrap`` creates the virtual environment every other recipe runs
-#:   inside, so it cannot route through a dispatcher that presumes one.
+#: * the ``init`` family provisions the environment every other recipe runs
+#:   inside, so it cannot route through a dispatcher that presumes one. It
+#:   runs on an ephemeral `--no-project` interpreter, which is why
+#:   `dev/init/` is stdlib-only.
 #:
-#: Naming them here is the point: a third non-dispatching recipe fails the
+#: Naming them here is the point: a further non-dispatching recipe fails the
 #: build rather than quietly becoming a step outside the toolchain table.
-SELF_HOSTED_RECIPES = frozenset({"default", "bootstrap"})
+SELF_HOSTED_RECIPES = frozenset(
+    {
+        "default",
+        "init",
+        "init-python",
+        "init-node",
+        "init-tools",
+        "init-check",
+    }
+)
 
 
 def test_every_recipe_body_is_a_single_command(

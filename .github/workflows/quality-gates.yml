@@ -197,7 +197,7 @@ jobs:
     # gone around, and would keep reporting success after the recipe it claims
     # to exercise was renamed or deleted.
     #
-    # `just bootstrap` is required rather than defensive: the guards run under
+    # `just init` is required rather than defensive: the guards run under
     # `uv run --no-sync`, which deliberately will not provision `.venv`, so
     # without the sync there is no pytest to spawn and the step dies at
     # "program not found" instead of reporting on a guard. Nothing here builds
@@ -222,9 +222,8 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - run: npm --prefix frontend ci
       - name: Provision the dev toolchain
-        run: just bootstrap
+        run: just init
       - name: Guards (just check-guards)
         run: just check-guards
       - name: Reclaim runner disk (always)
@@ -261,7 +260,7 @@ jobs:
       - uses: extractions/setup-just@v2
       - uses: astral-sh/setup-uv@v6
       - name: Provision the dev toolchain
-        run: just bootstrap
+        run: just init
       - name: Lint (just check-frontend)
         run: just check-frontend
       # The frontend suite is online-live by design (no in-memory doubles): its
