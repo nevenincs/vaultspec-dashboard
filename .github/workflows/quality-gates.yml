@@ -38,6 +38,7 @@ concurrency:
 
 jobs:
   spellcheck:
+    timeout-minutes: 30
     name: Spell check (typos)
     runs-on: [self-hosted, Linux, X64]
     steps:
@@ -61,6 +62,7 @@ jobs:
       - name: Spell check (just check-typos)
         run: just check-typos
   workflow-lint:
+    timeout-minutes: 30
     # actionlint over .github/workflows — the only thing that reads these files
     # before GitHub itself does. It exists mainly for one failure class this
     # fleet is uniquely exposed to: a `runs-on:` label no registered runner
@@ -130,6 +132,7 @@ jobs:
       - name: Workflow lint and CI contract (just check-workflow)
         run: just check-workflow
   guards:
+    timeout-minutes: 30
     # The repository-health guards under `dev/guards` — and, until this job
     # existed, the one part of the local gate that CI never ran. They are
     # reachable as `just check-guards` and `just test-guards`, both of which
@@ -193,6 +196,7 @@ jobs:
       - name: Guards (just check-guards)
         run: just check-guards
   frontend:
+    timeout-minutes: 60
     name: Frontend (just check-frontend · vitest)
     runs-on: [self-hosted, Linux, X64]
     steps:
@@ -309,6 +313,7 @@ jobs:
           df -h . 2>/dev/null | tail -1
 
   engine-conformance:
+    timeout-minutes: 90
     # Consumer-typed conformance: boot a
     # live vaultspec serve binary against a two-commit fixture and drive
     # EngineClient against it so wire-vs-TypeScript-type drift fails CI.
@@ -431,6 +436,7 @@ jobs:
           df -h . 2>/dev/null | tail -1
 
   scoop-bucket-guard:
+    timeout-minutes: 30
     name: Scoop bucket version guard
     runs-on: [self-hosted, Linux, X64]
     if: github.event_name == 'pull_request'
@@ -520,6 +526,7 @@ jobs:
           fi
           echo "bucket version ${BASE_VERSION} -> ${HEAD_VERSION} — forward, OK"
   supply-chain:
+    timeout-minutes: 45
     name: Supply chain (cargo-deny · uv audit · npm audit)
     runs-on: [self-hosted, Linux, X64]
     steps:
@@ -569,6 +576,7 @@ jobs:
           df -h . 2>/dev/null | tail -1
 
   release-inputs-gate:
+    timeout-minutes: 30
     # The release-inputs gate: validate the
     # component lock, the release-set-manifest schema, and the product builder +
     # its manifest verifiers BEFORE any release job may run. The vaultspec-product

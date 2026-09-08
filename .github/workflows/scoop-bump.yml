@@ -47,6 +47,7 @@ jobs:
       channel: scoop
 
   bump:
+    timeout-minutes: 30
     needs: gate
     runs-on: [self-hosted, Linux, X64]
     steps:

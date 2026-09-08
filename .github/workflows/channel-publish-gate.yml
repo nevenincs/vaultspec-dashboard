@@ -54,6 +54,7 @@ concurrency:
 
 jobs:
   gate:
+    timeout-minutes: 30
     name: Gate ${{ inputs.channel }} publication
     runs-on: [self-hosted, Linux, X64]
     steps:

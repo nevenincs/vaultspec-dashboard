@@ -31,6 +31,7 @@ concurrency:
 
 jobs:
   engine:
+    timeout-minutes: 60
     # Architecture is selected explicitly, not left to the OS label. Two Linux
     # runners are registered — one x86-64, one ARM64 — and both carry the
     # auto-assigned `Linux` label, so a bare `runs-on: Linux` would dispatch to

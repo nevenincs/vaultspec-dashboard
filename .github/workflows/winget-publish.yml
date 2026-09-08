@@ -62,6 +62,7 @@ jobs:
       channel: winget
 
   submit:
+    timeout-minutes: 60
     needs: gate
     runs-on: [self-hosted, Windows, X64]
     steps:

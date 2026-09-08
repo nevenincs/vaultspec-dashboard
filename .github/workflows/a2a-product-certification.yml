@@ -84,6 +84,7 @@ jobs:
   # Per-target certification of the published archive on a native runner.
   # ---------------------------------------------------------------------------
   certify-target:
+    timeout-minutes: 90
     name: Certify ${{ matrix.target }}
     strategy:
       fail-fast: false
@@ -296,6 +297,7 @@ jobs:
       prior_version: ${{ inputs.prior_version }}
 
   certify-msi:
+    timeout-minutes: 90
     name: Certify the complete MSI through Windows Installer
     needs: certify-target
     runs-on: [self-hosted, Windows, X64]
@@ -349,6 +351,7 @@ jobs:
   # One logical release set across every target and supported channel.
   # ---------------------------------------------------------------------------
   compare-inventories:
+    timeout-minutes: 30
     name: Compare published inventories to one release set
     needs: [certify-target, certify-scoop-winget, certify-msi]
     runs-on: [self-hosted, Linux, X64]
@@ -394,6 +397,7 @@ jobs:
   # Storage durability. NO CI RUNNER CAN SATISFY THIS.
   # ---------------------------------------------------------------------------
   certify-durability:
+    timeout-minutes: 90
     name: Certify first-install and steady-state durability on local NTFS
     if: inputs.run_durability
     runs-on: [self-hosted, Windows, X64]

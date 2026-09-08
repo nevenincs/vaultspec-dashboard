@@ -17,6 +17,7 @@ concurrency:
 
 jobs:
   probe-linux-x64:
+    timeout-minutes: 15
     name: probe (Linux x86-64)
     runs-on: [self-hosted, Linux, X64]
     steps:
@@ -62,6 +63,7 @@ jobs:
           uv --version
           jq --version
   probe-linux-arm64:
+    timeout-minutes: 15
     # The ARM64 Linux runner is the fourth and last leg of the shipped target
     # cohort, and the one whose absence used to make `aarch64-unknown-linux-gnu`
     # unbuildable: PyInstaller freezes only for the architecture it runs on, so
@@ -109,6 +111,7 @@ jobs:
           uv --version
           jq --version
   probe-macos:
+    timeout-minutes: 15
     # The macOS leg is reached by no literal `runs-on:` anywhere else in the
     # tree — only through release matrix `include:` blocks — so an absent or
     # mislabelled runner shows up as a job that queues forever rather than one
@@ -155,6 +158,7 @@ jobs:
           uv --version
           jq --version
   probe-windows:
+    timeout-minutes: 15
     name: probe (Windows)
     runs-on: [self-hosted, Windows, X64]
     steps:

@@ -77,6 +77,7 @@ concurrency:
 
 jobs:
   scoop:
+    timeout-minutes: 60
     name: Phase-zero Scoop proof
     if: contains(inputs.channels, 'scoop')
     runs-on: [self-hosted, Windows, X64]
@@ -158,6 +159,7 @@ jobs:
             exit 1
           }
   winget:
+    timeout-minutes: 60
     name: Phase-zero WinGet proof
     if: contains(inputs.channels, 'winget')
     runs-on: [self-hosted, Windows, X64]
@@ -216,6 +218,7 @@ jobs:
             exit 1
           }
   record:
+    timeout-minutes: 20
     name: Record channel outcomes into the support matrix
     needs: [scoop, winget]
     if: always()

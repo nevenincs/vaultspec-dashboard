@@ -28,6 +28,7 @@ concurrency:
 
 jobs:
   release-please:
+    timeout-minutes: 30
     runs-on: [self-hosted, Linux, X64]
     outputs:
       prs_created: ${{ steps.release.outputs.prs_created }}
@@ -51,6 +52,7 @@ jobs:
   # other half — the job that causes the drift also repairs it — so the red is a
   # regression signal rather than a chore the next release rediscovers.
   sync-lock:
+    timeout-minutes: 30
     name: Carry engine/Cargo.lock with the version bump
     needs: release-please
     # Gate on the branch NAME, not on `prs_created`. release-please reports that
