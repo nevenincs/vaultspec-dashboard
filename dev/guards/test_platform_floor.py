@@ -24,9 +24,12 @@ from __future__ import annotations
 
 import re
 import tomllib
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 #: The targets whose floor is a glibc version. The macOS and Windows targets
 #: have no glibc and are outside this module's subject entirely.
@@ -166,7 +169,7 @@ def test_both_linux_legs_pin_the_same_manylinux_release(
     }
     assert len(set(releases.values())) == 1, (
         "the Linux legs pin different manylinux releases: "
-        f"{ {target: f'{major}.{minor}' for target, (major, minor) in releases.items()} }. "
+        f"{ {t: f'{maj}.{min_}' for t, (maj, min_) in releases.items()} }. "
         "Pin both arches to one release so the two share a baseline."
     )
 

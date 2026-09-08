@@ -16,11 +16,14 @@ but the scanner quietly falling out of the gate that runs it.
 from __future__ import annotations
 
 import ast
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from dev.toolchain import LINT
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 #: Trees whose contents are compiled, bundled, or published.
 SHIPPED_TREES = ("engine/crates", "frontend/src")
@@ -70,9 +73,11 @@ def test_the_domain_scanner_is_wired_into_the_frontend_gate() -> None:
     documented and unenforced, which is worse than not having it.
     """
     frontend = LINT.targets["frontend"]
-    scripts = [
-        step.argv[-1] for step in frontend.steps if getattr(step, "argv", None)
-    ]
+    # Not every step kind carries an argv (Echo and the Ref variants do not),
+    # so read it once through getattr and filter on that value - reading it
+    # twice asks the type checker to narrow through a getattr it cannot see.
+    argvs = [getattr(step, "argv", None) for step in frontend.steps]
+    scripts = [argv[-1] for argv in argvs if argv]
     assert DOMAIN_SCANNER in scripts, (
         f"{DOMAIN_SCANNER} is no longer part of `lint frontend`; the src/dev "
         f"fence is unenforced. Present scripts: {scripts}"
@@ -129,7 +134,9 @@ def test_shipped_tree_exists(repo_root: Path, tree: str) -> None:
         repo_root: The repository root.
         tree: The shipped tree under test.
     """
-    assert (repo_root / tree).is_dir(), f"{tree} does not exist; the fence scans nothing"
+    assert (repo_root / tree).is_dir(), (
+        f"{tree} does not exist; the fence scans nothing"
+    )
 
 
 def test_the_scan_covers_a_meaningful_number_of_files(repo_root: Path) -> None:

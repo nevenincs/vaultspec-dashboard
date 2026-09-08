@@ -67,9 +67,7 @@ def test_every_recipe_body_is_a_single_command(
     instead reintroduces the question of what a shell does after a non-zero
     exit, which differs between shells.
     """
-    offenders = {
-        name: body for name, body in recipe_bodies.items() if len(body) != 1
-    }
+    offenders = {name: body for name, body in recipe_bodies.items() if len(body) != 1}
     assert not offenders, (
         "every recipe body must be exactly one command; "
         f"these are not: {sorted(offenders)}"

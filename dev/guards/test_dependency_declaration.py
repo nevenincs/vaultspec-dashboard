@@ -18,9 +18,12 @@ from __future__ import annotations
 import ast
 import sys
 import tomllib
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 #: Packages that must never appear in the runtime dependency list.
 DEV_ONLY_PACKAGES = frozenset({"pytest", "rich", "torch", "vaultspec-rag", "mdformat"})
@@ -59,9 +62,7 @@ def _third_party_imports(repo_root: Path) -> set[str]:
             elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
                 found.add(node.module.split(".")[0])
     return {
-        name
-        for name in found
-        if name not in sys.stdlib_module_names and name != "dev"
+        name for name in found if name not in sys.stdlib_module_names and name != "dev"
     }
 
 

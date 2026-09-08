@@ -15,9 +15,10 @@ four citations survived it.
 
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
-import pytest
+if TYPE_CHECKING:
+    from pathlib import Path
 
 #: Invocation prefixes that no longer exist.
 #:
@@ -54,6 +55,7 @@ def _retired_citations() -> tuple[str, ...]:
         for invocation in RETIRED_INVOCATIONS
         for context in CITATION_CONTEXTS
     )
+
 
 #: Trees excluded from the sweep. `.vault/` records state what was true when
 #: they were written and are deliberately never rewritten; the rest are

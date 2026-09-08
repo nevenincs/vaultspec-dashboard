@@ -156,7 +156,9 @@ def test_the_dist_table_still_carries_every_build_label(repo_root: Path) -> None
     `targets` but absent from the table gets dist's default hosted runner, which
     the preflight would not check and which is not what this fleet builds on.
     """
-    config = tomllib.loads((repo_root / "dist-workspace.toml").read_text(encoding="utf-8"))
+    config = tomllib.loads(
+        (repo_root / "dist-workspace.toml").read_text(encoding="utf-8")
+    )
     dist = config["dist"]
     runners = dist.get("github-custom-runners", {})
     missing = []
@@ -182,7 +184,9 @@ def test_the_expanded_runner_form_is_not_confused_with_its_neighbours(
     against the runner list as a label that matches nothing, turning a healthy
     fleet into a refused release.
     """
-    config = tomllib.loads((repo_root / "dist-workspace.toml").read_text(encoding="utf-8"))
+    config = tomllib.loads(
+        (repo_root / "dist-workspace.toml").read_text(encoding="utf-8")
+    )
     runners = config["dist"].get("github-custom-runners", {})
     expanded = {t: e for t, e in runners.items() if isinstance(e, dict)}
     for target, entry in expanded.items():
@@ -302,7 +306,7 @@ def _derive(repo_root: Path, workflow: str) -> set[str]:
     try:
         output.write_text("", encoding="utf-8")
         prelude = "export GITHUB_OUTPUT='" + relative + "'\n"
-        completed = subprocess.run(  # noqa: S603 - the repo's own workflow step
+        completed = subprocess.run(
             ["bash", "-s"],
             input=(prelude + script).encode("utf-8"),
             cwd=repo_root,

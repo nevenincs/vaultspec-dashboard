@@ -22,8 +22,11 @@ from __future__ import annotations
 
 import hashlib
 import os
-from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
 
 #: Names the directory report artifacts are written into, and enables the
 #: machine-readable formats.

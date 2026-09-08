@@ -181,6 +181,11 @@ check-toml:
 check-markdown:
     {{dev}} lint markdown
 
+# Check the dev harness: lints, formatting, and types.
+[group('check')]
+check-python:
+    {{dev}} lint python
+
 # Check engine formatting, lints, and module size.
 [group('check')]
 check-rust:

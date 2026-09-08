@@ -22,9 +22,12 @@ means a new binary appeared and nobody decided anything about it.
 from __future__ import annotations
 
 import tomllib
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 #: Binary-producing crates that are deliberately NOT published, and why. A crate
 #: named here is a decision on the record; a crate in neither this mapping nor

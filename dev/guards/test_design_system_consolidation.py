@@ -211,7 +211,7 @@ def test_design_system_scanner_is_once_and_in_order() -> None:
     """The complete frontend lint recipe must execute the scanner once."""
     scripts = _frontend_lint_scripts(LINT.targets["frontend"].steps)
     assert not _recipe_errors(LINT.targets["frontend"].steps), (
-        "design-system scanner lint wiring is invalid; " f"present scripts: {scripts}"
+        f"design-system scanner lint wiring is invalid; present scripts: {scripts}"
     )
 
 
@@ -236,7 +236,9 @@ def test_this_guard_is_in_the_configured_discovery(repo_root: Path) -> None:
     patterns = pytest_config.get("python_files", ["test_*.py", "*_test.py"])
     relative = Path(__file__).resolve().relative_to(repo_root.resolve())
     assert any(Path(path) == Path("dev") for path in testpaths), testpaths
-    assert any(fnmatch.fnmatch(relative.name, pattern) for pattern in patterns), patterns
+    assert any(fnmatch.fnmatch(relative.name, pattern) for pattern in patterns), (
+        patterns
+    )
 
 
 @pytest.mark.parametrize(
@@ -311,16 +313,17 @@ def test_package_script_mutations_fail(command: str | None) -> None:
         ('import ledger from "../../../dev/design-system/consolidation-ledger";', True),
         ('export { scan } from "../../../dev/tooling/scan-design-system.mjs";', True),
         ('const fixture = import("@dev/tooling/fixtures/design-system/x");', True),
-        ('const scanner = require("frontend/dev/tooling/scan-design-system.mjs");', True),
+        (
+            'const scanner = require("frontend/dev/tooling/scan-design-system.mjs");',
+            True,
+        ),
         ('import { Button } from "../kit";', False),
         ('// import scanner from "../../dev/tooling/scan-design-system.mjs";', False),
-        ('const prose = \'import("@dev/tooling/x")\';', False),
+        ("const prose = 'import(\"@dev/tooling/x\")';", False),
         ('const prose = `from "../../../dev/tooling/x"`;', False),
     ],
 )
-def test_import_fence_mutations(
-    tmp_path: Path, statement: str, expected: bool
-) -> None:
+def test_import_fence_mutations(tmp_path: Path, statement: str, expected: bool) -> None:
     """Every supported dev-import form fails while comments and app imports pass."""
     repo_root = tmp_path
     source = repo_root / "frontend/src/app/nested/Surface.tsx"

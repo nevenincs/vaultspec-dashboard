@@ -16,11 +16,11 @@ from __future__ import annotations
 import io
 import json
 import os
-from pathlib import Path
 import re
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 
 from rich.console import Console
 from rich.terminal_theme import TerminalTheme

@@ -176,6 +176,14 @@ LINT = Verb(
                 ),
             ),
         ),
+        "python": Target(
+            "Check the dev harness: lints, formatting, and types.",
+            (
+                uv_run("ruff", "check", "dev"),
+                uv_run("ruff", "format", "--check", "dev"),
+                uv_run("ty", "check", "dev"),
+            ),
+        ),
         "rust": Target(
             "Check engine formatting, lints, and module size.",
             (
@@ -250,6 +258,7 @@ LINT = Verb(
                 Ref("workflow"),
                 Ref("toml"),
                 Ref("markdown"),
+                Ref("python"),
                 Ref("rust"),
                 Ref("frontend"),
                 Ref("typos"),
@@ -278,7 +287,9 @@ FIX = Verb(
             "Format the README and repair its structure.",
             (
                 uv_run("mdformat", "README.md"),
-                uv_run("pymarkdown", "--config", ".pymarkdown.json", "fix", "README.md"),
+                uv_run(
+                    "pymarkdown", "--config", ".pymarkdown.json", "fix", "README.md"
+                ),
             ),
         ),
         "vault": Target(
@@ -314,7 +325,18 @@ AUDIT = Verb(
         # expiry, and an expired acceptance fails the gate.
         "deps": Target(
             "Audit every locked dependency ecosystem for advisories (GATES).",
-            (Cmd(("uv", "run", "--no-sync", "python", "-m", "dev.audit.dependency_audit")),),
+            (
+                Cmd(
+                    (
+                        "uv",
+                        "run",
+                        "--no-sync",
+                        "python",
+                        "-m",
+                        "dev.audit.dependency_audit",
+                    )
+                ),
+            ),
         ),
         # Kept as the names CI and muscle memory already use; both now resolve
         # to the one cross-ecosystem gate rather than to two partial ones.
@@ -332,7 +354,13 @@ AUDIT = Verb(
             (
                 ToolOrHint(
                     tool="cargo-deny",
-                    argv=("cargo", "deny", "--manifest-path", "engine/Cargo.toml", "check"),
+                    argv=(
+                        "cargo",
+                        "deny",
+                        "--manifest-path",
+                        "engine/Cargo.toml",
+                        "check",
+                    ),
                     hint="install with: cargo install cargo-deny (or: mise install)",
                 ),
             ),
@@ -399,7 +427,18 @@ TEST = Verb(
         "e2e": Target(
             "Provision Chromium and run the Playwright smoke.",
             (
-                Cmd(("npm", "--prefix", "frontend", "exec", "--", "playwright", "install", "chromium")),
+                Cmd(
+                    (
+                        "npm",
+                        "--prefix",
+                        "frontend",
+                        "exec",
+                        "--",
+                        "playwright",
+                        "install",
+                        "chromium",
+                    )
+                ),
                 npm("e2e"),
             ),
         ),
@@ -545,7 +584,9 @@ CLEAN = Verb(
         Cmd(("git", "worktree", "prune", "-v")),
         Cmd(("git", "clean", "-fdX", "--", "tmp")),
         Echo("reclaimed: engine/target, pruned worktree admin entries, tmp/ scratch"),
-        Echo("note: the shared HF model cache and live agent worktrees are left intact"),
+        Echo(
+            "note: the shared HF model cache and live agent worktrees are left intact"
+        ),
     ),
     default=SIMPLE,
 )

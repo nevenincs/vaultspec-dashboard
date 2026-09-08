@@ -103,15 +103,16 @@ def classify(log: str) -> Verdict:
             return Verdict(
                 is_test_verdict=True,
                 fault=None,
-                guidance="the suite reported, so this is a verdict — but the live engine "
-                "was unreachable throughout the run, so a failure here is as likely to be "
-                "collateral as a real defect; check the failing test against a healthy run "
-                "before acting on it",
+                guidance="the suite reported, so this is a verdict — but the "
+                "live engine was unreachable throughout the run, so a failure "
+                "here is as likely to be collateral as a real defect; check the "
+                "failing test against a healthy run before acting on it",
             )
         return Verdict(
             is_test_verdict=True,
             fault=None,
-            guidance="the suite ran to completion and reported; this red is about the code",
+            guidance="the suite ran to completion and reported; this red is "
+            "about the code",
         )
     for fault, pattern, guidance in SIGNATURES:
         if pattern.search(log) is not None:
@@ -136,7 +137,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     # An absent log is itself the absence of a verdict, not a crash: the step
     # that would have written it never ran.
-    text = args.log.read_text(encoding="utf-8", errors="replace") if args.log.is_file() else ""
+    text = (
+        args.log.read_text(encoding="utf-8", errors="replace")
+        if args.log.is_file()
+        else ""
+    )
     verdict = classify(text)
     print(render(verdict))
     return 0

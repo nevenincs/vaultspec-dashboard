@@ -12,9 +12,10 @@ from __future__ import annotations
 import hashlib
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-import pytest
-
+if TYPE_CHECKING:
+    import pytest
 
 # --- machine-readable CI reports -------------------------------------------
 #

@@ -22,9 +22,12 @@ were reached: each passed review individually.
 
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 #: Directories that may hold development tooling.
 SANCTIONED_HOMES = ("dev", "frontend/dev", "engine/tests")
