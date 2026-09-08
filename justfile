@@ -211,7 +211,7 @@ check-guards:
 # build on an unused export.
 
 # Report unused SPA files, exports, and dependencies; advisory, exits 0.
-[group('check')]
+[group('audit')]
 check-knip:
     {{dev}} lint knip
 
@@ -289,6 +289,7 @@ audit-node-tooling:
 
 # Run every gating supply-chain audit. Advisory `audit-node-tooling` is
 # deliberately not a member.
+[doc('Run every gating supply-chain audit; the advisory dimension is excluded.')]
 [group('audit')]
 audit-all:
     {{dev}} audit all
@@ -351,6 +352,17 @@ build-package:
 build-all:
     {{dev}} build all
 
+# Grouped with `build-*` rather than `dev-*` because the bulk of what it
+# reclaims is what `build-all` produced - the engine target directory - and a
+# contributor looking for "how do I get rid of what the build made" reads this
+# section. It reaps more than build output (dead worktrees, tmp scratch), which
+# is why the summary says so rather than claiming to be a plain build clean.
+
+# Reclaim dev artifact sprawl: engine target, dead worktrees, tmp scratch.
+[group('build')]
+build-clean:
+    {{dev}} clean
+
 # ===========================================================================
 #  docs
 # ===========================================================================
@@ -389,11 +401,6 @@ dev-serve:
 dev-review:
     {{dev}} review
 
-# Reclaim dev artifact sprawl: engine target, dead worktrees, tmp scratch.
-[group('dev')]
-dev-clean:
-    {{dev}} clean
-
 # ===========================================================================
 #  meta
 # ===========================================================================
@@ -403,6 +410,6 @@ dev-clean:
 # run here means what a green CI run means.
 
 # Run the full local gate: static analysis, vault check, tests.
-[group('meta')]
+[group('check')]
 ci:
     {{dev}} ci
