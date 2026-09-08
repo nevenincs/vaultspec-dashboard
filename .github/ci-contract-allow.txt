@@ -1,0 +1,95 @@
+# Steps `dev/ci_contract.py` permits to name a tool, and the reason each does.
+#
+# An entry is `workflow.yml:Step name`, or a bare `workflow.yml` for a lane
+# whose conversion has not started. Every line is a debt with an owner, not a
+# dispensation: the file exists so the unconverted surface is a number someone
+# can burn down instead of a silence.
+#
+# TWO CLASSES ONLY.
+#
+#   runner-plane   Acts on the MACHINE, not the product. It has no meaning on
+#                  a laptop, so there is no recipe it could be hiding. These
+#                  belong in ci-fleet, which already owns the job hooks and
+#                  the preflight; they are listed here until that render
+#                  exists rather than pretended away.
+#
+#   pending        Product-plane work that SHOULD be a recipe and is not yet.
+#                  Each names the recipe it is waiting for.
+
+# --- runner-plane -----------------------------------------------------------
+# Reclaims a workspace a killed job left root-owned, before checkout is the
+# step that would hit EACCES. ci-fleet's job-completed hook cannot help: this
+# has to run BEFORE the next job's checkout, not after the last job's end.
+quality-gates.yml:Reclaim the workspace from a job that may not have finished
+release-please.yml:Reclaim the workspace from a job that may not have finished
+
+# Reads engine/rust-toolchain.toml so the pin can be passed to
+# dtolnay/rust-toolchain, which otherwise exports RUSTUP_TOOLCHAIN and
+# overrides the file. Feeds a `uses:`, so it cannot be a recipe.
+quality-gates.yml:Read pinned toolchain
+release-please.yml:Read pinned toolchain
+engine-ci.yml:Read pinned toolchain
+
+# Absorbs a transient `socket hang up` from the toolchain action, which does
+# not retry. Machine-level, idempotent, `|| true`.
+quality-gates.yml:Warm the pinned toolchain, retrying a dropped connection
+release-please.yml:Warm the pinned toolchain, retrying a dropped connection
+
+# Names the shared cargo target directory for later steps, and repairs a
+# runner whose sccache port has been squatted. Both write GITHUB_ENV; both are
+# statements about this machine.
+quality-gates.yml:Resolve the engine build output directory
+engine-ci.yml:Verify the compile cache cannot block the gate
+
+# Stops a `vaultspec serve` this job started and reports free space. The
+# ci-fleet job-completed hook bounds DISK on both platforms and is what
+# retired the 22 disk-only copies of this step; it does not kill processes.
+quality-gates.yml:Reclaim runner disk (always)
+engine-ci.yml:Reclaim runner disk (always · unix)
+engine-ci.yml:Reclaim runner disk (always · windows)
+
+# --- pending ----------------------------------------------------------------
+# Puts vaultspec-core on PATH for the live-engine and e2e tiers. `just init`
+# already installs it INTO the environment; the PATH export is what
+# `init-tools` should absorb, which retires both of these.
+quality-gates.yml:Install vaultspec-core (live-engine declared-tier dependency)
+engine-ci.yml:Put vaultspec-core on PATH for the e2e tier
+
+# Calls `just test-frontend`, but through a capture so the classifier below it
+# has the log even when the runner dies mid-suite. Retired by teaching the
+# recipe to write the log itself (VAULTSPEC_CI_REPORTS is the seam).
+quality-gates.yml:Unit tests (just test-frontend)
+quality-gates.yml:Say which kind of red this is
+
+# The live-engine conformance lane: spawn a real serve over the fixture vault,
+# run one vitest file against it, stop it. Recipe needed: `test-conformance`,
+# with the spawn/poll/teardown in dev/ where it can run locally.
+quality-gates.yml:Create fixture and start serve
+quality-gates.yml:Run TS conformance test
+quality-gates.yml:Stop serve
+
+# Channel-manifest and release-input gates. Recipes needed:
+# `check-channel-manifests`, `check-release-inputs`.
+quality-gates.yml:Guard the committed Scoop manifest
+quality-gates.yml:Component lock + release-set-manifest schema are well-formed
+quality-gates.yml:The committed Cargo.lock agrees with Cargo.toml
+quality-gates.yml:Product builder, manifest verifiers, and lock/capsule/release pins
+release-please.yml:Regenerate and push engine/Cargo.lock
+
+# --- pending, whole lane ----------------------------------------------------
+# The release and channel lanes: ~2,500 lines of inline bash and pwsh across
+# the fleet, of which these are the dashboard's share. Nothing here can be run
+# by a developer, which is why a release-path break surfaces at release. Each
+# needs its own recipe set before its entry can be removed; they are named by
+# file because converting one step of a lane in isolation buys nothing.
+release.yml            # cargo-dist orchestration; recipes: build-release-*
+product-release.yml    # compose/verify/attach the product tree
+a2a-product-contract.yml       # reaches into vaultspec-a2a's build_binary.py
+a2a-product-certification.yml  # per-target certification, four platforms
+a2a-channel-feasibility.yml    # Scoop/WinGet install-upgrade-uninstall proofs
+channel-publish-gate.yml
+homebrew-bump.yml
+scoop-bump.yml
+winget-publish.yml
+acquisition.yml        # recipe: test-acquisition, shared with core and rag
+ci-runner-probe.yml    # runner-plane in full; belongs in ci-fleet entirely

@@ -371,15 +371,6 @@ jobs:
           name: artifacts-plan-dist-manifest
           path: plan-dist-manifest.json
       # Hand-set for the self-hosted fleet; re-apply if `dist generate-ci` regenerates this file.
-      - name: Reclaim runner disk (always)
-        if: always()
-        shell: bash
-        run: |
-          set +e
-          df -h . 2>/dev/null | tail -1
-          rm -rf "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
-          df -h . 2>/dev/null | tail -1
-
   # Build and packages all the platform-specific things
   build-local-artifacts:
     name: build-local-artifacts (${{ join(matrix.targets, ', ') }})
@@ -671,17 +662,6 @@ jobs:
             ${{ steps.cargo-dist.outputs.paths }}
             ${{ env.BUILD_MANIFEST_NAME }}
       # Hand-set for the self-hosted fleet; re-apply if `dist generate-ci` regenerates this file.
-      - name: Reclaim runner disk (always)
-        if: always()
-        shell: bash
-        run: |
-          set +e
-          df -h . 2>/dev/null | tail -1
-          rm -rf "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
-          if [ "${{ job.status }}" = "failure" ]; then
-            rm -rf target/distrib 2>/dev/null || true
-          fi
-          df -h . 2>/dev/null | tail -1
   # Determines if we should publish/announce
   host:
     needs:
@@ -754,15 +734,6 @@ jobs:
           # shellcheck disable=SC2086
           gh release edit "${{ needs.plan.outputs.tag }}" --target "$RELEASE_COMMIT" $PRERELEASE_FLAG --draft=false
       # Hand-set for the self-hosted fleet; re-apply if `dist generate-ci` regenerates this file.
-      - name: Reclaim runner disk (always)
-        if: always()
-        shell: bash
-        run: |
-          set +e
-          df -h . 2>/dev/null | tail -1
-          rm -rf "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
-          df -h . 2>/dev/null | tail -1
-
   announce:
     needs:
       - plan
@@ -781,15 +752,6 @@ jobs:
           persist-credentials: false
           submodules: recursive
       # Hand-set for the self-hosted fleet; re-apply if `dist generate-ci` regenerates this file.
-      - name: Reclaim runner disk (always)
-        if: always()
-        shell: bash
-        run: |
-          set +e
-          df -h . 2>/dev/null | tail -1
-          rm -rf "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
-          df -h . 2>/dev/null | tail -1
-
   # Hand-added; not produced by `dist generate-ci`. Re-apply if that regenerates
   # this file.
   #

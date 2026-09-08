@@ -623,15 +623,6 @@ jobs:
           [ "${prior}" = "${version}" ] && prior=""
           echo "prior=${prior}" >> "$GITHUB_OUTPUT"
           echo "resolved version=${version} prior=${prior:-<none>}"
-      - name: Reclaim runner disk (always)
-        if: always()
-        shell: bash
-        run: |
-          set +e
-          df -h . 2>/dev/null | tail -1
-          rm -rf "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
-          df -h . 2>/dev/null | tail -1
-
   channel-feasibility:
     name: Phase-zero channel feasibility
     needs: [resolve-version, self-verify]

@@ -196,6 +196,11 @@ check-frontend:
 check-typos:
     {{dev}} lint typos
 
+# Lint the workflows, then hold them to the CI/justfile contract.
+[group('check')]
+check-workflow:
+    {{dev}} lint workflow
+
 # Assert the src / dev / harness boundaries hold.
 [group('check')]
 check-guards:

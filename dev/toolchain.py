@@ -216,7 +216,7 @@ LINT = Verb(
         "workflow": Target(
             "Lint the workflows, then hold them to the CI/justfile contract.",
             (
-                ToolOrDocker("actionlint", (), "rhysd/actionlint:latest"),
+                uv_run("python", "-m", "dev.actionlint"),
                 uv_run("python", "-m", "dev.ci_contract"),
             ),
         ),

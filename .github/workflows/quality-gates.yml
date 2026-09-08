@@ -48,16 +48,18 @@ jobs:
         shell: bash
         run: bash .github/scripts/reclaim-workspace.sh || true
       - uses: actions/checkout@v4
-      - uses: crate-ci/typos@master
-      - name: Reclaim runner disk (always)
-        if: always()
-        shell: bash
-        run: |
-          set +e
-          df -h . 2>/dev/null | tail -1
-          rm -rf "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
-          df -h . 2>/dev/null | tail -1
-
+      - name: Set up just
+        uses: taiki-e/install-action@d56249f532886d210664917b882ad7e152e17d68 # v2
+        with:
+          tool: just@1.38.0
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+      - name: Initialize the worktree
+        run: just init
+      - name: Spell check (just check-typos)
+        run: just check-typos
   workflow-lint:
     # actionlint over .github/workflows — the only thing that reads these files
     # before GitHub itself does. It exists mainly for one failure class this
@@ -110,65 +112,23 @@ jobs:
         shell: bash
         run: bash .github/scripts/reclaim-workspace.sh || true
       - uses: actions/checkout@v4
-      - name: Run actionlint
-        shell: bash
-        env:
-          # Pinned by version AND digest: this step downloads an executable and
-          # runs it, so the release archive is verified before it is unpacked.
-          #
-          # The digest is pinned PER ARCHITECTURE, and that is the whole point
-          # rather than a tidiness measure. This previously named
-          # `linux_amd64.tar.gz` unconditionally with a single digest. On an
-          # ARM64 runner that does not fail the check — it PASSES it, because
-          # the downloaded file really is the amd64 archive the digest names —
-          # and then dies at `Exec format error` one line later. A verification
-          # step that reports success while handing back an unusable binary is
-          # worse than none, because it reads as assurance. The digest has to
-          # prove "the right binary for THIS machine", not "the file I asked
-          # for". Both digests are the ones published in the upstream checksums
-          # file for this exact version; bump the version and all digests
-          # together.
-          ACTIONLINT_VERSION: 1.7.12
-          ACTIONLINT_SHA256_AMD64: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
-          ACTIONLINT_SHA256_ARM64: 325e971b6ba9bfa504672e29be93c24981eeb1c07576d730e9f7c8805afff0c6
-        run: |
-          set -euo pipefail
-          # Refuse anything unpinned by NAME rather than falling through to a
-          # default. A default here is how the original defect would return:
-          # silently downloading the wrong thing and verifying it successfully.
-          kernel="$(uname -s)"
-          if [ "$kernel" != "Linux" ]; then
-            echo "::error::this step pins only Linux actionlint archives; runner reports '$kernel'" >&2
-            exit 1
-          fi
-          machine="$(uname -m)"
-          case "$machine" in
-            x86_64|amd64)  goarch=amd64; want="$ACTIONLINT_SHA256_AMD64" ;;
-            aarch64|arm64) goarch=arm64; want="$ACTIONLINT_SHA256_ARM64" ;;
-            *)
-              echo "::error::no pinned actionlint digest for architecture '$machine'; refusing to run an unverified binary" >&2
-              exit 1
-              ;;
-          esac
-          tarball="actionlint_${ACTIONLINT_VERSION}_linux_${goarch}.tar.gz"
-          curl -fsSL -o "$RUNNER_TEMP/$tarball" \
-            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${tarball}"
-          echo "${want}  $RUNNER_TEMP/$tarball" | sha256sum --check --strict
-          tar xzf "$RUNNER_TEMP/$tarball" -C "$RUNNER_TEMP" actionlint
-          # Prove the binary EXECUTES on this machine before trusting the gate.
-          # This is the check the digest cannot make: a correct digest for the
-          # wrong architecture passes verification and fails here instead, which
-          # is where an architecture mismatch should surface.
-          "$RUNNER_TEMP/actionlint" --version
-          "$RUNNER_TEMP/actionlint" -no-color -shellcheck= -pyflakes= .github/workflows/*.yml
-      - name: Reclaim runner disk (always)
-        if: always()
-        shell: bash
-        run: |
-          set +e
-          rm -rf "${RUNNER_TEMP:-/tmp}"/actionlint "${RUNNER_TEMP:-/tmp}"/actionlint_*.tar.gz 2>/dev/null || true
-          df -h . 2>/dev/null | tail -1
-
+      - name: Set up just
+        uses: taiki-e/install-action@d56249f532886d210664917b882ad7e152e17d68 # v2
+        with:
+          tool: just@1.38.0
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+      - name: Initialize the worktree
+        run: just init
+      # actionlint AND the CI/justfile contract, both through the recipe. The
+      # pinned per-architecture download this step used to carry now lives in
+      # `dev/toolchain.py` behind `check-workflow`, where a developer can run
+      # the same gate before pushing - which is the whole argument for the
+      # recipe being the entry point.
+      - name: Workflow lint and CI contract (just check-workflow)
+        run: just check-workflow
   guards:
     # The repository-health guards under `dev/guards` — and, until this job
     # existed, the one part of the local gate that CI never ran. They are
@@ -215,8 +175,14 @@ jobs:
         shell: bash
         run: bash .github/scripts/reclaim-workspace.sh || true
       - uses: actions/checkout@v4
-      - uses: extractions/setup-just@v2
-      - uses: astral-sh/setup-uv@v6
+      - name: Set up just
+        uses: taiki-e/install-action@d56249f532886d210664917b882ad7e152e17d68 # v2
+        with:
+          tool: just@1.38.0
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -226,15 +192,6 @@ jobs:
         run: just init
       - name: Guards (just check-guards)
         run: just check-guards
-      - name: Reclaim runner disk (always)
-        if: always()
-        shell: bash
-        run: |
-          set +e
-          df -h . 2>/dev/null | tail -1
-          rm -rf "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
-          df -h . 2>/dev/null | tail -1
-
   frontend:
     name: Frontend (just check-frontend · vitest)
     runs-on: [self-hosted, Linux, X64]
@@ -251,14 +208,19 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - run: npm --prefix frontend ci
       # The gate is INVOKED, never re-listed. This job previously named three
       # npm scripts by hand while `just check-frontend` ran nine, so six gates —
       # localization, px, domains, module size, token drift, and figma names —
       # never ran on a pull request at all. A gate reimplemented in YAML cannot
       # be verified to match the gate; only calling the same entry point can.
-      - uses: extractions/setup-just@v2
-      - uses: astral-sh/setup-uv@v6
+      - name: Set up just
+        uses: taiki-e/install-action@d56249f532886d210664917b882ad7e152e17d68 # v2
+        with:
+          tool: just@1.38.0
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
       - name: Provision the dev toolchain
         run: just init
       - name: Lint (just check-frontend)
@@ -294,8 +256,7 @@ jobs:
         shell: bash
         run: echo "ENGINE_TARGET_DIR=${CARGO_TARGET_DIR:-$GITHUB_WORKSPACE/engine/target}" >> "$GITHUB_ENV"
       - name: Build engine binary (live-engine test backend)
-        run: cargo build --bin vaultspec
-        working-directory: engine
+        run: just build-rust
       - name: Install vaultspec-core (live-engine declared-tier dependency)
         shell: bash
         run: |
@@ -383,15 +344,16 @@ jobs:
         shell: bash
         run: echo "ENGINE_TARGET_DIR=${CARGO_TARGET_DIR:-$GITHUB_WORKSPACE/engine/target}" >> "$GITHUB_ENV"
       - name: Build engine binary
-        run: cargo build --bin vaultspec
-        working-directory: engine
+        run: just build-rust
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - run: npm --prefix frontend ci
-      - uses: astral-sh/setup-uv@v6
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
       - name: Install vaultspec-core (live-engine declared-tier dependency)
         # The engine startup gate probes vaultspec-core on PATH (floor 0.1.36);
         # without it `vaultspec serve` fails and the conformance test errors with
@@ -557,15 +519,6 @@ jobs:
             exit 1
           fi
           echo "bucket version ${BASE_VERSION} -> ${HEAD_VERSION} — forward, OK"
-      - name: Reclaim runner disk (always)
-        if: always()
-        shell: bash
-        run: |
-          set +e
-          df -h . 2>/dev/null | tail -1
-          rm -rf "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
-          df -h . 2>/dev/null | tail -1
-
   supply-chain:
     name: Supply chain (cargo-deny · uv audit · npm audit)
     runs-on: [self-hosted, Linux, X64]
@@ -577,43 +530,29 @@ jobs:
         shell: bash
         run: bash .github/scripts/reclaim-workspace.sh || true
       - uses: actions/checkout@v4
-      # Absorb a transient `socket hang up`: the action does not retry, and a
-      # dropped connection here aborts the job before the suite starts, which
-      # reads exactly like a test failure. rustup's install is idempotent, so
-      # a successful warm makes the action's own fetch a no-op.
-      - name: Warm the pinned toolchain, retrying a dropped connection
-        shell: bash
-        run: bash .github/scripts/warm-toolchain.sh "stable" || true
-      - uses: dtolnay/rust-toolchain@stable
-      - name: cargo-deny (native — no Docker on the self-hosted runner)
-        shell: bash
-        run: |
-          # Install cargo-deny into the shared CARGO_HOME/bin so it is reused
-          # across runs (built once); the Docker-based action fails on the
-          # self-hosted runner's credential helper.
-          command -v cargo-deny >/dev/null 2>&1 || cargo install cargo-deny --locked
-          cargo deny --manifest-path engine/Cargo.toml check
-      - uses: astral-sh/setup-uv@v6
+      - name: Set up just
+        uses: taiki-e/install-action@d56249f532886d210664917b882ad7e152e17d68 # v2
+        with:
+          tool: just@1.38.0
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           enable-cache: true
-      - run: uv sync --locked --group dev
-      - name: uv audit (runtime surface; dev-only torch excluded per wheel-purity)
-        run: uv audit --no-dev --preview-features audit
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-      - run: npm --prefix frontend ci
-      # Gate on the SHIPPED surface, mirroring the uv step above: what reaches a
-      # user is the built SPA embedded in the engine binary, so the runtime
-      # dependency tree is the one that must be clean. Build-time tooling is
-      # audited too, one step below, but advisories there are a maintenance
-      # signal about our own build box — not a reason to refuse a release.
-      - name: npm audit (runtime surface)
-        run: npm --prefix frontend audit --omit=dev
-      - name: npm audit (build tooling — advisory)
-        run: npm --prefix frontend audit
+      - name: Initialize the worktree
+        run: just init
+      # Four audits, four recipes. Each of these ran here as a hand-written
+      # command - `cargo install cargo-deny` then `cargo deny check`, three
+      # bare `uv audit`/`npm audit` invocations with their own flag sets - while
+      # `just audit-deps`, `just audit-rust` and `just audit-node-tooling`
+      # carried the same tools with the argued flags. The flags are the whole
+      # content of a supply-chain gate (`--omit=dev` versus not, `--no-dev`
+      # versus not), so a second copy of them is a second policy.
+      - name: Dependency advisories (python, node, rust)
+        run: just audit-deps
+      - name: Licences, bans and sources (cargo-deny)
+        run: just audit-rust
+      - name: Build tooling advisories (advisory)
+        run: just audit-node-tooling
         continue-on-error: true
       - name: Reclaim runner disk (always)
         if: always()

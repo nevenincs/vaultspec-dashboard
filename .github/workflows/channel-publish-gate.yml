@@ -117,11 +117,3 @@ jobs:
             exit 1
           fi
           echo "channel-publish-gate: $CHANNEL cleared for publication"
-      - name: Reclaim runner disk (always)
-        if: always()
-        shell: bash
-        run: |
-          set +e
-          df -h . 2>/dev/null | tail -1
-          rm -rf "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
-          df -h . 2>/dev/null | tail -1

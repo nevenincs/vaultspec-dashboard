@@ -91,10 +91,3 @@ jobs:
           # komac/wingetcreate submission against packaging/winget/.
           Write-Error ("winget-publish: refusing to submit — " + ($blockers -join '; '))
           exit 1
-      - name: Reclaim runner disk (always)
-        if: always()
-        shell: pwsh
-        run: |
-          Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used } | Format-Table -AutoSize
-          Remove-Item -Recurse -Force $env:TEMP\vaultspec-* -ErrorAction SilentlyContinue
-          Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used } | Format-Table -AutoSize

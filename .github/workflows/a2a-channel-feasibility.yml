@@ -157,14 +157,6 @@ jobs:
             }
             exit 1
           }
-      - name: Reclaim runner disk (always)
-        if: always()
-        shell: pwsh
-        run: |
-          Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used } | Format-Table -AutoSize
-          Remove-Item -Recurse -Force $env:TEMP\vaultspec-* -ErrorAction SilentlyContinue
-          Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used } | Format-Table -AutoSize
-
   winget:
     name: Phase-zero WinGet proof
     if: contains(inputs.channels, 'winget')
@@ -223,14 +215,6 @@ jobs:
             }
             exit 1
           }
-      - name: Reclaim runner disk (always)
-        if: always()
-        shell: pwsh
-        run: |
-          Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used } | Format-Table -AutoSize
-          Remove-Item -Recurse -Force $env:TEMP\vaultspec-* -ErrorAction SilentlyContinue
-          Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used } | Format-Table -AutoSize
-
   record:
     name: Record channel outcomes into the support matrix
     needs: [scoop, winget]
@@ -289,11 +273,3 @@ jobs:
           git add "$MATRIX"
           git commit -m "chore(channels): record phase-zero feasibility outcomes into the support matrix"
           git push origin main
-      - name: Reclaim runner disk (always)
-        if: always()
-        shell: bash
-        run: |
-          set +e
-          df -h . 2>/dev/null | tail -1
-          rm -rf "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
-          df -h . 2>/dev/null | tail -1

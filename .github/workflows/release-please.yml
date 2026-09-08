@@ -39,15 +39,6 @@ jobs:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
-      - name: Reclaim runner disk (always)
-        if: always()
-        shell: bash
-        run: |
-          set +e
-          df -h . 2>/dev/null | tail -1
-          rm -rf "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
-          df -h . 2>/dev/null | tail -1
-
   # release-please rewrites `[workspace.package] version` in engine/Cargo.toml
   # through its `extra-files` handling. It has no notion of a Cargo lock, so
   # engine/Cargo.lock still records every workspace crate at the PREVIOUS
@@ -95,11 +86,3 @@ jobs:
         env:
           RELEASE_BRANCH: ${{ needs.release-please.outputs.release_branch }}
         run: bash .github/scripts/sync-release-lock.sh
-      - name: Reclaim runner disk (always)
-        if: always()
-        shell: bash
-        run: |
-          set +e
-          df -h . 2>/dev/null | tail -1
-          rm -rf "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
-          df -h . 2>/dev/null | tail -1

@@ -226,12 +226,3 @@ jobs:
           fi
           git commit -m "chore(scoop): bump vaultspec-dashboard manifest to ${TAG}"
           git push origin main
-      - name: Reclaim runner disk (always)
-        if: always()
-        shell: bash
-        run: |
-          set +e
-          df -h . 2>/dev/null | tail -1
-          rm -f /tmp/complete.zip 2>/dev/null || true
-          rm -rf "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
-          df -h . 2>/dev/null | tail -1

@@ -61,11 +61,6 @@ jobs:
           gh --version
           uv --version
           jq --version
-      - name: Reclaim runner disk (always)
-        if: always()
-        shell: bash
-        run: df -h . 2>/dev/null | tail -1 || true
-
   probe-linux-arm64:
     # The ARM64 Linux runner is the fourth and last leg of the shipped target
     # cohort, and the one whose absence used to make `aarch64-unknown-linux-gnu`
@@ -113,11 +108,6 @@ jobs:
           echo "PATH=$PATH"
           uv --version
           jq --version
-      - name: Reclaim runner disk (always)
-        if: always()
-        shell: bash
-        run: df -h . 2>/dev/null | tail -1 || true
-
   probe-macos:
     # The macOS leg is reached by no literal `runs-on:` anywhere else in the
     # tree — only through release matrix `include:` blocks — so an absent or
@@ -164,11 +154,6 @@ jobs:
           echo "PATH=$PATH"
           uv --version
           jq --version
-      - name: Reclaim runner disk (always)
-        if: always()
-        shell: bash
-        run: df -h . 2>/dev/null | tail -1 || true
-
   probe-windows:
     name: probe (Windows)
     runs-on: [self-hosted, Windows, X64]
@@ -186,7 +171,3 @@ jobs:
       - name: third-party bash-using action (failed on WSL bash before)
         uses: dtolnay/rust-toolchain@stable
       - run: cargo --version
-      - name: Reclaim runner disk (always)
-        if: always()
-        shell: pwsh
-        run: (Get-PSDrive C | Select-Object -ExpandProperty Free)
