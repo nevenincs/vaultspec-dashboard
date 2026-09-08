@@ -207,13 +207,41 @@ LINT = Verb(
             "Assert the src / dev / harness boundaries hold.",
             (uv_run("pytest", "dev/guards"),),
         ),
+        # Two questions about the same artifacts, in the order that answers
+        # them cheapest. actionlint asks whether the YAML is well-formed and
+        # its expressions resolve; the contract asks whether a `run:` step is
+        # calling a recipe or re-implementing one. A workflow can be perfectly
+        # valid YAML and still be the six-gates-never-ran defect this
+        # repository already paid for.
+        "workflow": Target(
+            "Lint the workflows, then hold them to the CI/justfile contract.",
+            (
+                ToolOrDocker("actionlint", (), "rhysd/actionlint:latest"),
+                uv_run("python", "-m", "dev.ci_contract"),
+            ),
+        ),
+        # ADVISORY structurally, not just in prose. Everything around this
+        # target already said so - the summary, and `all` excluding it by name
+        # - while the target itself gated on findings, which is the mismatch
+        # `dev/EXIT-CODES.md` exists to make impossible to leave standing.
+        #
+        # Advisory is the right consequence twice over. An unused export is a
+        # LEAD, not a verdict: knip cannot see a symbol a consumer imports, and
+        # confirming one is a reading task. And this target reaches the network
+        # on every run (`npx --yes knip@5`), so a proxy, a rate limit, or a
+        # yanked version fails it for reasons that have nothing to do with the
+        # SPA. `advisory=True` separates those two outcomes rather than merging
+        # them the way `; exit 0` would: findings exit 0, a knip that could not
+        # RUN exits TOOL_BROKEN (7) and stays visible.
         "knip": Target(
             "ADVISORY. Report unused SPA files, exports, and dependencies.",
             (Cmd(("npx", "--yes", "knip@5", "--directory", "frontend")),),
+            advisory=True,
         ),
         "all": Target(
             "Every blocking linter. Advisory 'knip' is deliberately excluded.",
             (
+                Ref("workflow"),
                 Ref("toml"),
                 Ref("markdown"),
                 Ref("rust"),
@@ -527,15 +555,32 @@ TOKENS = Verb(
 )
 
 CI = Verb(
-    "Run the full local pipeline: lint, vault check, tests.",
+    "Run the full local pipeline: lint, dependency audit, vault, tests, build.",
     _simple(
         "Everything a pull request must pass.",
         Echo("=== lint ==="),
         VerbRef("lint", "all"),
+        # `audit deps` and NOTHING ELSE from the audit verb. The audit group is
+        # advisory by construction - each finding is a lead to confirm, and a
+        # pipeline that fails on a lead teaches people to stop reading it. A
+        # published advisory against a pinned version is not a lead, it is a
+        # verdict, so it is the one audit that gates. Running `audit all` here
+        # would put dead-code and duplication findings between a developer and
+        # a merge; running none would let a known CVE through.
+        Echo("=== dependency audit ==="),
+        VerbRef("audit", "deps"),
         Echo("=== vault ==="),
         VerbRef("vault", "check"),
         Echo("=== test ==="),
         VerbRef("test", "all"),
+        # BUILD IS PART OF CI. It was not, and the consequence is measured:
+        # a break on the release path surfaced at release time, when the tag
+        # was already cut and the only remedies were a revert or a hotfix
+        # release. The gates above prove the source is well-formed and the
+        # tests pass; only this one proves the artifact the user receives can
+        # still be produced from it.
+        Echo("=== build ==="),
+        VerbRef("build", "all"),
     ),
     default=SIMPLE,
 )

@@ -80,6 +80,11 @@ def _format_targets(name: str, verb: Verb) -> str:
     lines = [f"Usage: just {name} <target>", "", verb.summary, "", "Targets:"]
     lines += [
         f"  {target:<{width}}  {body.summary}"
+        # Whether a target gates is the first thing a reader needs from this
+        # list, and until now it was only ever stated inside a summary someone
+        # remembered to write that way. DERIVING it from the flag means the
+        # help and the behaviour cannot disagree.
+        + (" (advisory)" if body.advisory and target != "all" else "")
         + ("  (default)" if target == verb.default else "")
         for target, body in verb.targets.items()
     ]
