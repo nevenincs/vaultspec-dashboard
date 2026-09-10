@@ -76,7 +76,11 @@ github-build-setup = "../release-build-setup.yml"
 # the `runs-on` labels for the non-target jobs (plan, host, announce — they have
 # no target, so dist emits ubuntu-22.04, and this fleet has no such runner), and
 # the per-job disk-reclaim steps this shared workstation needs (dist's only build
-# hook, github-build-setup, runs BEFORE the build, not after it).
+# hook, github-build-setup, runs BEFORE the build, not after it). A third: the
+# build-local-artifacts `runs-on` TRANSLATION that turns each runner key named in
+# [dist.github-custom-runners] below into a standard fleet label set (see the
+# note above that table). dist would regenerate it as a bare
+# `runs-on: ${{ matrix.runner }}`, which schedules onto labels no runner carries.
 #
 # Without this, `dist plan` fails the whole Release workflow at its first job with
 # "release.yml has out of date contents and needs to be regenerated" — which is
@@ -97,29 +101,26 @@ post-announce-jobs = ["./scoop-bump"]
   # dist off a cargo-zigbuild cross-compile), so a target built on a machine of
   # another architecture would be mislabelled rather than merely slow.
   #
-  # Two of these are auto-assigned OS labels, and two are custom labels, which is
-  # an asymmetry worth explaining rather than tidying away. The fleet registers ONE
-  # Windows machine and ONE macOS machine, so `Windows` and `macOS` each identify
-  # exactly one runner. It registers TWO Linux machines — one x86-64, one ARM64 —
-  # and the Actions runner gives both the auto-assigned `Linux` label, so `Linux`
-  # identifies neither. Architecture has to be part of the selection.
+  # THE VALUES BELOW ARE KEYS, NOT RUNNER LABELS. The fleet registers TWO Linux
+  # machines — one x86-64, one ARM64 — so `Linux` alone identifies neither, and
+  # architecture has to be part of every selection. Everywhere else in this
+  # repository that is a label LIST using only standard labels, e.g.
+  # `runs-on: [self-hosted, Linux, ARM64]`. dist cannot say that: its value for a
+  # target is a single string (`GithubRunner`, a String newtype, in both the short
+  # and the expanded table form; 0.32.0 is dist's latest release). A TOML array
+  # here does not error — dist silently keeps only the FIRST element, verified
+  # against the pinned 0.32.0 binary: `= ["self-hosted", "Linux", "X64"]` planned
+  # as `runner: "self-hosted"`, which every machine in the fleet carries.
   #
-  # Everywhere else in this repository that is written as a label LIST, e.g.
-  # `runs-on: [self-hosted, Linux, ARM64]`, using only auto-assigned labels. That
-  # is not available here: dist's value for a target is a single label string
-  # (`GithubRunner`, a String newtype, in both the short and the expanded table
-  # form), and it is emitted verbatim into `runs-on: ${{ matrix.runner }}` in the
-  # generated release workflow. A TOML array here does not error — dist accepts it
-  # and silently keeps only the FIRST element, which was verified against the
-  # pinned 0.32.0 binary: `= ["self-hosted", "Linux", "X64"]` planned as
-  # `runner: "self-hosted"`, a label every machine in the fleet carries. So the
-  # only way to express one architecture in one string is a custom label, and the
-  # two Linux runners carry `linux-x64` and `linux-arm64` in addition to their
-  # auto-assigned labels.
-  #
-  # Those two labels must exist on the runners before this file names them. A
-  # label no registered runner carries does not fail the release — it queues it,
-  # silently and forever.
+  # The fleet standard allows runner labels for OS/arch plus the capabilities
+  # {gpu, cuda, build, dev-runner} only, so no runner carries a custom label like
+  # `linux-x64`. Each key here is instead translated in release.yml's
+  # build-local-artifacts `runs-on` (hand-maintained, see allow-dirty above):
+  #   linux-x64 -> [self-hosted, Linux, X64]      linux-arm64 -> [self-hosted, Linux, ARM64]
+  #   macOS     -> [self-hosted, macOS, ARM64]    Windows     -> [self-hosted, Windows, X64]
+  # The release preflight derives its selectors from that same translation, and
+  # dev/guards/test_preflight_coverage.py fails on any key added here without an
+  # arm there. An untranslated key would otherwise queue its leg forever.
   # The two non-Linux targets keep the short form: one label, no container.
   [dist.github-custom-runners]
   aarch64-apple-darwin = "macOS"
@@ -167,10 +168,10 @@ post-announce-jobs = ["./scoop-bump"]
   host = "x86_64-unknown-linux-gnu"
   container = { image = "quay.io/pypa/manylinux_2_28_x86_64@sha256:4dc41da7df20400310c80d162a2fe2d2c2f3d9734d8dec20f6b9843711618deb", host = "x86_64-unknown-linux-gnu" }
 
-  # ON THE FLEET, like every other leg. `linux-arm64` is the custom label
-  # `macbook-neo-linux-arm-vaultspec` carries, chosen for the reason the note
-  # above the table gives: dist takes a single label string here, so the
-  # architecture has to be in that one label rather than in a list.
+  # ON THE FLEET, like every other leg. `linux-arm64` is a KEY, translated in
+  # release.yml to [self-hosted, Linux, ARM64] for the reason the note above the
+  # table gives: dist takes a single string here, so the architecture cannot be
+  # expressed as a label list in this file.
   #
   # KNOWN TO FAIL AS WRITTEN. That runner is itself a colima container whose
   # `/home/runner` is a named volume, so the container this leg declares mounts

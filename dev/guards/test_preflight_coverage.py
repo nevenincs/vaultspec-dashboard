@@ -28,7 +28,9 @@ which is the moment nobody wants to discover a stale selector.
 
 from __future__ import annotations
 
+import json
 import re
+import shutil
 import subprocess
 import tempfile
 import tomllib
@@ -59,10 +61,24 @@ _HOSTED = re.compile(
 #: derivation's `${{` filter and silently unchecked - which is the whole subject
 #: of this module.
 RESOLVED_TEMPLATES = {
-    "${{ matrix.runner }}": "dist-workspace.toml [dist.github-custom-runners]",
     "${{ matrix.os }}": "the build-product-tree matrix",
     "${{ matrix.arch }}": "the build-product-tree matrix",
 }
+
+#: The release build job's `runs-on`: dist's single-string runner KEY (from
+#: dist-workspace.toml [dist.github-custom-runners]) translated into a standard
+#: fleet label set. dist 0.32.0 models a runner as one label string, and the
+#: fleet standard forbids a custom label like `linux-x64`, so the translation is
+#: hand-maintained in release.yml and the derivation reads it from that line.
+_DIST_TRANSLATION = re.compile(r"^\$\{\{\s*fromJSON\(matrix\.runner ==")
+_DIST_PAIR = re.compile(r"matrix\.runner == '([^']+)' && '(\[[^\]]*\])'")
+_RELEASE = ".github/workflows/release.yml"
+
+#: What a fleet runner may be selected by: OS and architecture, plus the
+#: capabilities the fleet standard names. Anything else encodes a repo or tool.
+_STANDARD_OS = {"Linux", "Windows", "macOS"}
+_STANDARD_ARCH = {"X64", "ARM64"}
+_STANDARD_CAPABILITIES = {"gpu", "cuda", "build", "dev-runner"}
 
 
 @pytest.fixture(scope="session")
@@ -112,7 +128,8 @@ def test_every_selector_is_hosted_or_derivable(
         labels = value if isinstance(value, list) else [value]
         for label in labels:
             if "${{" in str(label):
-                if str(label).strip() not in RESOLVED_TEMPLATES:
+                resolved = str(label).strip() in RESOLVED_TEMPLATES
+                if not resolved and not _DIST_TRANSLATION.match(str(label).strip()):
                     unreachable.append(f"{relative}:{job} -> {label}")
             elif not _HOSTED.match(str(label)) and not isinstance(value, list):
                 # A bare self-hosted scalar. The derivations match `runs-on:`
@@ -198,6 +215,84 @@ def test_the_expanded_runner_form_is_not_confused_with_its_neighbours(
         )
     assert expanded or runners, (
         "no runner entries at all; the derivation would produce an empty set"
+    )
+
+
+def _dist_runner_keys(repo_root: Path) -> set[str]:
+    """Every runner key dist-workspace.toml hands dist, in both table forms."""
+    config = tomllib.loads(
+        (repo_root / "dist-workspace.toml").read_text(encoding="utf-8")
+    )
+    runners = config["dist"].get("github-custom-runners", {})
+    keys = set()
+    for entry in runners.values():
+        key = entry.get("runner") if isinstance(entry, dict) else entry
+        if key:
+            keys.add(str(key))
+    return keys
+
+
+def _dist_translation(workflows: dict[str, dict]) -> dict[str, list[str]]:
+    """The release build job's dist-key -> label-set translation, parsed."""
+    templated = [
+        str(spec["runs-on"]).strip()
+        for spec in workflows[_RELEASE]["jobs"].values()
+        if _DIST_TRANSLATION.match(str(spec.get("runs-on", "")).strip())
+    ]
+    assert len(templated) == 1, (
+        f"{_RELEASE} should translate dist's runner key in exactly one job's "
+        f"runs-on; found {len(templated)}. The derivation reads that one line."
+    )
+    return {key: json.loads(labels) for key, labels in _DIST_PAIR.findall(templated[0])}
+
+
+def test_every_dist_runner_key_has_a_translation(
+    repo_root: Path, workflows: dict[str, dict]
+) -> None:
+    """A dist key with no translation schedules a leg onto a label nobody has.
+
+    dist writes the key verbatim into the build matrix; the release build job's
+    `runs-on` is what turns it into labels a runner carries. A key added to
+    dist-workspace.toml without a matching arm falls through to an
+    `unmapped-dist-runner-*` label and the leg would queue until GitHub
+    cancels it.
+    """
+    translation = _dist_translation(workflows)
+    missing = sorted(_dist_runner_keys(repo_root) - set(translation))
+    assert not missing, (
+        f"dist-workspace.toml names runner key(s) {missing} that {_RELEASE}'s "
+        "build-local-artifacts runs-on does not translate. Add an arm mapping "
+        "each to a standard label set."
+    )
+
+
+def test_the_translation_targets_only_standard_label_sets(
+    workflows: dict[str, dict],
+) -> None:
+    """The fleet standard: self-hosted, one OS, one arch, standard capabilities.
+
+    A repo- or tool-specific label (the `linux-x64` this translation replaced)
+    is carried by no runner once the fleet enforces the standard, so a
+    translation that emits one strands the leg just as an unmapped key does.
+    """
+    offenders = {}
+    for key, labels in _dist_translation(workflows).items():
+        rest = labels[1:]
+        oses = [label for label in rest if label in _STANDARD_OS]
+        arches = [label for label in rest if label in _STANDARD_ARCH]
+        extra = [
+            label
+            for label in rest
+            if label not in _STANDARD_OS
+            and label not in _STANDARD_ARCH
+            and label not in _STANDARD_CAPABILITIES
+        ]
+        if labels[:1] != ["self-hosted"] or len(oses) != 1 or len(arches) != 1 or extra:
+            offenders[key] = labels
+    assert not offenders, (
+        f"{offenders} are not standard fleet label sets: expected "
+        "[self-hosted, <Linux|Windows|macOS>, <X64|ARM64>, *capabilities] with "
+        f"capabilities drawn from {sorted(_STANDARD_CAPABILITIES)}."
     )
 
 
@@ -369,3 +464,51 @@ def test_the_derivation_is_not_quietly_empty(repo_root: Path, workflow: str) -> 
         "literal label lists and the dist table - should contribute, so a set "
         "this small means one of them silently produced nothing."
     )
+
+
+def test_the_derivation_checks_every_dist_leg_by_its_standard_label_set(
+    repo_root: Path, workflows: dict[str, dict]
+) -> None:
+    """The preflight must check what the build job will actually request.
+
+    Checking dist's symbolic key would ask the fleet for a label no runner
+    carries and refuse every release; checking nothing would pass while a leg
+    queues. The derivation has to emit the translated set for every key.
+    """
+    translation = _dist_translation(workflows)
+    expected = {
+        ",".join(label.lower() for label in translation[key])
+        for key in _dist_runner_keys(repo_root)
+        if key in translation
+    }
+    emitted = _derive(repo_root, _RELEASE)
+    assert expected <= emitted, (
+        f"{_RELEASE}'s derivation emits {sorted(emitted)} but the build legs "
+        f"request {sorted(expected)}; missing {sorted(expected - emitted)}."
+    )
+    raw = {key.lower() for key in _dist_runner_keys(repo_root)}
+    leaked = sorted(raw & emitted)
+    assert not leaked, (
+        f"the derivation emits dist's symbolic key(s) {leaked} as selectors; "
+        "no runner carries them, so the preflight would refuse every release."
+    )
+
+
+def test_an_unmapped_dist_key_fails_the_derivation(
+    repo_root: Path, tmp_path: Path
+) -> None:
+    """Mutation: a new dist key without a translation must stop the release.
+
+    Runs the real derivation over a copy of the tree whose dist table gains a
+    key the translation does not know.
+    """
+    (tmp_path / ".github" / "workflows").mkdir(parents=True)
+    shutil.copy(repo_root / _RELEASE, tmp_path / _RELEASE)
+    config = (repo_root / "dist-workspace.toml").read_text(encoding="utf-8")
+    table = "[dist.github-custom-runners]\n"
+    unmapped = '  riscv64gc-unknown-linux-gnu = "linux-riscv64"\n'
+    config = config.replace(table, table + unmapped, 1)
+    assert "linux-riscv64" in config
+    (tmp_path / "dist-workspace.toml").write_text(config, encoding="utf-8")
+    with pytest.raises(AssertionError, match="has no translation"):
+        _derive(tmp_path, _RELEASE)
