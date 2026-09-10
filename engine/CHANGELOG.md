@@ -1,5 +1,51 @@
 # Changelog
 
+## [0.1.13](https://github.com/nevenincs/vaultspec-dashboard/compare/v0.1.12...v0.1.13) (2026-09-10)
+
+
+### Features
+
+* **brand:** adopt approved application identity ([34b5974](https://github.com/nevenincs/vaultspec-dashboard/commit/34b597425b3c35564118fc8e3dbde21404b6f389))
+* **dev:** adopt the fleet exit-code contract and make advisory structural ([4041b6c](https://github.com/nevenincs/vaultspec-dashboard/commit/4041b6cfa4502c3bf0eb16f8a9922d1d4455e2d2))
+* **dev:** emit machine-readable gate output when CI asks for it ([067b47b](https://github.com/nevenincs/vaultspec-dashboard/commit/067b47bdb77da4d1e022575232889a3a46516dbe))
+* **justfile:** make `just init` the worktree entry point ([60ec4c0](https://github.com/nevenincs/vaultspec-dashboard/commit/60ec4c0120a6dd1bf34f681fe6b06f3231d5abf2))
+
+
+### Bug Fixes
+
+* **audit:** give the supply-chain gate every ecosystem this repo has ([500f790](https://github.com/nevenincs/vaultspec-dashboard/commit/500f790291924475861882ba0f0a62c56dc9d885))
+* bound cancelled process group ownership ([9b6ddef](https://github.com/nevenincs/vaultspec-dashboard/commit/9b6ddef2503f8a0308c197432528f771676ea760))
+* **ci:** give sparse checkouts their own path on self-hosted runners ([#111](https://github.com/nevenincs/vaultspec-dashboard/issues/111)) ([4e39a04](https://github.com/nevenincs/vaultspec-dashboard/commit/4e39a04ae840c06c04a9bab732cc7bdc173fe9e9))
+* close current setup lifecycle and evidence gaps ([bdc0b45](https://github.com/nevenincs/vaultspec-dashboard/commit/bdc0b45ce6ec7628058c91a340afc5707740eb7c))
+* close setup evidence and process lifecycle ([5da8942](https://github.com/nevenincs/vaultspec-dashboard/commit/5da89420b6b5390c8a22fd52e172d4246e68cac2))
+* **dev:** bring the CI-contract modules under this repo's Python gate ([19b311f](https://github.com/nevenincs/vaultspec-dashboard/commit/19b311f717b2d0d9ef3f32aca92c969325d02016))
+* **dev:** give the init report an argument-typed dict ([0369027](https://github.com/nevenincs/vaultspec-dashboard/commit/03690271f40876d16bdc28b9e965a508f389e825))
+* **dev:** make check-knip advisory in fact, not only in prose ([8684ad7](https://github.com/nevenincs/vaultspec-dashboard/commit/8684ad7ef2878c4cc35c9a41edef4fd931d87fc6))
+* **dev:** make every aggregate run every step, as the contract says ([96269dc](https://github.com/nevenincs/vaultspec-dashboard/commit/96269dc543503031c795a9bcafd32e958977917f))
+* **dev:** move the JUnit report hook under dev/, where the harness lives ([3c26c2c](https://github.com/nevenincs/vaultspec-dashboard/commit/3c26c2c80de620ba2201b16e2b6dd22be32b1683))
+* **dev:** speak UTF-8, so one accented character stops killing recipes ([c7d99b4](https://github.com/nevenincs/vaultspec-dashboard/commit/c7d99b429b86bc8b9540edfa3d61dc029a81b893))
+* **dev:** stop `audit all` silencing the one dimension that gates ([e8a026c](https://github.com/nevenincs/vaultspec-dashboard/commit/e8a026c1bed53ca77f60185f326a052f6292a3df))
+* **frontend:** own SSE reader cancellation ([36e2d83](https://github.com/nevenincs/vaultspec-dashboard/commit/36e2d83badcc34cdf2dbae019754854a321713c9))
+* **graph:** stop self-propelled simulation drift ([4ece5c1](https://github.com/nevenincs/vaultspec-dashboard/commit/4ece5c1a8464c0dafc89d82a0a4a092cef13e6e3))
+* **guards:** prove the exit-code guard's justfile corpus is non-empty ([1485e4f](https://github.com/nevenincs/vaultspec-dashboard/commit/1485e4f0d980a5dbdfd1f773e717ed3c4b4712f6))
+* make current setup reconciliation authoritative ([160ae18](https://github.com/nevenincs/vaultspec-dashboard/commit/160ae18f5a89a94915117c6d1a2edc53e2455bbe))
+* preserve provisioning process fault causes ([4544910](https://github.com/nevenincs/vaultspec-dashboard/commit/4544910c3ffaada857ffb53670fc6ab820a410d2))
+* **release:** gate the lock sync on the branch, not on prs_created ([2207d59](https://github.com/nevenincs/vaultspec-dashboard/commit/2207d597cd9f60348d03ee95dee46f394a0178e3))
+* **release:** regenerate engine/Cargo.lock with the version bump ([47c4f66](https://github.com/nevenincs/vaultspec-dashboard/commit/47c4f6610b8059b352c58a97efabc661dd3c2cb8))
+* **release:** restore pr-run-mode=plan, which the workflow already assumes ([1a42558](https://github.com/nevenincs/vaultspec-dashboard/commit/1a4255892e26a6ac9af66e6c94e1dce74ae6b2fe))
+* **release:** schedule dist build legs onto standard fleet label sets ([#112](https://github.com/nevenincs/vaultspec-dashboard/issues/112)) ([ef690ab](https://github.com/nevenincs/vaultspec-dashboard/commit/ef690ab50280ff71bf9e34b032c54ed8689d228b))
+* repair the two gates that main is failing ([#109](https://github.com/nevenincs/vaultspec-dashboard/issues/109)) ([6686ea1](https://github.com/nevenincs/vaultspec-dashboard/commit/6686ea1c63c8225856a68511c8daa7ea7ca03a10))
+* restore current-provider setup aggregate ([1013120](https://github.com/nevenincs/vaultspec-dashboard/commit/1013120a5f94cec2fe1f8364c4271cebe1d404df))
+* retire legacy Dashboard provider paths ([6ccaba4](https://github.com/nevenincs/vaultspec-dashboard/commit/6ccaba444b765d9408cca819bbd5cbfa4c48eef5))
+* **test:** await happy-dom abort teardown ([cf17342](https://github.com/nevenincs/vaultspec-dashboard/commit/cf17342eb2f5bed5e3fbd334cbde4ad90e919ae4))
+* **update:** refuse on a package-manager copy, which the docs already claimed ([#98](https://github.com/nevenincs/vaultspec-dashboard/issues/98)) ([27a1237](https://github.com/nevenincs/vaultspec-dashboard/commit/27a12379c1d20edf4647e1f154cfcb4cefdaaf7a))
+
+
+### Performance
+
+* **graph:** prune inactive force work and reuse compatible scenes ([f5177b9](https://github.com/nevenincs/vaultspec-dashboard/commit/f5177b9973d6eceb7eabc4530a522fe862080137))
+* **guards:** stop the exit-code guard walking build output ([aa88d32](https://github.com/nevenincs/vaultspec-dashboard/commit/aa88d329c49ddb699886e085feed652b4f2af892))
+
 ## [0.1.12](https://github.com/nevenincs/vaultspec-dashboard/compare/v0.1.11...v0.1.12) (2026-08-31)
 
 
