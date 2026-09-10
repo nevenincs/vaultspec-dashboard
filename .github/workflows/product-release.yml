@@ -75,6 +75,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 1
+          path: .sparse-derive-selectors
           sparse-checkout: |
             .github/workflows/product-release.yml
           sparse-checkout-cone-mode: false
@@ -84,7 +85,7 @@ jobs:
         shell: bash
         run: |
           set -uo pipefail
-          workflow=".github/workflows/product-release.yml"
+          workflow=".sparse-derive-selectors/.github/workflows/product-release.yml"
           [ -f "${workflow}" ] || { echo "::error::${workflow} not checked out; cannot derive selectors" >&2; exit 1; }
 
           # DERIVED, not hand-listed. This job used to carry the four label sets
