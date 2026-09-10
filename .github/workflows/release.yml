@@ -99,10 +99,14 @@ jobs:
       - name: Derive the selectors this workflow schedules onto
         id: derive
         shell: bash
+        # The sparse checkout above lives in its own directory so its sparse
+        # state never reaches the runner's shared workspace (fleet audit
+        # `fleetctl checkouts`); the paths below are relative to it.
+        working-directory: .sparse-derive-selectors
         run: |
           set -uo pipefail
-          workflow=".sparse-derive-selectors/.github/workflows/release.yml"
-          config=".sparse-derive-selectors/dist-workspace.toml"
+          workflow=".github/workflows/release.yml"
+          config="dist-workspace.toml"
           for f in "${workflow}" "${config}"; do
             [ -f "${f}" ] || { echo "::error::${f} not checked out; cannot derive selectors" >&2; exit 1; }
           done
