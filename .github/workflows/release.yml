@@ -114,11 +114,12 @@ jobs:
           # Two sources, because there are two KINDS of selector here and only
           # one of them is in this file:
           #
-          #   1. The build matrix. Its `runs-on` is a dist-computed expression,
-          #      so there is nothing in this workflow to read. dist takes those
-          #      values verbatim from the github-custom-runners table in
-          #      dist-workspace.toml, so that table IS the matrix. Read the same
-          #      file dist reads.
+          #   1. The build matrix. dist takes each leg's runner KEY verbatim
+          #      from the github-custom-runners table in dist-workspace.toml, so
+          #      that table IS the matrix; the build job's `runs-on` then
+          #      translates each key into its standard fleet label set. Read the
+          #      keys from the file dist reads, and the translation from the one
+          #      line that applies it - never from a second copy.
           #   2. Every other job, which carries a literal label list right here.
           #
           # Both readings assume a shape, so both assert it. A derivation that
@@ -128,8 +129,23 @@ jobs:
           # The braces below are escaped so this stays a bash string: Actions
           # expands a bare expression inside `run:` before bash ever sees it, and
           # the guard would then be matching the empty string against itself.
-          grep -qE 'runs-on:[[:space:]]*\$\{\{[[:space:]]*matrix\.runner[[:space:]]*\}\}' "${workflow}" || {
-            echo "::error::${workflow} no longer selects its build matrix through matrix.runner; the dist-workspace.toml table may no longer be the matrix. Re-check this derivation." >&2
+          translation=$(grep -E '^[[:space:]]*runs-on:[[:space:]]*\$\{\{[[:space:]]*fromJSON\(matrix\.runner ==' "${workflow}")
+          [ "$(printf '%s\n' "${translation}" | grep -c .)" -eq 1 ] || {
+            echo "::error::${workflow} no longer selects its build matrix through exactly one matrix.runner translation; the dist-workspace.toml table may no longer be the matrix. Re-check this derivation." >&2
+            exit 1
+          }
+          # key<TAB>label,set - lowercased, as every other selector here is.
+          declare -A label_set=()
+          while IFS=$'\t' read -r key labels; do
+            [ -n "${key}" ] && label_set["${key}"]="${labels}"
+          done < <(
+            printf '%s\n' "${translation}" |
+              grep -oE "matrix\.runner == '[^']+' && '\[[^]]*\]'" |
+              sed -E "s/^matrix\.runner == '([^']+)' \&\& '\[([^]]*)\]'\$/\1\t\2/" |
+              tr -d '" ' | tr '[:upper:]' '[:lower:]'
+          )
+          [ "${#label_set[@]}" -gt 0 ] || {
+            echo "::error::read no key -> label-set pair out of ${workflow}'s matrix.runner translation" >&2
             exit 1
           }
           grep -qE '^[[:space:]]*\[dist\.github-custom-runners\]' "${config}" || {
@@ -137,14 +153,10 @@ jobs:
             exit 1
           }
 
-          mapfile -t selectors < <(
-            {
-              # Literal label lists. Templated ones are skipped - parsing one
-              # would yield a selector containing an unexpanded expression, which
-              # matches no runner and reads as a real failure.
-              grep -vE '\$\{\{' "${workflow}" |
-                awk -F'[][]' '/^[[:space:]]*runs-on:[[:space:]]*\[/ && NF > 2 {print $2}' |
-                tr -d ' ' | tr '[:upper:]' '[:lower:]'
+          # The dist keys, and each one's translation. A key the translation
+          # does not name would be scheduled onto a label no runner carries;
+          # refuse it here, by name, rather than let the preflight find it.
+          mapfile -t dist_keys < <(
               # The dist table, in BOTH of the forms it accepts: the short
               # `<target> = "<label>"` directly under the table, and the expanded
               # `[dist.github-custom-runners.<target>]` sub-table, where the
@@ -166,6 +178,26 @@ jobs:
                 mode == "short" && /^[[:space:]]*[A-Za-z0-9_.-]+[[:space:]]*=/ { v = value($0); if (length(v)) print v; next }
                 mode == "expanded" && /^[[:space:]]*runner[[:space:]]*=/       { v = value($0); if (length(v)) print v; next }
               ' "${config}"
+          )
+          dist_selectors=()
+          for key in "${dist_keys[@]}"; do
+            [ -n "${label_set[${key}]:-}" ] || {
+              echo "::error::dist runner key '${key}' in ${config} has no translation in ${workflow}'s build-job runs-on; add it there as a standard label set" >&2
+              exit 1
+            }
+            dist_selectors+=("${label_set[${key}]}")
+          done
+
+          mapfile -t selectors < <(
+            {
+              # Literal label lists. Templated ones are skipped - parsing one
+              # would yield a selector containing an unexpanded expression, which
+              # matches no runner and reads as a real failure.
+              grep -vE '\$\{\{' "${workflow}" |
+                awk -F'[][]' '/^[[:space:]]*runs-on:[[:space:]]*\[/ && NF > 2 {print $2}' |
+                tr -d ' ' | tr '[:upper:]' '[:lower:]'
+              # The dist legs, translated above into their standard label sets.
+              printf '%s\n' "${dist_selectors[@]}"
             } | sort -u
           )
           if [ "${#selectors[@]}" -eq 0 ]; then
@@ -394,7 +426,17 @@ jobs:
       # - 1 "global" task that builds universal installers
       # - N "local" tasks that build each platform's binaries and platform-specific installers
       matrix: ${{ fromJson(needs.plan.outputs.val).ci.github.artifacts_matrix }}
-    runs-on: ${{ matrix.runner }}
+    # HAND-MAINTAINED TRANSLATION, not dist output (allow-dirty = ["ci"]; keep
+    # it across any `dist generate-ci` diff). dist 0.32.0 - the latest release -
+    # models a runner as ONE label string (`GithubRunner`, a String newtype), so
+    # dist-workspace.toml can only name a symbolic key per target. The fleet
+    # standard allows labels for OS/arch plus {gpu, cuda, build, dev-runner}
+    # only, so no runner carries a key like `linux-x64`: each key is translated
+    # here into its standard label set. An unmapped key becomes a label no
+    # runner carries, which the preflight refuses by name before a leg queues;
+    # derive-selectors reads this very line, and
+    # dev/guards/test_preflight_coverage.py fails on a dist key it lacks.
+    runs-on: ${{ fromJSON(matrix.runner == 'linux-x64' && '["self-hosted","Linux","X64"]' || matrix.runner == 'linux-arm64' && '["self-hosted","Linux","ARM64"]' || matrix.runner == 'macOS' && '["self-hosted","macOS","ARM64"]' || matrix.runner == 'Windows' && '["self-hosted","Windows","X64"]' || format('["unmapped-dist-runner-{0}"]', matrix.runner)) }}
     container: ${{ matrix.container && matrix.container.image || null }}
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
