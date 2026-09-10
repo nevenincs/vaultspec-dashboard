@@ -90,6 +90,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 1
+          path: .sparse-derive-selectors
           sparse-checkout: |
             .github/workflows/release.yml
             dist-workspace.toml
@@ -98,6 +99,10 @@ jobs:
       - name: Derive the selectors this workflow schedules onto
         id: derive
         shell: bash
+        # The sparse checkout above lives in its own directory so its sparse
+        # state never reaches the runner's shared workspace (fleet audit
+        # `fleetctl checkouts`); the paths below are relative to it.
+        working-directory: .sparse-derive-selectors
         run: |
           set -uo pipefail
           workflow=".github/workflows/release.yml"
