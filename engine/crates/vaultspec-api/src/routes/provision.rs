@@ -1041,9 +1041,12 @@ mod setup;
 
 #[cfg(test)]
 use setup::{
-    ManifestState, current_setup_outcome, digest, manifest_has_unsupported, manifest_is_exact,
+    ManifestState, current_setup_outcome, manifest_has_unsupported, manifest_is_exact,
     setup_receipt, validate_install_output,
 };
+
+#[cfg(all(test, windows))]
+use setup::digest;
 
 // --- POST /provision/run ------------------------------------------------------
 
