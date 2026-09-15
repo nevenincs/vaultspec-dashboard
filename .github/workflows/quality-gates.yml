@@ -207,7 +207,7 @@ jobs:
       - name: Full frontend tests
         run: just test-frontend
         env:
-          VAULTSPEC_TEST_ENGINE_BIN: ${{ env.ENGINE_TARGET_DIR }}/debug/vaultspec
+          VAULTSPEC_TEST_ENGINE_BIN: ${{ env.ENGINE_TARGET_DIR }}/release/vaultspec
       - name: Full Rust tests
         run: just test-rust
       - name: Reclaim runner disk

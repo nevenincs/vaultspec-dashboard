@@ -34,7 +34,7 @@ use vaultspec_windows_authority::{
 // installs and what the shared validator requires cannot drift apart.
 use vaultspec_windows_authority::private_policy::{
     ADMINISTRATORS_SID, DIRECTORY_EXPLICIT_FLAGS, FILE_ALL_ACCESS, FILE_EXPLICIT_FLAGS,
-    LOCAL_SYSTEM_SID, required_principals,
+    LOCAL_SYSTEM_SID,
 };
 use windows_acl::acl::{ACL, AceType};
 
@@ -553,7 +553,7 @@ fn harden_directory(path: &Path) -> std::io::Result<()> {
         false,
     )
     .map_err(win_error)?;
-    add_required_principals(&mut acl, &current, DIRECTORY_EXPLICIT_FLAGS)?;
+    add_three_principals(&mut acl, &current, DIRECTORY_EXPLICIT_FLAGS)?;
     remove_nonconforming(
         &mut acl,
         &hardening.dacl_snapshot()?,
@@ -574,7 +574,7 @@ fn harden_created(created: &PrivateFileCreation) -> std::io::Result<()> {
         false,
     )
     .map_err(win_error)?;
-    add_required_principals(&mut acl, &current, FILE_EXPLICIT_FLAGS)?;
+    add_three_principals(&mut acl, &current, FILE_EXPLICIT_FLAGS)?;
     remove_nonconforming(
         &mut acl,
         &created.dacl_snapshot()?,
@@ -583,13 +583,9 @@ fn harden_created(created: &PrivateFileCreation) -> std::io::Result<()> {
     )
 }
 
-/// Install one exact allow entry per distinct required principal.
-fn add_required_principals(
-    acl: &mut ACL,
-    current: &str,
-    required_flags: u8,
-) -> std::io::Result<()> {
-    for sid_text in required_principals(current) {
+/// Install the exact three allow entries (windows-acl mutation).
+fn add_three_principals(acl: &mut ACL, current: &str, required_flags: u8) -> std::io::Result<()> {
+    for sid_text in [current, LOCAL_SYSTEM_SID, ADMINISTRATORS_SID] {
         let sid = windows_acl::helper::string_to_sid(sid_text).map_err(win_error)?;
         acl.add_entry(
             sid.as_ptr().cast_mut().cast(),

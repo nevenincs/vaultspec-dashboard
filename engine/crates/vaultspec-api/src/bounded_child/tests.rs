@@ -342,12 +342,15 @@ async fn wedged_group_waiter_exhausts_one_shutdown_budget_as_unresolved() {
 
 #[tokio::test]
 async fn process_group_admission_refuses_work_at_the_explicit_cap() {
-    let permit = test_reserve_all_group_slots().await;
-    let fault = run_bounded(chatty_command(), None, PROOF_LIMITS, CapPolicy::Refuse)
-        .await
-        .expect_err("the sixty-fifth process group is refused before spawn");
+    let fault = test_with_exhausted_group_capacity(run_bounded(
+        chatty_command(),
+        None,
+        PROOF_LIMITS,
+        CapPolicy::Refuse,
+    ))
+    .await
+    .expect_err("the sixty-fifth process group is refused before spawn");
     assert!(matches!(fault, BoundedFault::AtCapacity));
-    drop(permit);
 }
 
 #[tokio::test]

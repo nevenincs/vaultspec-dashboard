@@ -314,7 +314,6 @@ mod windows_owner_restricted {
     // copies are accepted, duplicated policy literals are not.
     use vaultspec_windows_authority::private_policy::{
         ADMINISTRATORS_SID, FILE_ALL_ACCESS, FILE_EXPLICIT_FLAGS, LOCAL_SYSTEM_SID,
-        required_principals,
     };
     use windows_acl::acl::{ACL, AceType};
 
@@ -376,15 +375,15 @@ mod windows_owner_restricted {
             .map_err(|_| HandoffError::NotOwnerRestricted)
     }
 
-    /// Install one conforming allow entry per distinct required principal and
-    /// remove every other entry, driven by one DACL snapshot.
+    /// Install exactly the three conforming allow entries and remove every other
+    /// entry, driven by the single DACL snapshot (safe `windows-acl` mutation).
     fn harden(created: &PrivateFileCreation, current: &str) -> std::io::Result<()> {
         let mut acl = ACL::from_file_handle(
             created.file().as_raw_handle() as *mut winapi::ctypes::c_void,
             false,
         )
         .map_err(win_error)?;
-        for sid_text in required_principals(current) {
+        for sid_text in [current, LOCAL_SYSTEM_SID, ADMINISTRATORS_SID] {
             let sid = windows_acl::helper::string_to_sid(sid_text).map_err(win_error)?;
             acl.add_entry(
                 sid.as_ptr().cast_mut().cast(),

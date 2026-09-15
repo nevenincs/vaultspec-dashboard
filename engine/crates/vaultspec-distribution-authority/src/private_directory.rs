@@ -121,7 +121,7 @@ fn harden_and_prove(
     )
     .map_err(win_error)
     .map_err(PrivateDirectoryError::Filesystem)?;
-    add_required_principals(&mut acl, &current, DIRECTORY_EXPLICIT_FLAGS)?;
+    add_three_principals(&mut acl, &current, DIRECTORY_EXPLICIT_FLAGS)?;
     remove_nonconforming(
         &mut acl,
         &hardening
@@ -284,19 +284,19 @@ fn open_child_exact(parent: &Dir, name: &str) -> Result<std::fs::File, PrivateDi
 #[cfg(windows)]
 use vaultspec_windows_authority::private_policy::{
     ADMINISTRATORS_SID, DIRECTORY_EXPLICIT_FLAGS, FILE_ALL_ACCESS, FILE_EXPLICIT_FLAGS,
-    LOCAL_SYSTEM_SID, required_principals,
+    LOCAL_SYSTEM_SID,
 };
 
-/// Install one exact allow entry per distinct required principal.
+/// Install the exact three allow entries (`windows-acl` mutation, D2).
 #[cfg(windows)]
-fn add_required_principals(
+fn add_three_principals(
     acl: &mut windows_acl::acl::ACL,
     current: &str,
     required_flags: u8,
 ) -> Result<(), PrivateDirectoryError> {
     use windows_acl::acl::AceType;
 
-    for sid_text in required_principals(current) {
+    for sid_text in [current, LOCAL_SYSTEM_SID, ADMINISTRATORS_SID] {
         let sid = windows_acl::helper::string_to_sid(sid_text)
             .map_err(win_error)
             .map_err(PrivateDirectoryError::Filesystem)?;
@@ -397,7 +397,7 @@ pub(crate) fn write_private_datastore_file(
     )
     .map_err(win_error)
     .map_err(PrivateDirectoryError::Filesystem)?;
-    add_required_principals(&mut acl, &current, FILE_EXPLICIT_FLAGS)?;
+    add_three_principals(&mut acl, &current, FILE_EXPLICIT_FLAGS)?;
     remove_nonconforming(
         &mut acl,
         &created
