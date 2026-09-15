@@ -55,6 +55,10 @@ jobs:
       - uses: taiki-e/install-action@d56249f532886d210664917b882ad7e152e17d68
         with:
           tool: just@1.38.0
+      - name: Install spell checker
+        uses: taiki-e/install-action@d56249f532886d210664917b882ad7e152e17d68
+        with:
+          tool: typos-cli@1.47.2
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
         with:
           enable-cache: false
