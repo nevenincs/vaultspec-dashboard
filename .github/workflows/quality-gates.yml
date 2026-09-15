@@ -50,8 +50,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
       - uses: taiki-e/install-action@d56249f532886d210664917b882ad7e152e17d68
         with:
           tool: just@1.38.0
@@ -182,7 +180,7 @@ jobs:
           printf 'update\n' >> .vault/adr/2026-06-13-conformance-adr.md
           git add .
           GIT_AUTHOR_DATE="$T2_DATE" GIT_COMMITTER_DATE="$T2_DATE" git commit -m "T2: update"
-          "$ENGINE_TARGET_DIR/debug/vaultspec" serve --port 0 &
+          "$ENGINE_TARGET_DIR/release/vaultspec" serve --port 0 &
           SERVE_PID=$!
           echo "SERVE_PID=$SERVE_PID" >> "$GITHUB_ENV"
           SERVICE_JSON="$FIXTURE/.vault/data/engine-data/service.json"

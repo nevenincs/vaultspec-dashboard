@@ -255,14 +255,11 @@ pub(crate) fn test_register_wedged_reaper() {
 }
 
 #[cfg(test)]
-pub(crate) fn test_reserve_all_group_slots() -> Vec<tokio::sync::OwnedSemaphorePermit> {
-    (0..MAX_OWNED_GROUPS)
-        .map(|_| {
-            Arc::clone(&GROUP_PERMITS)
-                .try_acquire_owned()
-                .expect("reserve process-group test slot")
-        })
-        .collect()
+pub(crate) async fn test_reserve_all_group_slots() -> tokio::sync::OwnedSemaphorePermit {
+    Arc::clone(&GROUP_PERMITS)
+        .acquire_many_owned(MAX_OWNED_GROUPS as u32)
+        .await
+        .expect("process-group semaphore remains open")
 }
 
 /// Run `command` to completion under both bounds, draining stdout and stderr

@@ -11,9 +11,10 @@
 //!
 //! - The STRICT private-authority policy ([`validate_private_file`],
 //!   [`validate_private_directory`]) decides every D4 fact: `SE_DACL_PROTECTED`,
-//!   zero inherited entries, exactly the three explicit allow entries for the
-//!   current user, LocalSystem, and built-in Administrators, exact masks and
-//!   inheritance flags, and duplicate rejection. It applies to objects this
+//!   zero inherited entries, exactly one explicit allow entry for each distinct
+//!   required principal (current user, LocalSystem, and built-in
+//!   Administrators), exact masks and inheritance flags, and duplicate
+//!   rejection. It applies to objects this
 //!   authority itself created to that exact shape.
 //! - The LOOSER no-outside-principal policy
 //!   ([`validate_no_outside_principal`]) decides only that no principal outside
@@ -45,6 +46,22 @@ pub const FILE_EXPLICIT_FLAGS: u8 = 0x00;
 /// Explicit directory ACE header flags: `OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE`.
 pub const DIRECTORY_EXPLICIT_FLAGS: u8 = 0x03;
 
+/// The ordered, distinct SID set represented by the three required roles.
+///
+/// The process identity may itself be LocalSystem or a built-in administrator;
+/// Windows ACLs identify principals by SID, so coincident roles are one
+/// principal and must produce one ACE.
+#[must_use]
+pub fn required_principals(current_user_sid: &str) -> Vec<&str> {
+    let mut required = Vec::with_capacity(3);
+    for principal in [current_user_sid, LOCAL_SYSTEM_SID, ADMINISTRATORS_SID] {
+        if !required.contains(&principal) {
+            required.push(principal);
+        }
+    }
+    required
+}
+
 /// A private-authority DACL that does not meet the complete D4 validation.
 #[derive(Debug)]
 pub struct PrivatePolicyViolation {
@@ -73,7 +90,7 @@ impl std::fmt::Display for PrivatePolicyViolation {
 
 impl std::error::Error for PrivatePolicyViolation {}
 
-/// Validate that `snapshot` is the exact protected three-principal DACL required
+/// Validate that `snapshot` is the exact protected required-principal DACL
 /// of a private FILE (windows-private-file-authority D4).
 ///
 /// `current_user_sid` is caller-supplied, and every consumer derives it with
@@ -87,7 +104,7 @@ pub fn validate_private_file(
     validate(snapshot, current_user_sid, FILE_EXPLICIT_FLAGS)
 }
 
-/// Validate that `snapshot` is the exact protected three-principal DACL required
+/// Validate that `snapshot` is the exact protected required-principal DACL
 /// of a private DIRECTORY (windows-private-file-authority D4), whose explicit
 /// entries additionally carry the container/object inheritance flags.
 pub fn validate_private_directory(
@@ -159,7 +176,7 @@ fn validate(
         ));
     }
 
-    let required = [current_user_sid, LOCAL_SYSTEM_SID, ADMINISTRATORS_SID];
+    let required = required_principals(current_user_sid);
     if entries.len() != required.len() {
         return Err(PrivatePolicyViolation::new(format!(
             "DACL must hold exactly {} explicit allow entries, found {}",
@@ -168,8 +185,8 @@ fn validate(
         )));
     }
 
-    // Each of the three fixed principals must match exactly one conforming allow
-    // entry. With the length pinned to three above, exactly-once-each also rules
+    // Each distinct required principal must match exactly one conforming allow
+    // entry. With the length pinned above, exactly-once-each also rules
     // out foreign principals, deny entries, duplicates, and mask/flag drift.
     for principal in required {
         let matches = entries
@@ -190,4 +207,55 @@ fn validate(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::DaclEntry;
+
+    fn allow(sid: &str) -> DaclEntry {
+        DaclEntry::new(
+            DaclAceKind::AccessAllowed,
+            FILE_EXPLICIT_FLAGS,
+            false,
+            FILE_ALL_ACCESS,
+            sid.to_owned(),
+        )
+    }
+
+    #[test]
+    fn required_roles_collapse_to_distinct_windows_principals() {
+        assert_eq!(
+            required_principals("S-1-5-21-1000"),
+            ["S-1-5-21-1000", LOCAL_SYSTEM_SID, ADMINISTRATORS_SID]
+        );
+        assert_eq!(
+            required_principals(LOCAL_SYSTEM_SID),
+            [LOCAL_SYSTEM_SID, ADMINISTRATORS_SID]
+        );
+        assert_eq!(
+            required_principals(ADMINISTRATORS_SID),
+            [ADMINISTRATORS_SID, LOCAL_SYSTEM_SID]
+        );
+    }
+
+    #[test]
+    fn strict_policy_accepts_colliding_roles_only_as_distinct_principals() {
+        let exact = DaclSnapshot::new(
+            true,
+            vec![allow(LOCAL_SYSTEM_SID), allow(ADMINISTRATORS_SID)],
+        );
+        validate_private_file(&exact, LOCAL_SYSTEM_SID).unwrap();
+
+        let duplicate = DaclSnapshot::new(
+            true,
+            vec![
+                allow(LOCAL_SYSTEM_SID),
+                allow(LOCAL_SYSTEM_SID),
+                allow(ADMINISTRATORS_SID),
+            ],
+        );
+        assert!(validate_private_file(&duplicate, LOCAL_SYSTEM_SID).is_err());
+    }
 }

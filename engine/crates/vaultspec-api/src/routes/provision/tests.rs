@@ -726,7 +726,7 @@ fn production_fault_adapter_preserves_all_six_local_causes() {
 
 #[tokio::test]
 async fn setup_process_group_capacity_exhaustion_is_end_to_end_indeterminate() {
-    let permits = crate::bounded_child::test_reserve_all_group_slots();
+    let permit = crate::bounded_child::test_reserve_all_group_slots().await;
     let target = tempfile::tempdir().expect("capacity target");
     let (_, outcome) = setup::run_current_setup(
         "capacity",
@@ -735,7 +735,7 @@ async fn setup_process_group_capacity_exhaustion_is_end_to_end_indeterminate() {
         target.path(),
     )
     .await;
-    drop(permits);
+    drop(permit);
     let receipt = &outcome["aggregate"]["providers"][0];
     assert_eq!(outcome["aggregate"]["status"], "indeterminate");
     assert_eq!(receipt["state"], "indeterminate");
