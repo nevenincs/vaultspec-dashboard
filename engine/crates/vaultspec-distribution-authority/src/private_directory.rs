@@ -300,6 +300,14 @@ fn add_three_principals(
         let sid = windows_acl::helper::string_to_sid(sid_text)
             .map_err(win_error)
             .map_err(PrivateDirectoryError::Filesystem)?;
+        acl.remove_entry(sid.as_ptr().cast_mut().cast(), None, None)
+            .map_err(win_error)
+            .map_err(PrivateDirectoryError::Filesystem)?;
+    }
+    for sid_text in [current, LOCAL_SYSTEM_SID, ADMINISTRATORS_SID] {
+        let sid = windows_acl::helper::string_to_sid(sid_text)
+            .map_err(win_error)
+            .map_err(PrivateDirectoryError::Filesystem)?;
         acl.add_entry(
             sid.as_ptr().cast_mut().cast(),
             AceType::AccessAllow,
