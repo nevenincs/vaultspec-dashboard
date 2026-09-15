@@ -75,23 +75,22 @@ real one, and it fails in our own gate rather than on a user's machine. Never
 substitute a plausible-looking fake — a wrong-but-well-formed digest fails at
 install time, where the zeros fail at authoring time.
 
-## The remaining blocker
+## The remaining blockers
 
-**No release has yet attached the composed product archive.** `PackageVersion`
-is `0.1.10`, matched across all three manifests, and `InstallerUrl` names
-`vaultspec-0.1.10-x86_64-pc-windows-msvc.zip` on tag `v0.1.10` — but the
-published `v0.1.10` release carries only the Dist per-package archives
-(`vaultspec-cli-*`, `vaultspec-product-*`, `vaultspec-updater-*`,
-`vaultspec-release-verify-*`). The composed `vaultspec-<version>-<target>` archive
-is produced by `product-release.yml` and has not landed on a release yet.
+Release `v0.1.12` established the asset contract by publishing
+`vaultspec-0.1.12-x86_64-pc-windows-msvc.zip` and its `.sha256` sidecar. The
+checked-in manifests still name `0.1.10` and retain the all-zero digest, so they
+remain deliberately unpublishable until their version, URL, and digest are
+reconciled to a release archive.
 
 So the version and URL are reconciled at release time, from the archive that
 publishes. Both are kept in sync by hand only so the manifest set stays
 internally consistent — winget validation rejects a set whose three
 `PackageVersion` values disagree.
 
-Beyond the artefact, cross-repo publication (#46/#50 class) is a second
-standing dependency: submission targets `microsoft/winget-pkgs` via a fork + PR
+Beyond manifest reconciliation and feasibility proof, cross-repo publication
+(#46/#50 class) is a standing dependency: submission targets
+`microsoft/winget-pkgs` via a fork + PR
 (komac/wingetcreate), which needs a fork and a token with access to it.
 
 ## Why this is not the old `bucket/` placeholder
@@ -99,11 +98,11 @@ standing dependency: submission targets `microsoft/winget-pkgs` via a fork + PR
 It reads like the same defect and is the opposite one. The distinction is
 whether a package manager can reach it.
 
-|  | old in-repo `bucket/` (retired) | here |
-| --- | --- | --- |
-| Committed where a package manager reads it | **yes** — the repo was its own Scoop bucket | no |
-| Published to a channel root | yes | **never** — `microsoft/winget-pkgs` is untouched |
-| Effect of the placeholder | `scoop install` failed at download | a gate reports `blocked` |
+|                                            | old in-repo `bucket/` (retired)             | here                                             |
+| ------------------------------------------ | ------------------------------------------- | ------------------------------------------------ |
+| Committed where a package manager reads it | **yes** — the repo was its own Scoop bucket | no                                               |
+| Published to a channel root                | yes                                         | **never** — `microsoft/winget-pkgs` is untouched |
+| Effect of the placeholder                  | `scoop install` failed at download          | a gate reports `blocked`                         |
 
 That Scoop manifest was a **live pointer**: it named a version, pinned an empty
 hash, and users acted on it. Scoop now publishes to the organisation tap

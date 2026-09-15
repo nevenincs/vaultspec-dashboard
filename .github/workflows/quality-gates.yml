@@ -1,373 +1,163 @@
-# Quality gates — the polyglot verification pipeline. Rust build/clippy/test
-# live in engine-ci.yml; this workflow covers Python, the frontend SPA, repo-wide
-# spell check, and the cross-language supply-chain audits. Each job is
-# independent so one failure does not mask the others.
-#
-# Where a gate exists as a `just` verb, this workflow INVOKES it rather than
-# restating its steps. It previously described itself as "mirroring" the local
-# gate and re-listed the steps by hand, and the mirror was not faithful: three
-# of nine frontend gates ran here, so localization, px, domain-fence, module
-# size, token drift and figma-name checks never ran on a pull request. A gate
-# reimplemented in YAML cannot be verified to match the gate it claims to
-# mirror; calling the same entry point is the only thing that can.
-name: quality-gates
+name: Dashboard correctness
 
 on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
   push:
     branches: [main]
-  pull_request:
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+    inputs:
+      uv_cache_mode:
+        description: uv namespace for controlled validation
+        type: choice
+        required: true
+        default: ordinary
+        options: [ordinary, isolated-cold]
+      run_supply_chain:
+        description: run the scheduled supply-chain diagnostic
+        type: boolean
+        required: true
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: quality-gates-${{ github.ref }}
-  # Superseding a run is right on a branch and wrong on the default one.
-  #
-  # `main` takes direct pushes, so for such a push this workflow IS the gate.
-  # Cancelling it on the next push destroys that gate, and the damage is silent:
-  # a cancelled run reports as `cancelled`, not `failed`, so it is not red in
-  # the Actions list and nothing downstream reacts to it. FIFTY of the last
-  # hundred `main` runs ended that way - half the default branch's history
-  # carries no verdict at all, which is most of why this workflow's condition
-  # went unnoticed for six weeks.
-  #
-  # On any other ref a newer commit really does make the in-flight run
-  # obsolete, so keep cancelling there.
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  group: ${{ github.event_name == 'pull_request' && format('{0}-pr-{1}', github.repository, github.event.pull_request.number) || github.event_name == 'push' && format('{0}-main-correctness-{1}', github.repository, github.ref) || format('{0}-{1}-{2}', github.repository, github.event_name, github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  spellcheck:
-    timeout-minutes: 30
-    name: Spell check (typos)
+  fast:
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    name: PR fast checks
+    timeout-minutes: 20
     runs-on: [self-hosted, Linux, X64]
     steps:
-      # Before checkout, because checkout is the step the EACCES lands on.
-      # `|| true` so a workspace that has never been checked out - where the
-      # script does not exist yet - simply skips it.
-      - name: Reclaim the workspace from a job that may not have finished
+      - name: Reclaim workspace
         shell: bash
         run: bash .github/scripts/reclaim-workspace.sh || true
       - uses: actions/checkout@v4
-      - name: Set up just
-        uses: taiki-e/install-action@d56249f532886d210664917b882ad7e152e17d68 # v2
         with:
-          tool: just@1.38.0
-      - name: Set up uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-        with:
-          enable-cache: true
-      - name: Initialize the worktree
-        run: just init
-      - name: Spell check (just check-typos)
-        run: just check-typos
-  workflow-lint:
-    timeout-minutes: 30
-    # actionlint over .github/workflows — the only thing that reads these files
-    # before GitHub itself does. It exists mainly for one failure class this
-    # fleet is uniquely exposed to: a `runs-on:` label no registered runner
-    # carries. That does not error at dispatch, it queues forever, producing no
-    # logs and no failure — the most expensive way this pipeline can break. The
-    # set of labels the fleet can actually schedule onto is enumerated in
-    # .github/actionlint.yaml, which actionlint picks up automatically.
-    #
-    # Installed as the pinned upstream release binary rather than the
-    # `docker://rhysd/actionlint` container action the sibling repos use. The
-    # container is the stronger linter — it bundles shellcheck, and a bare binary
-    # on a box without shellcheck silently skips every `run:` script check. But
-    # this runner cannot carry that dependency: Docker here is Docker Desktop's
-    # WSL integration, so the daemon exists only while a GUI application on the
-    # Windows host happens to be running, and the credential helper is
-    # `desktop.exe`. The fleet has already been bitten by exactly this — the
-    # Docker-based cargo-deny action failed on that helper and was replaced with
-    # a native install (see the supply-chain job below). "Docker responds right
-    # now" is not the same property as "this gate runs on every push", and a lint
-    # gate that goes red because nobody opened Docker Desktop is a gate people
-    # learn to ignore. A tarball plus a checksum needs no daemon, no registry
-    # auth, and no Docker Desktop.
-    #
-    # The cost of that choice is paid honestly rather than hidden: shellcheck and
-    # pyflakes are disabled EXPLICITLY below. Leaving them implicit would mean
-    # that installing shellcheck on this runner for any unrelated reason silently
-    # turns this gate red. The eight shellcheck findings the container did surface
-    # have all been fixed in the tree, so enabling shellcheck here is a
-    # provisioning task (put shellcheck on the runner, drop the `-shellcheck=`
-    # flag) and not a cleanup one.
-    #
-    # Pinned to an exact version rather than `latest` for the usual reason a
-    # linter is pinned: a new upstream release adds checks, and a gate that can
-    # go red without anything in this repository changing is a gate people learn
-    # to ignore. Bump deliberately, fixing whatever the new version finds in the
-    # same commit.
-    #
-    # One coordination note: release.yml is hand-managed (dist-workspace.toml
-    # sets `allow-dirty = ["ci"]`), and some of the findings this gate caught
-    # were fixed there. If `dist generate-ci` ever regenerates that file, those
-    # shellcheck fixes must be re-applied along with the fleet `runs-on` labels.
-    name: Workflow lint (actionlint)
-    runs-on: [self-hosted, Linux, X64]
-    steps:
-      # Before checkout, because checkout is the step the EACCES lands on.
-      # `|| true` so a workspace that has never been checked out - where the
-      # script does not exist yet - simply skips it.
-      - name: Reclaim the workspace from a job that may not have finished
+          fetch-depth: 0
+      - name: Select isolated cold uv namespace
+        if: >-
+          (github.event_name == 'workflow_dispatch' && inputs.uv_cache_mode == 'isolated-cold') ||
+          (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci-isolated-cold'))
         shell: bash
-        run: bash .github/scripts/reclaim-workspace.sh || true
-      - uses: actions/checkout@v4
-      - name: Set up just
-        uses: taiki-e/install-action@d56249f532886d210664917b882ad7e152e17d68 # v2
+        run: echo "UV_CACHE_DIR=$RUNNER_TEMP/vaultspec-dashboard-uv-cold-$GITHUB_RUN_ID-fast" >> "$GITHUB_ENV"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: taiki-e/install-action@d56249f532886d210664917b882ad7e152e17d68
         with:
           tool: just@1.38.0
-      - name: Set up uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
         with:
-          enable-cache: true
-      - name: Initialize the worktree
+          enable-cache: false
+      - name: Initialize once
         run: just init
-      # actionlint AND the CI/justfile contract, both through the recipe. The
-      # pinned per-architecture download this step used to carry now lives in
-      # `dev/toolchain.py` behind `check-workflow`, where a developer can run
-      # the same gate before pushing - which is the whole argument for the
-      # recipe being the entry point.
-      - name: Workflow lint and CI contract (just check-workflow)
+      - name: Workflow and CI contract
         run: just check-workflow
-  guards:
-    timeout-minutes: 30
-    # The repository-health guards under `dev/guards` — and, until this job
-    # existed, the one part of the local gate that CI never ran. They are
-    # reachable as `just check-guards` and `just test-guards`, both of which
-    # expand to the same pytest invocation, and NO workflow in .github/ invoked
-    # either: a grep of this directory for `pytest`, `dev/guards`, `just check-`
-    # and `just test-` returned the frontend job and nothing else. So the
-    # invariants they assert — that every justfile recipe dispatches into
-    # `dev/`, that the recipes and `dev/toolchain.py`'s target table describe
-    # the same commands, that the src/dev/harness import fence holds, that
-    # dependencies are declared and tooling lives in its stated home — held
-    # only on a machine where somebody had typed the command. On every push and
-    # every pull request they asserted nothing.
-    #
-    # That is worse than not having them, because the tree cites them as
-    # settled. The justfile's own header tells a reader that a shell branch
-    # reintroduced into a recipe body "fails the build rather than quietly
-    # working on one machine"; no build was checking, so the sentence was an
-    # assurance nothing backed. A guard that runs nowhere is a test file.
-    #
-    # The gate is INVOKED through `just`, never restated as a bare
-    # `pytest dev/guards` — the same rule as the frontend job below, and here
-    # it is load-bearing twice over. test_dispatch_conformance.py asserts that
-    # the justfile and the toolchain table agree, so a step reaching past both
-    # to call pytest directly would be verifying a dispatch layer it had just
-    # gone around, and would keep reporting success after the recipe it claims
-    # to exercise was renamed or deleted.
-    #
-    # `just init` is required rather than defensive: the guards run under
-    # `uv run --no-sync`, which deliberately will not provision `.venv`, so
-    # without the sync there is no pytest to spawn and the step dies at
-    # "program not found" instead of reporting on a guard. Nothing here builds
-    # — the guards read the tree and import `dev.*` — so this job needs no Rust
-    # toolchain and stays one of the cheap ones. It does need Node and the
-    # frontend dependencies: the design-system guard parses frontend sources
-    # with the TypeScript compiler rather than a regex.
-    name: Repo guards (just check-guards · pytest)
-    runs-on: [self-hosted, Linux, X64]
-    steps:
-      # Before checkout, because checkout is the step the EACCES lands on.
-      # `|| true` so a workspace that has never been checked out - where the
-      # script does not exist yet - simply skips it.
-      - name: Reclaim the workspace from a job that may not have finished
-        shell: bash
-        run: bash .github/scripts/reclaim-workspace.sh || true
-      - uses: actions/checkout@v4
-      - name: Set up just
-        uses: taiki-e/install-action@d56249f532886d210664917b882ad7e152e17d68 # v2
-        with:
-          tool: just@1.38.0
-      - name: Set up uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-        with:
-          enable-cache: true
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-      - name: Provision the dev toolchain
-        run: just init
-      - name: Guards (just check-guards)
+      - name: Spelling
+        run: just check-typos
+      - name: Repository guards
         run: just check-guards
-  frontend:
-    timeout-minutes: 60
-    name: Frontend (just check-frontend · vitest)
+      - name: Release inputs and lock metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -c "import json; json.load(open('packaging/a2a-component.lock.json'))"
+          python3 -c "import json; json.load(open('schemas/release-set-manifest.json'))"
+          cargo metadata --locked --format-version 1 --manifest-path engine/Cargo.toml >/dev/null
+      - name: Scoop manifest governance
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          base_json="$(git show "$BASE_SHA:bucket/vaultspec.json" 2>/dev/null || true)"
+          head_json=""
+          [ -f bucket/vaultspec.json ] && head_json="$(cat bucket/vaultspec.json)"
+          url_is_gone() {
+            local url code
+            url=$(printf '%s' "$1" | jq -r '.url')
+            [ -n "$url" ] && [ "$url" != "null" ] || return 1
+            code=$(curl --proto '=https' --tlsv1.2 -sS -o /dev/null -w '%{http_code}' \
+                     -I -L --max-time 30 "$url" 2>/dev/null || echo 000)
+            [ "$code" = "404" ] || [ "$code" = "410" ]
+          }
+          if [ -z "$head_json" ]; then
+            [ -z "$base_json" ] && exit 0
+            url_is_gone "$base_json" && exit 0
+            echo "::error::refusing to remove a Scoop manifest whose URL still resolves" >&2
+            exit 1
+          fi
+          url_is_gone "$head_json" && { echo "::error::Scoop manifest URL does not exist" >&2; exit 1; }
+          HEAD_VERSION=$(printf '%s' "$head_json" | jq -r '.version')
+          [ -z "$base_json" ] && exit 0
+          BASE_VERSION=$(printf '%s' "$base_json" | jq -r '.version')
+          [ "$BASE_VERSION" = "$HEAD_VERSION" ] && exit 0
+          HIGHER=$(printf '%s\n' "$BASE_VERSION" "$HEAD_VERSION" | sort -V | tail -1)
+          [ "$HIGHER" = "$HEAD_VERSION" ] || { echo "::error::Scoop version would decrease" >&2; exit 1; }
+
+  linux:
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    name: PR Linux correctness
+    needs: fast
+    timeout-minutes: 75
     runs-on: [self-hosted, Linux, X64]
-    steps:
-      # Before checkout, because checkout is the step the EACCES lands on.
-      # `|| true` so a workspace that has never been checked out - where the
-      # script does not exist yet - simply skips it.
-      - name: Reclaim the workspace from a job that may not have finished
+    steps: &correctness
+      - name: Reclaim workspace
         shell: bash
         run: bash .github/scripts/reclaim-workspace.sh || true
       - uses: actions/checkout@v4
+      - name: Select isolated cold uv namespace
+        if: >-
+          (github.event_name == 'workflow_dispatch' && inputs.uv_cache_mode == 'isolated-cold') ||
+          (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci-isolated-cold'))
+        shell: bash
+        run: echo "UV_CACHE_DIR=$RUNNER_TEMP/vaultspec-dashboard-uv-cold-$GITHUB_RUN_ID-linux" >> "$GITHUB_ENV"
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      # The gate is INVOKED, never re-listed. This job previously named three
-      # npm scripts by hand while `just check-frontend` ran nine, so six gates —
-      # localization, px, domains, module size, token drift, and figma names —
-      # never ran on a pull request at all. A gate reimplemented in YAML cannot
-      # be verified to match the gate; only calling the same entry point can.
-      - name: Set up just
-        uses: taiki-e/install-action@d56249f532886d210664917b882ad7e152e17d68 # v2
+      - uses: taiki-e/install-action@d56249f532886d210664917b882ad7e152e17d68
         with:
           tool: just@1.38.0
-      - name: Set up uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
         with:
-          enable-cache: true
-      - name: Provision the dev toolchain
+          enable-cache: false
+      - name: Read pinned Rust toolchain
+        id: toolchain
+        shell: bash
+        run: echo "channel=$(grep -m1 '^channel' engine/rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
+          components: rustfmt, clippy
+      - name: Initialize once
         run: just init
-      - name: Lint (just check-frontend)
+      - name: Put vaultspec-core on PATH
+        shell: bash
+        run: |
+          uv tool install vaultspec-core
+          uv tool dir --bin >> "$GITHUB_PATH"
+      - name: Resolve engine output
+        shell: bash
+        run: echo "ENGINE_TARGET_DIR=${CARGO_TARGET_DIR:-$GITHUB_WORKSPACE/engine/target}" >> "$GITHUB_ENV"
+      - name: Rust checks
+        run: just check-rust
+      - name: Frontend checks
         run: just check-frontend
-      # The frontend suite is online-live by design (no in-memory doubles): its
-      # vitest global setup spawns a REAL `vaultspec serve` and runs
-      # `vaultspec-core install` against a scratch vault. Provision both — the
-      # built engine binary and vaultspec-core on PATH — before vitest, or the
-      # whole suite errors at global setup.
-      # Pin to the repo toolchain (the action's RUSTUP_TOOLCHAIN export
-      # overrides engine/rust-toolchain.toml, so pass the pin explicitly).
-      - name: Read pinned toolchain
-        id: toolchain
-        shell: bash
-        run: echo "channel=$(grep -m1 '^channel' engine/rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
-      # Absorb a transient `socket hang up`: the action does not retry, and a
-      # dropped connection here aborts the job before the suite starts, which
-      # reads exactly like a test failure. rustup's install is idempotent, so
-      # a successful warm makes the action's own fetch a no-op.
-      - name: Warm the pinned toolchain, retrying a dropped connection
-        shell: bash
-        run: bash .github/scripts/warm-toolchain.sh "${{ steps.toolchain.outputs.channel }}" || true
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: ${{ steps.toolchain.outputs.channel }}
-      # Resolve where the build actually lands BEFORE building, so every
-      # reference to a built binary below is right in both configurations: the
-      # runners share one persistent cargo target directory outside the
-      # workspace (a checkout cleans the workspace-local one), while a plain
-      # checkout builds into `engine/target`. Read-side only — this never
-      # redirects the build, it names the directory the build used.
-      - name: Resolve the engine build output directory
-        shell: bash
-        run: echo "ENGINE_TARGET_DIR=${CARGO_TARGET_DIR:-$GITHUB_WORKSPACE/engine/target}" >> "$GITHUB_ENV"
-      - name: Build engine binary (live-engine test backend)
+      - name: Build engine once
         run: just build-rust
-      - name: Install vaultspec-core (live-engine declared-tier dependency)
-        shell: bash
-        run: |
-          uv tool install vaultspec-core
-          uv tool dir --bin >> "$GITHUB_PATH"
-      # Captured to a file rather than piped, so the suite's OWN exit code is
-      # what fails the step, and so the classifier below has the output to read
-      # even when the job is killed before anything else can inspect it.
-      - name: Unit tests (just test-frontend)
-        shell: bash
-        run: |
-          set +e
-          just test-frontend > "${RUNNER_TEMP}/frontend-suite.log" 2>&1
-          status=$?
-          cat "${RUNNER_TEMP}/frontend-suite.log"
-          exit $status
-        env:
-          # Pin the exact binary the live suite spawns. Its own fallback probes
-          # `engine/target/{release,debug}`, which does not exist when the build
-          # landed in the shared directory — the suite would then fail at global
-          # setup with "no vaultspec engine binary found" rather than running.
-          VAULTSPEC_TEST_ENGINE_BIN: ${{ env.ENGINE_TARGET_DIR }}/debug/vaultspec
-      # A red here means one of two unrelated things and, until now, looked
-      # identical either way: an assertion failed, or the runner died. vitest
-      # prints its summary only after running to completion, so its ABSENCE is
-      # what separates them - a signature only names a known fault, and never
-      # decides, so an unrecognised infrastructure failure is still not reported
-      # as a test verdict.
-      - name: Say which kind of red this is
-        if: failure()
-        shell: bash
-        run: |
-          log="${RUNNER_TEMP}/frontend-suite.log"
-          uv run --no-sync python -m dev.classify_failure "$log" | tee -a "${GITHUB_STEP_SUMMARY}"
-      - name: Unused code (just audit-knip — advisory)
-        run: just audit-knip
-        continue-on-error: true
-      - name: Reclaim runner disk (always)
-        if: always()
-        shell: bash
-        run: |
-          set +e
-          df -h . 2>/dev/null | tail -1
-          pkill -f 'vaultspec .*serve' 2>/dev/null || true
-          pkill -f '/debug/vaultspec' 2>/dev/null || true
-          rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
-          if [ "${{ job.status }}" = "failure" ]; then
-            rm -rf engine/target frontend/node_modules 2>/dev/null || true
-          fi
-          df -h . 2>/dev/null | tail -1
-
-  engine-conformance:
-    timeout-minutes: 90
-    # Consumer-typed conformance: boot a
-    # live vaultspec serve binary against a two-commit fixture and drive
-    # EngineClient against it so wire-vs-TypeScript-type drift fails CI.
-    # This closes the seam the Rust conformance.rs cannot reach (c812371).
-    name: Engine TS conformance (live serve · EngineClient)
-    runs-on: [self-hosted, Linux, X64]
-    steps:
-      # Before checkout, because checkout is the step the EACCES lands on.
-      # `|| true` so a workspace that has never been checked out - where the
-      # script does not exist yet - simply skips it.
-      - name: Reclaim the workspace from a job that may not have finished
-        shell: bash
-        run: bash .github/scripts/reclaim-workspace.sh || true
-      - uses: actions/checkout@v4
-      # Pin to the repo toolchain (see the frontend job's note).
-      - name: Read pinned toolchain
-        id: toolchain
-        shell: bash
-        run: echo "channel=$(grep -m1 '^channel' engine/rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
-      # Absorb a transient `socket hang up`: the action does not retry, and a
-      # dropped connection here aborts the job before the suite starts, which
-      # reads exactly like a test failure. rustup's install is idempotent, so
-      # a successful warm makes the action's own fetch a no-op.
-      - name: Warm the pinned toolchain, retrying a dropped connection
-        shell: bash
-        run: bash .github/scripts/warm-toolchain.sh "${{ steps.toolchain.outputs.channel }}" || true
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: ${{ steps.toolchain.outputs.channel }}
-      # See the frontend job: resolve the build output directory before the
-      # build so the `serve` invocation below names the binary that was built.
-      - name: Resolve the engine build output directory
-        shell: bash
-        run: echo "ENGINE_TARGET_DIR=${CARGO_TARGET_DIR:-$GITHUB_WORKSPACE/engine/target}" >> "$GITHUB_ENV"
-      - name: Build engine binary
-        run: just build-rust
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-      - name: Set up uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-        with:
-          enable-cache: true
-      - name: Install vaultspec-core (live-engine declared-tier dependency)
-        # The engine startup gate probes vaultspec-core on PATH (floor 0.1.36);
-        # without it `vaultspec serve` fails and the conformance test errors with
-        # "executable not found on PATH: vaultspec-core". Mirror the frontend job.
-        shell: bash
-        run: |
-          uv tool install vaultspec-core
-          uv tool dir --bin >> "$GITHUB_PATH"
-      - name: Create fixture and start serve
+      - name: Engine TS conformance (live serve · EngineClient)
         shell: bash
         run: |
           set -euo pipefail
@@ -381,11 +171,6 @@ jobs:
           printf '%s\n' '---' 'tags:' "  - '#adr'" "  - '#engine-conformance'" \
             "date: '2026-06-13'" '---' '' '# conformance adr' '' 'CI fixture.' \
             > .vault/adr/2026-06-13-conformance-adr.md
-          # Commit at fixed PAST dates relative to now: the conformance test's
-          # graph/diff window is `corpusTs(now) - 14d .. now`, so the root commit
-          # must predate it (else the engine 400s "timestamp predates the root
-          # commit"). T1 at 30d ago anchors the root behind the window; T2 at 7d
-          # ago lands inside it so the diff carries a real delta.
           T1_DATE="$(date -u -d '30 days ago' '+%Y-%m-%dT%H:%M:%S')"
           T2_DATE="$(date -u -d '7 days ago' '+%Y-%m-%dT%H:%M:%S')"
           git add .
@@ -393,15 +178,11 @@ jobs:
           printf 'update\n' >> .vault/adr/2026-06-13-conformance-adr.md
           git add .
           GIT_AUTHOR_DATE="$T2_DATE" GIT_COMMITTER_DATE="$T2_DATE" git commit -m "T2: update"
-
-          # Start serve on an OS-assigned port; service.json carries the real
-          # port + token (same pattern as conformance.rs start_serve).
           "$ENGINE_TARGET_DIR/debug/vaultspec" serve --port 0 &
           SERVE_PID=$!
           echo "SERVE_PID=$SERVE_PID" >> "$GITHUB_ENV"
-
           SERVICE_JSON="$FIXTURE/.vault/data/engine-data/service.json"
-          for _ in $(seq 30); do
+          for _ in $(seq 1 30); do
             if [ -f "$SERVICE_JSON" ]; then
               PORT=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d['port'])" "$SERVICE_JSON")
               TOKEN=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d['service_token'])" "$SERVICE_JSON")
@@ -409,234 +190,53 @@ jobs:
             fi
             sleep 1
           done
-
           echo "ENGINE_BASE_URL=http://127.0.0.1:$PORT" >> "$GITHUB_ENV"
           echo "ENGINE_TOKEN=$TOKEN" >> "$GITHUB_ENV"
-      - name: Run TS conformance test
+      - name: Run focused TS conformance assertion
         run: npx vitest run src/testing/engineConformance.test.ts --reporter=verbose
         working-directory: frontend
         env:
           ENGINE_BASE_URL: ${{ env.ENGINE_BASE_URL }}
           ENGINE_TOKEN: ${{ env.ENGINE_TOKEN }}
-      - name: Stop serve
+      - name: Stop focused conformance serve
         if: always()
+        shell: bash
         run: kill "$SERVE_PID" 2>/dev/null || true
-      - name: Reclaim runner disk (always)
+      - name: Full frontend tests
+        run: just test-frontend
+        env:
+          VAULTSPEC_TEST_ENGINE_BIN: ${{ env.ENGINE_TARGET_DIR }}/debug/vaultspec
+      - name: Full Rust tests
+        run: just test-rust
+      - name: Reclaim runner disk
         if: always()
         shell: bash
         run: |
-          set +e
-          df -h . 2>/dev/null | tail -1
           pkill -f 'vaultspec .*serve' 2>/dev/null || true
-          pkill -f '/debug/vaultspec' 2>/dev/null || true
           rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
-          if [ "${{ job.status }}" = "failure" ]; then
-            rm -rf engine/target frontend/node_modules 2>/dev/null || true
-          fi
-          df -h . 2>/dev/null | tail -1
 
-  scoop-bucket-guard:
-    timeout-minutes: 30
-    name: Scoop bucket version guard
+  main-linux:
+    if: github.event_name == 'push'
+    name: Main Linux correctness
+    timeout-minutes: 75
     runs-on: [self-hosted, Linux, X64]
-    if: github.event_name == 'pull_request'
-    steps:
-      # Before checkout, because checkout is the step the EACCES lands on.
-      # `|| true` so a workspace that has never been checked out - where the
-      # script does not exist yet - simply skips it.
-      - name: Reclaim the workspace from a job that may not have finished
-        shell: bash
-        run: bash .github/scripts/reclaim-workspace.sh || true
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Guard the committed Scoop manifest
-        shell: bash
-        run: |
-          set -euo pipefail
-          # The manifest is a release POINTER: it names a version and pins a
-          # digest that `scoop install` acts on. This guard protects two
-          # properties of it, and the second was added because the first alone
-          # let a broken pointer sit here for four releases.
-          #
-          # No manifest is committed until the bump job first succeeds, so
-          # "absent" is a real and expected state on both sides. `jq` on a
-          # missing file is a hard failure under `set -e`, which is what the
-          # version-only form of this guard did.
-          base_json="$(git show "origin/${{ github.base_ref }}:bucket/vaultspec.json" 2>/dev/null || true)"
-          head_json=""
-          [ -f bucket/vaultspec.json ] && head_json="$(cat bucket/vaultspec.json)"
+    steps: *correctness
 
-          # Returns 0 when the manifest's url is definitely absent. A network
-          # fault is NOT treated as absent: only a 404/410 counts, so a flaky
-          # runner cannot turn this gate into a false accusation.
-          url_is_gone() {
-            local url code
-            url=$(printf '%s' "$1" | jq -r '.url')
-            [ -n "$url" ] && [ "$url" != "null" ] || return 1
-            code=$(curl --proto '=https' --tlsv1.2 -sS -o /dev/null -w '%{http_code}' \
-                     -I -L --max-time 30 "$url" 2>/dev/null || echo 000)
-            echo "  ${url} -> HTTP ${code}"
-            [ "$code" = "404" ] || [ "$code" = "410" ]
-          }
-
-          if [ -z "$head_json" ]; then
-            if [ -z "$base_json" ]; then
-              echo "no manifest on either side — nothing to publish yet, OK"
-              exit 0
-            fi
-            # Removing a WORKING pointer un-publishes the product. Removing one
-            # that resolves to nothing only deletes a false claim, which is the
-            # honest fix and must stay possible.
-            echo "manifest removed; checking whether the base pointer resolved"
-            if url_is_gone "$base_json"; then
-              echo "base manifest pointed at a non-existent asset — removal OK"
-              exit 0
-            fi
-            echo "ERROR: refusing to remove a manifest whose url still resolves." >&2
-            echo "Removing it would un-publish the product for Scoop users." >&2
-            exit 1
-          fi
-
-          # A committed manifest must point at something real. This is the
-          # property whose absence let 0.1.2 ship with a 404 url and a
-          # placeholder digest, install-breaking, out of a green run.
-          echo "manifest present; checking its url resolves"
-          if url_is_gone "$head_json"; then
-            echo "ERROR: bucket/vaultspec.json points at an asset that does not exist." >&2
-            echo "A manifest is a claim a user acts on; do not commit one that 404s." >&2
-            exit 1
-          fi
-
-          HEAD_VERSION=$(printf '%s' "$head_json" | jq -r '.version')
-          if [ -z "$base_json" ]; then
-            echo "first published manifest (${HEAD_VERSION}) — OK"
-            exit 0
-          fi
-          BASE_VERSION=$(printf '%s' "$base_json" | jq -r '.version')
-          if [ "$BASE_VERSION" = "$HEAD_VERSION" ]; then
-            echo "bucket version unchanged (${HEAD_VERSION}) — OK"
-            exit 0
-          fi
-          HIGHER=$(printf '%s\n' "$BASE_VERSION" "$HEAD_VERSION" | sort -V | tail -1)
-          if [ "$HIGHER" != "$HEAD_VERSION" ]; then
-            echo "ERROR: bucket/vaultspec.json would decrease from ${BASE_VERSION} to ${HEAD_VERSION}" >&2
-            echo "Update the bucket to a version >= ${BASE_VERSION} before merging." >&2
-            exit 1
-          fi
-          echo "bucket version ${BASE_VERSION} -> ${HEAD_VERSION} — forward, OK"
   supply-chain:
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_supply_chain)
+    name: Supply-chain diagnostic
     timeout-minutes: 45
-    name: Supply chain (cargo-deny · uv audit · npm audit)
     runs-on: [self-hosted, Linux, X64]
     steps:
-      # Before checkout, because checkout is the step the EACCES lands on.
-      # `|| true` so a workspace that has never been checked out - where the
-      # script does not exist yet - simply skips it.
-      - name: Reclaim the workspace from a job that may not have finished
-        shell: bash
-        run: bash .github/scripts/reclaim-workspace.sh || true
       - uses: actions/checkout@v4
-      - name: Set up just
-        uses: taiki-e/install-action@d56249f532886d210664917b882ad7e152e17d68 # v2
+      - uses: taiki-e/install-action@d56249f532886d210664917b882ad7e152e17d68
         with:
           tool: just@1.38.0
-      - name: Set up uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
         with:
-          enable-cache: true
-      - name: Initialize the worktree
-        run: just init
-      # Four audits, four recipes. Each of these ran here as a hand-written
-      # command - `cargo install cargo-deny` then `cargo deny check`, three
-      # bare `uv audit`/`npm audit` invocations with their own flag sets - while
-      # `just audit-deps`, `just audit-rust` and `just audit-node-tooling`
-      # carried the same tools with the argued flags. The flags are the whole
-      # content of a supply-chain gate (`--omit=dev` versus not, `--no-dev`
-      # versus not), so a second copy of them is a second policy.
-      - name: Dependency advisories (python, node, rust)
-        run: just audit-deps
-      - name: Licences, bans and sources (cargo-deny)
-        run: just audit-rust
-      - name: Build tooling advisories (advisory)
-        run: just audit-node-tooling
+          enable-cache: false
+      - run: just init
+      - run: just audit-deps
+      - run: just audit-rust
+      - run: just audit-node-tooling
         continue-on-error: true
-      - name: Reclaim runner disk (always)
-        if: always()
-        shell: bash
-        run: |
-          set +e
-          df -h . 2>/dev/null | tail -1
-          pkill -f 'vaultspec .*serve' 2>/dev/null || true
-          pkill -f '/debug/vaultspec' 2>/dev/null || true
-          rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
-          if [ "${{ job.status }}" = "failure" ]; then
-            rm -rf engine/target frontend/node_modules 2>/dev/null || true
-          fi
-          df -h . 2>/dev/null | tail -1
-
-  release-inputs-gate:
-    timeout-minutes: 30
-    # The release-inputs gate: validate the
-    # component lock, the release-set-manifest schema, and the product builder +
-    # its manifest verifiers BEFORE any release job may run. The vaultspec-product
-    # suite composes + self-verifies real product trees against the committed lock
-    # and exercises the lock/capsule/release-manifest verifiers, so a drift between
-    # the pins, the schema, and the builder fails here rather than at release.
-    name: Release inputs (lock · schema · product builder)
-    runs-on: [self-hosted, Linux, X64]
-    steps:
-      # Before checkout, because checkout is the step the EACCES lands on.
-      # `|| true` so a workspace that has never been checked out - where the
-      # script does not exist yet - simply skips it.
-      - name: Reclaim the workspace from a job that may not have finished
-        shell: bash
-        run: bash .github/scripts/reclaim-workspace.sh || true
-      - uses: actions/checkout@v4
-      - name: Read pinned toolchain
-        id: toolchain
-        shell: bash
-        run: echo "channel=$(grep -m1 '^channel' engine/rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
-      # Absorb a transient `socket hang up`: the action does not retry, and a
-      # dropped connection here aborts the job before the suite starts, which
-      # reads exactly like a test failure. rustup's install is idempotent, so
-      # a successful warm makes the action's own fetch a no-op.
-      - name: Warm the pinned toolchain, retrying a dropped connection
-        shell: bash
-        run: bash .github/scripts/warm-toolchain.sh "${{ steps.toolchain.outputs.channel }}" || true
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: ${{ steps.toolchain.outputs.channel }}
-      - name: Component lock + release-set-manifest schema are well-formed
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 -c "import json; json.load(open('packaging/a2a-component.lock.json'))"
-          python3 -c "import json; json.load(open('schemas/release-set-manifest.json'))"
-      # The committed lock must agree with the manifest. Nothing else in this
-      # file passes `--locked`, so without this step cargo silently refreshes
-      # the lock in memory and every build succeeds over a tree that is not
-      # reproducible. That is how the drift became recurring: release-please
-      # bumps `[workspace.package] version` in engine/Cargo.toml and does not
-      # regenerate engine/Cargo.lock, and no instrument was positioned to see
-      # it. `cargo metadata` resolves without building, so this is cheap and
-      # fails fast, on the release PR itself.
-      - name: The committed Cargo.lock agrees with Cargo.toml
-        run: cargo metadata --locked --format-version 1 > /dev/null
-        working-directory: engine
-      - name: Product builder, manifest verifiers, and lock/capsule/release pins
-        run: cargo test -p vaultspec-product
-        working-directory: engine
-      - name: Reclaim runner disk (always)
-        if: always()
-        shell: bash
-        run: |
-          set +e
-          df -h . 2>/dev/null | tail -1
-          pkill -f 'vaultspec .*serve' 2>/dev/null || true
-          pkill -f '/debug/vaultspec' 2>/dev/null || true
-          rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
-          if [ "${{ job.status }}" = "failure" ]; then
-            rm -rf engine/target frontend/node_modules 2>/dev/null || true
-          fi
-          df -h . 2>/dev/null | tail -1

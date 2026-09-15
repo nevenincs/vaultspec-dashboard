@@ -38,9 +38,9 @@ ci = "github"
 # No Cargo Dist installers: Dist's generated shell/PowerShell/MSI installers are
 # BINARY-ONLY — they place the `vaultspec` binary but not the complete offline
 # product tree (dashboard + external updater + release manifest + licenses +
-# SBOM). The product-owned installers replace
-# them: `packaging/install.sh`, `packaging/install.ps1`, and the complete MSI
-# built from `engine/crates/vaultspec-cli/wix/main.wxs`. Dist is retained ONLY
+# SBOM). The product-owned installers replace them: `packaging/install.sh` and
+# `packaging/install.ps1`, with the PowerShell installer consuming the verified
+# complete-product Windows ZIP. Dist is retained ONLY
 # for target planning, checksums, and GitHub release hosting.
 installers = []
 # Target platforms to build apps for (Rust target-triple syntax)

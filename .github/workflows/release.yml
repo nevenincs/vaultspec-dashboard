@@ -39,7 +39,6 @@ permissions:
 # If there's a prerelease-style suffix to the version, then the release(s)
 # will be marked as a prerelease.
 on:
-  pull_request:
   push:
     tags:
       - '**[0-9]+.[0-9]+.[0-9]+*'
@@ -370,7 +369,7 @@ jobs:
         shell: bash
         run: "curl --proto '=https' --tlsv1.2 -LsSf https://github.com/axodotdev/cargo-dist/releases/download/v0.32.0/cargo-dist-installer.sh | sh"
       # The installer puts `dist` in $CARGO_HOME/bin, and this fleet's runners set
-      # CARGO_HOME to a shared cache (/home/hello/.ci-shared/cargo), so the
+      # CARGO_HOME to the fleet-managed persistent Cargo cache, so the
       # generated `path: ~/.cargo/bin/dist` matched nothing. `if-no-files-found`
       # defaults to `warn`, so the upload produced no artifact SILENTLY and the
       # failure surfaced two jobs later as

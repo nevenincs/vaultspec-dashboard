@@ -20,15 +20,15 @@
 # Reclaims a workspace a killed job left root-owned, before checkout is the
 # step that would hit EACCES. ci-fleet's job-completed hook cannot help: this
 # has to run BEFORE the next job's checkout, not after the last job's end.
-quality-gates.yml:Reclaim the workspace from a job that may not have finished
+quality-gates.yml:Reclaim workspace
 release-please.yml:Reclaim the workspace from a job that may not have finished
 
 # Reads engine/rust-toolchain.toml so the pin can be passed to
 # dtolnay/rust-toolchain, which otherwise exports RUSTUP_TOOLCHAIN and
 # overrides the file. Feeds a `uses:`, so it cannot be a recipe.
-quality-gates.yml:Read pinned toolchain
+quality-gates.yml:Read pinned Rust toolchain
 release-please.yml:Read pinned toolchain
-engine-ci.yml:Read pinned toolchain
+engine-ci.yml:Read pinned Rust toolchain
 
 # Absorbs a transient `socket hang up` from the toolchain action, which does
 # not retry. Machine-level, idempotent, `|| true`.
@@ -38,22 +38,24 @@ release-please.yml:Warm the pinned toolchain, retrying a dropped connection
 # Names the shared cargo target directory for later steps, and repairs a
 # runner whose sccache port has been squatted. Both write GITHUB_ENV; both are
 # statements about this machine.
-quality-gates.yml:Resolve the engine build output directory
-engine-ci.yml:Verify the compile cache cannot block the gate
+quality-gates.yml:Resolve engine output
 
 # Stops a `vaultspec serve` this job started and reports free space. The
 # ci-fleet job-completed hook bounds DISK on both platforms and is what
 # retired the 22 disk-only copies of this step; it does not kill processes.
-quality-gates.yml:Reclaim runner disk (always)
-engine-ci.yml:Reclaim runner disk (always · unix)
-engine-ci.yml:Reclaim runner disk (always · windows)
+quality-gates.yml:Reclaim runner disk
+engine-ci.yml:Reclaim runner disk
+
+# Selects a disposable per-run audit namespace without deleting or changing
+# the fleet-managed native uv cache. This is runner-plane experiment control.
+quality-gates.yml:Select isolated cold uv namespace
 
 # --- pending ----------------------------------------------------------------
 # Puts vaultspec-core on PATH for the live-engine and e2e tiers. `just init`
 # already installs it INTO the environment; the PATH export is what
 # `init-tools` should absorb, which retires both of these.
-quality-gates.yml:Install vaultspec-core (live-engine declared-tier dependency)
-engine-ci.yml:Put vaultspec-core on PATH for the e2e tier
+quality-gates.yml:Put vaultspec-core on PATH
+engine-ci.yml:Put vaultspec-core on PATH
 
 # Calls `just test-frontend`, but through a capture so the classifier below it
 # has the log even when the runner dies mid-suite. Retired by teaching the
@@ -64,16 +66,14 @@ quality-gates.yml:Say which kind of red this is
 # The live-engine conformance lane: spawn a real serve over the fixture vault,
 # run one vitest file against it, stop it. Recipe needed: `test-conformance`,
 # with the spawn/poll/teardown in dev/ where it can run locally.
-quality-gates.yml:Create fixture and start serve
-quality-gates.yml:Run TS conformance test
-quality-gates.yml:Stop serve
+quality-gates.yml:Engine TS conformance (live serve · EngineClient)
+quality-gates.yml:Run focused TS conformance assertion
+quality-gates.yml:Stop focused conformance serve
 
 # Channel-manifest and release-input gates. Recipes needed:
 # `check-channel-manifests`, `check-release-inputs`.
-quality-gates.yml:Guard the committed Scoop manifest
-quality-gates.yml:Component lock + release-set-manifest schema are well-formed
-quality-gates.yml:The committed Cargo.lock agrees with Cargo.toml
-quality-gates.yml:Product builder, manifest verifiers, and lock/capsule/release pins
+quality-gates.yml:Scoop manifest governance
+quality-gates.yml:Release inputs and lock metadata
 release-please.yml:Regenerate and push engine/Cargo.lock
 
 # --- pending, whole lane ----------------------------------------------------

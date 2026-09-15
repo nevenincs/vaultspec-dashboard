@@ -147,7 +147,7 @@ jobs:
             triple: aarch64-unknown-linux-gnu
     # THE ARM LEGS ARE KNOWN TO FAIL AS WRITTEN, and that is stated here rather
     # than discovered on a release. They are container jobs on
-    # `macbook-neo-linux-arm-vaultspec`, which is itself a colima container
+    # the Linux ARM capability, which is itself a containerized runner
     # whose `/home/runner` is a named volume, so a sibling job container mounts
     # a path that does not exist in the VM and the job dies in
     # `Initialize containers` before any step runs. The fix is to bind-mount the

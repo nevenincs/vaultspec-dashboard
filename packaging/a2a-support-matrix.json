@@ -22,13 +22,13 @@
         "unsupported_reason": null
       },
       "msi": {
-        "support_status": "supported",
-        "payload_type": "complete-product-msi",
-        "installer_authority": "product-owned-wix-msi",
-        "updater_authority": "external-updater-helper",
-        "downgrade_path": "reinstall the prior versioned MSI (product-owned)",
-        "rollback_path": "external-updater snapshot + prior-receipt restore",
-        "unsupported_reason": null
+        "support_status": "unsupported",
+        "payload_type": null,
+        "installer_authority": null,
+        "updater_authority": null,
+        "downgrade_path": null,
+        "rollback_path": null,
+        "unsupported_reason": "no complete-product MSI producer or published MSI exists; Windows ships the verified complete-product ZIP"
       },
       "scoop": {
         "support_status": "feasibility_gated",
@@ -41,7 +41,7 @@
       },
       "winget": {
         "support_status": "feasibility_gated",
-        "payload_type": "complete-product-msi",
+        "payload_type": "complete-windows-zip",
         "installer_authority": "winget",
         "updater_authority": "winget-two-phase-adapter",
         "downgrade_path": "winget manager downgrade (declared adapter)",
