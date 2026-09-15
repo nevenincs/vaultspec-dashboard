@@ -192,11 +192,30 @@ fn publish_claim(
                     }
                     break;
                 }
+                #[cfg(windows)]
+                Err(error)
+                    if prepared_create_permission_denied_is_contention(parent, path, &error) =>
+                {
+                    return Ok(PublishClaim::Contended);
+                }
                 Err(error) => return Err(error),
             }
         }
     }
     Ok(PublishClaim::NoSlot)
+}
+
+#[cfg(windows)]
+pub(super) fn prepared_create_permission_denied_is_contention(
+    parent: &ParentAuthority,
+    fixed_claim_path: &Path,
+    error: &std::io::Error,
+) -> bool {
+    error.kind() == std::io::ErrorKind::PermissionDenied
+        && matches!(
+            inspect_claim(parent, fixed_claim_path),
+            ClaimInspection::Valid(_)
+        )
 }
 
 struct FixedClaimRollback<'a> {
