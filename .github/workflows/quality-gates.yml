@@ -207,6 +207,8 @@ jobs:
       - name: Full frontend tests
         run: just test-frontend
         env:
+          ENGINE_BASE_URL: ""
+          ENGINE_TOKEN: ""
           VAULTSPEC_TEST_ENGINE_BIN: ${{ env.ENGINE_TARGET_DIR }}/release/vaultspec
       - name: Full Rust tests
         run: just test-rust

@@ -75,6 +75,11 @@ fn harden_three_principal(file: &File, directory: bool, user_sid: &str) {
     let mut acl = acl_for(file);
     for sid_text in [user_sid, SYSTEM_SID, ADMINISTRATORS_SID] {
         let sid = string_to_sid(sid_text).expect("principal SID must resolve");
+        acl.remove_entry(sid.as_ptr().cast_mut().cast(), None, None)
+            .expect("the retained hardening handle must clear an existing principal ACE");
+    }
+    for sid_text in [user_sid, SYSTEM_SID, ADMINISTRATORS_SID] {
+        let sid = string_to_sid(sid_text).expect("principal SID must resolve");
         acl.add_entry(
             sid.as_ptr().cast_mut().cast(),
             AceType::AccessAllow,
