@@ -308,13 +308,10 @@ jobs:
     # Linux targets to machines nondeterministically — the same target landing
     # on a different box run to run, and two legs able to collide on one.
     #
-    # It is no longer a correctness requirement. It was, while this job froze a
-    # PyInstaller onedir per target: that cannot cross-compile, so an
-    # x86_64-scheduled aarch64 leg produced a mislabelled artifact. Nothing in
-    # this job is architecture-bound now — the cargo builds cross-compile from
-    # whatever host they land on — so a mis-scheduled leg would build correctly,
-    # just not where it was meant to. Keep the label anyway; scheduling that is
-    # reproducible is worth having on its own.
+    # Native execution remains a correctness requirement: each archive is
+    # extracted below and its verifier and executable are launched on the
+    # declared target. Keep the OS/architecture selector exact so a successful
+    # job proves both artifact construction and native runtime compatibility.
     runs-on: [self-hosted, "${{ matrix.os }}", "${{ matrix.arch }}"]
     # The constrained native ARM capabilities are serialized because concurrent
     # full release builds exceed the available capacity. Other targets use a
@@ -581,11 +578,12 @@ jobs:
         run: echo "All four native archives and both supported Python versions passed validation."
 
   # Resolve the release version, then run the phase-zero
-  # channel feasibility proof over the published complete archive/MSI. The proof
+  # channel feasibility proof over the published complete archives. The proof
   # writes its outcome into the support matrix (S148), which the channel-publish
   # gate reads before any Scoop/WinGet publication. Runs at release, after the
   # tree is built + self-verified; fails closed (matrix untouched) until the
-  # release assets + capsule (#1) + MSI (S76) make a real proof possible.
+  # release assets, channel manifests, and lifecycle fixtures make a real proof
+  # possible.
   resolve-version:
     timeout-minutes: 15
     name: Resolve release version
