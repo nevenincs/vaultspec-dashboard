@@ -547,9 +547,10 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      # A fork's code never reaches a self-hosted runner: every measuring job
-      # is conditioned off for it, and this refusal turns that absence into a
-      # red verdict instead of a vacuous one.
+      # Fork pull requests are always refused. Every measuring job is
+      # conditioned off for a fork, and this step - the first, before any
+      # checkout - turns that absence into a red verdict, so a fork can merge
+      # only after a maintainer re-opens it from a branch of this repository.
       - name: Refuse fork pull requests
         if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         shell: bash
