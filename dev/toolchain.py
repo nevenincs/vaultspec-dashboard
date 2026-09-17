@@ -602,32 +602,32 @@ TOKENS = Verb(
 )
 
 CI = Verb(
-    "Run the full local pipeline: lint, dependency audit, vault, tests, build.",
+    "Run the merge gate locally: lint, dependency audits, build, tests.",
     _simple(
-        "Everything a pull request must pass.",
+        # EXACTLY the recipes `.github/workflows/merge-gate.yml` runs, and no
+        # others. A local pipeline stricter or looser than the required check
+        # is a second policy: it either blocks work the merge would accept or
+        # passes work the merge would refuse. The gate's steps that are not yet
+        # recipes (wire conformance, release inputs) are named in
+        # `.github/ci-contract-allow.txt` and join this list when they become
+        # targets.
+        "Everything the merge gate runs.",
         Echo("=== lint ==="),
         VerbRef("lint", "all"),
-        # `audit deps` and NOTHING ELSE from the audit verb. The audit group is
-        # advisory by construction - each finding is a lead to confirm, and a
-        # pipeline that fails on a lead teaches people to stop reading it. A
-        # published advisory against a pinned version is not a lead, it is a
-        # verdict, so it is the one audit that gates. Running `audit all` here
-        # would put dead-code and duplication findings between a developer and
-        # a merge; running none would let a known CVE through.
+        # The two GATING audits, and nothing else from the audit verb. The
+        # advisory targets report leads to confirm, and a pipeline that fails on
+        # a lead teaches people to stop reading it; a published advisory against
+        # a pinned version, or a banned licence or source, is a verdict.
         Echo("=== dependency audit ==="),
         VerbRef("audit", "deps"),
-        Echo("=== vault ==="),
-        VerbRef("vault", "check"),
-        Echo("=== test ==="),
-        VerbRef("test", "all"),
-        # BUILD IS PART OF CI. It was not, and the consequence is measured:
-        # a break on the release path surfaced at release time, when the tag
-        # was already cut and the only remedies were a revert or a hotfix
-        # release. The gates above prove the source is well-formed and the
-        # tests pass; only this one proves the artifact the user receives can
-        # still be produced from it.
+        VerbRef("audit", "rust"),
+        # BUILD IS PART OF CI. A break on the release path otherwise surfaces at
+        # release time, when the tag is already cut.
         Echo("=== build ==="),
-        VerbRef("build", "all"),
+        VerbRef("build", "rust"),
+        Echo("=== test ==="),
+        VerbRef("test", "rust"),
+        VerbRef("test", "frontend"),
     ),
     default=SIMPLE,
 )

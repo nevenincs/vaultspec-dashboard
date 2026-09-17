@@ -47,6 +47,7 @@
       "release-type": "simple",
       "package-name": "vaultspec-dashboard",
       "draft": true,
+      "force-tag-creation": true,
       "extra-files": [
         {
           "type": "toml",

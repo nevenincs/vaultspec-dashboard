@@ -1,7 +1,8 @@
 """THE canonical actionlint provisioner. One implementation, five repos.
 
-Deployed, not called: same constraint as `ci_contract.py` and `preflight.sh`
-beside it - ci-fleet is private, every consumer is public.
+Deployed, not called: same constraint as the CI contract checker and the
+runner preflight - their source repository is private, every consumer is
+public.
 
 WHY THIS EXISTS. The fleet acquired actionlint four different ways, one per
 repo, and each way was wrong in its own direction:
@@ -88,8 +89,9 @@ def _platform_key() -> tuple[str, str]:
     """Return the normalised `(system, machine)` this process is running on."""
     system = platform.system().lower()
     machine = platform.machine().lower()
-    aliases = {"amd64": "x86_64", "x64": "x86_64", "arm64": "aarch64"}
-    machine = aliases.get(machine, machine)
+    machine = {"amd64": "x86_64", "x64": "x86_64", "arm64": "aarch64"}.get(
+        machine, machine
+    )
     if system == "windows":
         machine = "amd64" if machine == "x86_64" else machine
     if system == "darwin":
@@ -138,15 +140,17 @@ def _extract_member(archive: Path, suffix: str, destination: Path) -> None:
     wanted = destination.name
     if suffix.endswith(".zip"):
         with zipfile.ZipFile(archive) as bundle:
-            names = bundle.namelist()
-            member = next((n for n in names if Path(n).name == wanted), None)
+            member = next(
+                (n for n in bundle.namelist() if Path(n).name == wanted), None
+            )
             if member is None:
                 raise SystemExit(f"actionlint archive has no {wanted}")
             destination.write_bytes(bundle.read(member))
         return
     with tarfile.open(archive) as bundle:
-        members = bundle.getmembers()
-        entry = next((m for m in members if Path(m.name).name == wanted), None)
+        entry = next(
+            (m for m in bundle.getmembers() if Path(m.name).name == wanted), None
+        )
         if entry is None:
             raise SystemExit(f"actionlint archive has no {wanted}")
         extracted = bundle.extractfile(entry)

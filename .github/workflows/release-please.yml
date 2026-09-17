@@ -1,25 +1,27 @@
-# Release automation: release-please maintains a
-# standing release PR from conventional commits on main; merging it bumps the
-# engine workspace version, writes engine/CHANGELOG.md, and mints the v-tag
-# that fires the dist-generated release.yml unchanged.
+# Release automation: release-please maintains a standing release PR from
+# conventional commits on main; merging it bumps the engine workspace version,
+# writes engine/CHANGELOG.md, and creates the release as a DRAFT with its tag
+# (`force-tag-creation`, because GitHub does not create the tag ref for a draft
+# on its own).
 #
-# TOKEN SEAM (the key hazard): a tag minted with the default
-# GITHUB_TOKEN does NOT trigger downstream `on: push: tags` workflows —
-# GitHub suppresses workflow chaining — so release.yml would silently never
-# fire. Provision RELEASE_PLEASE_TOKEN as a fine-grained PAT (or GitHub App
-# token) with contents: write and pull-requests: write on this repository.
-# The github.token fallback keeps the release-PR flow alive without it, but
-# the minted tag will not chain until the secret exists.
+# RELEASE CHAINING IS AN EXPLICIT DISPATCH, keyed by tag. A tag created by a
+# workflow raises no `push: tags` event for other workflows to react to, so
+# nothing downstream listens for one. The release orchestrator is dispatched
+# with `--ref <tag>`, which pins every checkout it and its reusable workflows
+# make to the tagged tree.
+#
+# RELEASE_PLEASE_TOKEN is a fine-grained PAT with contents and pull-requests
+# write, required with no fallback: the release PR must be able to trigger the
+# pull-request lanes, which a `GITHUB_TOKEN`-authored PR does not.
 
-name: release-please
+name: Dashboard Release Please
 
 on:
   push:
     branches: [main]
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 # Serialize runs: rapid pushes to main must not race on the release PR.
 concurrency:
@@ -28,40 +30,34 @@ concurrency:
 
 jobs:
   release-please:
+    name: "Build: Release proposal (Linux)"
     timeout-minutes: 30
     runs-on: [self-hosted, Linux, X64]
     outputs:
-      prs_created: ${{ steps.release.outputs.prs_created }}
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
       release_branch: ${{ steps.release.outputs.pr && fromJSON(steps.release.outputs.pr).headBranchName }}
     steps:
-      - uses: googleapis/release-please-action@v4
+      - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4
         id: release
         with:
-          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
   # release-please rewrites `[workspace.package] version` in engine/Cargo.toml
   # through its `extra-files` handling. It has no notion of a Cargo lock, so
   # engine/Cargo.lock still records every workspace crate at the PREVIOUS
   # version, and the two disagree from the moment the release PR is opened.
-  #
-  # That went unseen across several releases because nothing passed `--locked`:
-  # cargo refreshed the lock in memory and every build succeeded over a tree
-  # that was not reproducible. quality-gates now runs `cargo metadata --locked`,
-  # which turns the drift into a hard red on the release PR. This job closes the
-  # other half — the job that causes the drift also repairs it — so the red is a
-  # regression signal rather than a chore the next release rediscovers.
+  # The merge gate runs `cargo metadata --locked`, which turns that drift into
+  # a hard red on the release PR; this job is the other half - the job that
+  # causes the drift also repairs it.
   sync-lock:
+    name: "Build: Release lock (Linux)"
     timeout-minutes: 30
-    name: Carry engine/Cargo.lock with the version bump
     needs: release-please
-    # Gate on the branch NAME, not on `prs_created`. release-please reports that
-    # output for a newly OPENED pull request, and the standing release PR is
-    # usually updated rather than opened — the drift this repairs arrives on
-    # both paths. Gating on the flag would have made the job silently never run
-    # in the common case, which is the failure mode #94 was filed about: a fix
-    # that nothing verifies. An empty branch name means there is no release PR
-    # to repair, which is the only case worth skipping.
+    # Gate on the branch NAME, not on `prs_created`: the standing release PR is
+    # usually updated rather than opened, and the drift arrives on both paths.
     if: ${{ needs.release-please.outputs.release_branch != '' }}
     runs-on: [self-hosted, Linux, X64]
     steps:
@@ -69,10 +65,12 @@ jobs:
       - name: Reclaim the workspace from a job that may not have finished
         shell: bash
         run: bash .github/scripts/reclaim-workspace.sh || true
-      - uses: actions/checkout@v4
+      # This job pushes the regenerated lock back to the release branch, so the
+      # checkout must keep its credentials.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # zizmor: ignore[artipacked] pushes the lock back with this token
         with:
           ref: ${{ needs.release-please.outputs.release_branch }}
-          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
       - name: Read pinned toolchain
         id: toolchain
         shell: bash
@@ -80,7 +78,7 @@ jobs:
       - name: Warm the pinned toolchain, retrying a dropped connection
         shell: bash
         run: bash .github/scripts/warm-toolchain.sh "${{ steps.toolchain.outputs.channel }}" || true
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
         with:
           toolchain: ${{ steps.toolchain.outputs.channel }}
       - name: Regenerate and push engine/Cargo.lock
@@ -88,3 +86,19 @@ jobs:
         env:
           RELEASE_BRANCH: ${{ needs.release-please.outputs.release_branch }}
         run: bash .github/scripts/sync-release-lock.sh
+
+  dispatch-release:
+    name: "Build: Release dispatch (Linux)"
+    timeout-minutes: 10
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: [self-hosted, Linux, X64]
+    permissions:
+      actions: write
+    steps:
+      - name: Dispatch the release orchestrator for the new tag
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: gh workflow run product-release.yml --repo "${{ github.repository }}" --ref "${TAG}" -f tag="${TAG}" -f validation_only=false
