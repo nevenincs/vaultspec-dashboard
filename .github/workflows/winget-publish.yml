@@ -33,7 +33,7 @@
 # WinGet proof flips the matrix entry to `supported`. Today it
 # fails closed at the gate (matrix marks winget `feasibility_gated`).
 
-name: winget-publish
+name: Dashboard WinGet Publish
 
 on:
   workflow_dispatch:
@@ -54,16 +54,20 @@ jobs:
   # The fail-closed gate. No submission runs unless WinGet is
   # matrix-`supported` AND the phase-zero proof workflow exists.
   gate:
+    name: "Check: WinGet publication"
     uses: ./.github/workflows/channel-publish-gate.yml
     with:
       channel: winget
 
   submit:
+    name: "Build: WinGet submission (Windows)"
     timeout-minutes: 60
     needs: gate
     runs-on: [self-hosted, Windows, X64]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
       - name: Submit the composite-product manifests to winget-pkgs
         shell: pwsh
         env:

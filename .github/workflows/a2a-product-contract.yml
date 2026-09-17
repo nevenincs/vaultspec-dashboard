@@ -19,7 +19,7 @@
 # The pinned producer commit lives in `packaging/a2a-component.lock.json`
 # (`a2a_source.commit`); `producer_ref` overrides it for pre-pin rehearsal
 # against a candidate a2a commit.
-name: a2a-product-contract
+name: Dashboard A2A Contract
 
 on:
   workflow_dispatch:
@@ -41,7 +41,7 @@ concurrency:
 
 jobs:
   contract:
-    name: Build + smoke onedir (${{ matrix.target }})
+    name: "Test: A2A onedir (${{ matrix.platform }})"
     strategy:
       fail-fast: false
       matrix:
@@ -49,15 +49,19 @@ jobs:
           - target: aarch64-apple-darwin
             os: macOS
             arch: ARM64
+            platform: macOS ARM64
           - target: aarch64-unknown-linux-gnu
             os: Linux
             arch: ARM64
+            platform: Linux ARM64
           - target: x86_64-unknown-linux-gnu
             os: Linux
             arch: X64
+            platform: Linux X64
           - target: x86_64-pc-windows-msvc
             os: Windows
             arch: X64
+            platform: Windows X64
     # NOT serialised, unlike product-release.yml and a2a-product-certification.yml,
     # and that difference is measured rather than assumed.
     #
@@ -87,23 +91,30 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Checkout dashboard
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          persist-credentials: false
           path: dashboard
 
       - name: Resolve producer commit
         id: producer
         shell: bash
+        env:
+          PRODUCER_REF: ${{ inputs.producer_ref }}
         run: |
-          if [ -n "${{ inputs.producer_ref }}" ]; then
-            echo "ref=${{ inputs.producer_ref }}" >> "$GITHUB_OUTPUT"
+          if [ -n "${PRODUCER_REF}" ]; then
+            if ! [[ "${PRODUCER_REF}" =~ ^[0-9A-Za-z._/-]+$ ]]; then
+              echo "::error::'${PRODUCER_REF}' is not a git ref" >&2
+              exit 1
+            fi
+            echo "ref=${PRODUCER_REF}" >> "$GITHUB_OUTPUT"
           else
             pinned=$(jq -r '.a2a_source.commit' dashboard/packaging/a2a-component.lock.json)
             echo "ref=$pinned" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Checkout A2A producer
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: nevenincs/vaultspec-a2a
           ref: ${{ steps.producer.outputs.ref }}
@@ -181,7 +192,7 @@ jobs:
 
       - name: Upload inventory artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: a2a-onedir-inventory-${{ matrix.target }}
           path: producer/onedir-inventory-${{ matrix.target }}.txt

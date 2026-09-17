@@ -8,7 +8,7 @@ Browse feature records, source files, and Git history in a local web interface.
 Choose a project and worktree, follow relationships in the graph, and read or edit
 vault Markdown alongside your code.
 
-[![quality](https://img.shields.io/github/actions/workflow/status/nevenincs/vaultspec-dashboard/quality-gates.yml?branch=main&style=flat&label=quality&logo=githubactions&logoColor=white&labelColor=24292f)](https://github.com/nevenincs/vaultspec-dashboard/actions/workflows/quality-gates.yml)
+[![merge gate](https://img.shields.io/github/actions/workflow/status/nevenincs/vaultspec-dashboard/merge-gate.yml?style=flat&label=merge%20gate&logo=githubactions&logoColor=white&labelColor=24292f)](https://github.com/nevenincs/vaultspec-dashboard/actions/workflows/merge-gate.yml)
 [![release](https://img.shields.io/github/v/release/nevenincs/vaultspec-dashboard?style=flat&label=release&logo=github&logoColor=white&labelColor=24292f&color=8A72B5)](https://github.com/nevenincs/vaultspec-dashboard/releases/latest)
 [![targets](https://img.shields.io/badge/targets-macOS%20arm64%20%7C%20Linux%20arm64%2Fx64%20%7C%20Windows%20x64-3F9AA6?style=flat&labelColor=24292f)](https://github.com/nevenincs/vaultspec-dashboard/releases/latest)
 [![license](https://img.shields.io/github/license/nevenincs/vaultspec-dashboard?style=flat&label=license&logo=opensourceinitiative&logoColor=white&labelColor=24292f&color=B3823C)](LICENSE)

@@ -1,0 +1,55 @@
+# Advisory code health, on request.
+#
+# Both targets are advisory in the toolchain itself (`advisory=True`): a
+# finding is a lead to confirm and exits 0, while a tool that could not RUN
+# exits non-zero and stays visible. That keeps them advisory on both sides of
+# the parity rule - locally and here - instead of hiding a hard local failure
+# behind `continue-on-error`. Dispatch-only: the fleet runs no standing compute
+# beyond the weekly acquisition check.
+name: Dashboard Code Health
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: code-health-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  health:
+    name: "Check: Code health (Linux)"
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 30
+    steps:
+      - name: Reclaim the workspace from a job that may not have finished
+        shell: bash
+        run: bash .github/scripts/reclaim-workspace.sh || true
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Set up just
+        uses: taiki-e/install-action@6012bba2f8e3e666a2b212f8823c06831704ce92 # just
+        with:
+          tool: just@1.38.0
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          # The runners already share UV_CACHE_DIR; the action's own cache save
+          # hung the post step on the fleet.
+          enable-cache: false
+      - name: Provision the dev toolchain
+        run: just init
+      - name: Unused code (just audit-knip)
+        if: ${{ !cancelled() }}
+        run: just audit-knip
+      - name: Build tooling advisories (just audit-node-tooling)
+        if: ${{ !cancelled() }}
+        run: just audit-node-tooling

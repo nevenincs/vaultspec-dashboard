@@ -5,50 +5,48 @@
 #
 # CI that:
 #
-# * checks for a Git Tag that looks like a release
 # * builds artifacts with dist (archives, installers, hashes)
 # * uploads those artifacts to temporary workflow zip
-# * on success, uploads the artifacts to a GitHub Release
+# * on success, uploads the artifacts to the tag's DRAFT GitHub Release
 #
-# Note that a GitHub Release with this tag is assumed to exist as a draft
-# with the appropriate title/body, and will be undrafted for you.
+# Hand-adapted for the fleet release chain; re-apply if `dist generate-ci`
+# regenerates this file. It is not triggered by a tag: the release orchestrator
+# (product-release.yml) calls it after the merge gate has measured the tagged
+# tree, and the orchestrator alone decides when the draft becomes visible. This
+# workflow never publishes, promotes or demotes a release.
 
-name: Release
+name: Dashboard Release Archives
 permissions:
-  "contents": "write"
+  contents: read
 
-# This task will run whenever you push a git tag that looks like a version
-# like "1.0.0", "v0.1.0-prerelease.1", "my-app/0.1.0", "releases/v1.0.0", etc.
-# Various formats will be parsed into a VERSION and an optional PACKAGE_NAME, where
-# PACKAGE_NAME must be the name of a Cargo package in your workspace, and VERSION
-# must be a Cargo-style SemVer Version (must have at least major.minor.patch).
-#
-# If PACKAGE_NAME is specified, then the announcement will be for that
-# package (erroring out if it doesn't have the given version or isn't dist-able).
-#
-# If PACKAGE_NAME isn't specified, then the announcement will be for all
-# (dist-able) packages in the workspace with that version (this mode is
-# intended for workspaces with only one dist-able package, or with all dist-able
-# packages versioned/released in lockstep).
-#
-# If you push multiple tags at once, separate instances of this workflow will
-# spin up, creating an independent announcement for each one. However, GitHub
-# will hard limit this to 3 tags per commit, as it will assume more tags is a
-# mistake.
-#
-# If there's a prerelease-style suffix to the version, then the release(s)
-# will be marked as a prerelease.
+# Dispatched or called with the release TAG, and run AT that tag
+# (`gh workflow run ... --ref <tag>`, or a caller dispatched the same way), so
+# every checkout below is the tagged tree. `inputs.tag` names the release dist
+# announces; the orchestrator's ref check proves the two agree.
 on:
-  push:
-    tags:
-      - '**[0-9]+.[0-9]+.[0-9]+*'
+  workflow_call:
+    inputs:
+      tag:
+        description: "Release tag to build archives for (e.g. v0.1.13)."
+        required: true
+        type: string
+    secrets:
+      FLEET_PREFLIGHT_TOKEN:
+        description: "PAT with Administration:read, for the runner preflight."
+        required: true
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build archives for (e.g. v0.1.13). Dispatch with --ref set to the same tag."
+        required: true
+        type: string
 
 concurrency:
   # KEYED BY VERSION, not by ref. An unkeyed or ref-keyed release group means
   # GitHub holds one running and one pending run, so a third release silently
   # CANCELS the queued one - and a cancelled run reports `cancelled`, not
   # `failed`, so a release that never happened raises no alarm.
-  group: release-${{ github.ref_name }}
+  group: release-archives-${{ inputs.tag }}
   cancel-in-progress: false
 
 jobs:
@@ -70,13 +68,13 @@ jobs:
   # HOSTED, deliberately: a preflight that needs the fleet cannot report that the
   # fleet is down. It is the only job in this file that does not run on it.
   # DERIVATION ONLY. What this workflow schedules onto is repo-specific and
-  # stays here; the CHECK is one implementation for the whole fleet and lives
-  # in ci-fleet, pinned by digest below. This file used to carry a second copy
+  # stays here; the CHECK is one implementation shared by the whole runner
+  # fleet and rendered in below. This file used to carry a second copy
   # of that check as a local composite action - the copy that never gets the
   # fix is the one that ships the bug.
   derive-selectors:
     timeout-minutes: 15
-    name: Derive the selectors this workflow schedules onto
+    name: "Check: Runner selectors (Linux)"
     # ON THE FLEET. This job derives the selectors the preflight below
     # checks, and it was left hosted when that preflight was migrated -
     # two adjacent jobs, one moved and one missed. It needs nothing the
@@ -86,8 +84,9 @@ jobs:
       selectors: ${{ steps.derive.outputs.selectors }}
     steps:
       # Only what the steps below read, only this commit.
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          persist-credentials: false
           fetch-depth: 1
           path: .sparse-derive-selectors
           sparse-checkout: |
@@ -99,8 +98,8 @@ jobs:
         id: derive
         shell: bash
         # The sparse checkout above lives in its own directory so its sparse
-        # state never reaches the runner's shared workspace (fleet audit
-        # `fleetctl checkouts`); the paths below are relative to it.
+        # state never reaches the runner's shared workspace (the fleet's
+        # checkout audit); the paths below are relative to it.
         working-directory: .sparse-derive-selectors
         run: |
           set -uo pipefail
@@ -225,7 +224,7 @@ jobs:
   # second reason this moved.
   preflight:
     timeout-minutes: 15
-    name: Preflight runners
+    name: "Check: Preflight runners (Linux)"
     needs: derive-selectors
     runs-on: [self-hosted, Linux, X64]
     steps:
@@ -235,22 +234,22 @@ jobs:
           GH_TOKEN: ${{ secrets.FLEET_PREFLIGHT_TOKEN }}
           TARGET_REPO: ${{ github.event.repository.name }}
           SELECTORS: ${{ needs.derive-selectors.outputs.selectors }}
-          ALLOW_GATED: ${{ github.event_name != 'push' }}
+          ALLOW_GATED: false
         run: |
-          # BEGIN generated by ci-fleet: runners/ci/preflight.sh - do not edit here
+          # BEGIN generated runner preflight - do not edit here
           # THE canonical runner preflight. One implementation for the whole fleet.
           #
           # WHY THIS IS A SCRIPT AND NOT A REUSABLE WORKFLOW. It was one, and every
-          # consumer's call was rejected before a single job started: ci-fleet is
-          # PRIVATE and all six consuming repos are PUBLIC, and a public repository
+          # consumer's call was rejected before a single job started: its source
+          # repository is PRIVATE and all six consuming repos are PUBLIC, and a public repository
           # cannot call a reusable workflow from a private one. GitHub reports that as a
           # run with zero jobs and "this run likely failed because of a workflow file
           # issue", which is why it survived actionlint, survived review, and would have
           # surfaced first on a release.
           #
           # So the sharing model is DEPLOYMENT, not runtime resolution: this file is the
-          # source, `fleetctl ci preflight` renders it into a consumer's workflow, and
-          # `tests/test_preflight_parity.py` fails when a rendered copy drifts from it.
+          # source, it is rendered into each consumer's workflow, and a parity check
+          # fails when a rendered copy drifts from it.
           #
           # Contract - the caller sets these, all required:
           #   GH_TOKEN     PAT with Administration:read. NEVER the default GITHUB_TOKEN:
@@ -345,21 +344,22 @@ jobs:
             exit 1
           fi
           echo "preflight passed: every required selector has an online runner"
-          # END generated by ci-fleet
+          # END generated runner preflight
   plan:
+    name: "Build: Release plan (Linux)"
     timeout-minutes: 30
     needs: preflight
     # Hand-set for the self-hosted fleet; re-apply if `dist generate-ci` regenerates this file.
     runs-on: [self-hosted, Linux, X64]
     outputs:
       val: ${{ steps.plan.outputs.manifest }}
-      tag: ${{ !github.event.pull_request && github.ref_name || '' }}
-      tag-flag: ${{ !github.event.pull_request && format('--tag={0}', github.ref_name) || '' }}
-      publishing: ${{ !github.event.pull_request }}
+      tag: ${{ inputs.tag }}
+      tag-flag: ${{ format('--tag={0}', inputs.tag) }}
+      publishing: "true"
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
           submodules: recursive
@@ -369,7 +369,7 @@ jobs:
         shell: bash
         run: "curl --proto '=https' --tlsv1.2 -LsSf https://github.com/axodotdev/cargo-dist/releases/download/v0.32.0/cargo-dist-installer.sh | sh"
       # The installer puts `dist` in $CARGO_HOME/bin, and this fleet's runners set
-      # CARGO_HOME to the fleet-managed persistent Cargo cache, so the
+      # CARGO_HOME to a shared cache (/home/hello/.ci-shared/cargo), so the
       # generated `path: ~/.cargo/bin/dist` matched nothing. `if-no-files-found`
       # defaults to `warn`, so the upload produced no artifact SILENTLY and the
       # failure surfaced two jobs later as
@@ -387,32 +387,37 @@ jobs:
           cp "$src" "$RUNNER_TEMP/dist-cache/dist"
           echo "staged $src"
       - name: Cache dist
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: cargo-dist-cache
           path: ${{ runner.temp }}/dist-cache/dist
           # Never let this go missing quietly again.
           if-no-files-found: error
-      # sure would be cool if github gave us proper conditionals...
-      # so here's a doubly-nested ternary-via-truthiness to try to provide the best possible
-      # functionality based on whether this is a pull_request, and whether it's from a fork.
-      # (PRs run on the *source* but secrets are usually on the *target* -- that's *good*
-      # but also really annoying to build CI around when it needs secrets to work right.)
       - id: plan
+        name: Plan the release
+        env:
+          TAG: ${{ inputs.tag }}
         run: |
-          dist ${{ (!github.event.pull_request && format('host --steps=create --tag={0}', github.ref_name)) || 'plan' }} --output-format=json > plan-dist-manifest.json
+          # Every later job receives this tag through the plan outputs, so it
+          # is validated here, once, before anything else reads it.
+          if ! [[ "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::'${TAG}' is not a release tag (v<major>.<minor>.<patch>[-pre])" >&2
+            exit 1
+          fi
+          dist host --steps=create --tag="${TAG}" --output-format=json > plan-dist-manifest.json
           echo "dist ran successfully"
           cat plan-dist-manifest.json
           echo "manifest=$(jq -c "." plan-dist-manifest.json)" >> "$GITHUB_OUTPUT"
       - name: "Upload dist-manifest.json"
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: artifacts-plan-dist-manifest
           path: plan-dist-manifest.json
       # Hand-set for the self-hosted fleet; re-apply if `dist generate-ci` regenerates this file.
   # Build and packages all the platform-specific things
   build-local-artifacts:
-    name: build-local-artifacts (${{ join(matrix.targets, ', ') }})
+    name: "Build: CLI archive (${{ join(matrix.targets, ', ') }})"
+    timeout-minutes: 120
     # Let the initial task tell us to not run (currently very blunt)
     needs:
       - plan
@@ -441,7 +446,9 @@ jobs:
     # derive-selectors reads this very line, and
     # dev/guards/test_preflight_coverage.py fails on a dist key it lacks.
     runs-on: ${{ fromJSON(matrix.runner == 'linux-x64' && '["self-hosted","Linux","X64"]' || matrix.runner == 'linux-arm64' && '["self-hosted","Linux","ARM64"]' || matrix.runner == 'macOS' && '["self-hosted","macOS","ARM64"]' || matrix.runner == 'Windows' && '["self-hosted","Windows","X64"]' || format('["unmapped-dist-runner-{0}"]', matrix.runner)) }}
-    container: ${{ matrix.container && matrix.container.image || null }}
+    # The images are pinned by digest in dist-workspace.toml; dist plans them
+    # into the matrix, so the pin is not visible here.
+    container: ${{ matrix.container && matrix.container.image || null }} # zizmor: ignore[unpinned-images]
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       BUILD_MANIFEST_NAME: target/distrib/${{ join(matrix.targets, '-') }}-dist-manifest.json
@@ -449,7 +456,7 @@ jobs:
       - name: enable windows longpaths
         run: |
           git config --global core.longpaths true
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
           submodules: recursive
@@ -498,7 +505,7 @@ jobs:
           }
         shell: "pwsh"
       - name: "Install Node"
-        uses: "actions/setup-node@v4"
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           "cache": "npm"
           "cache-dependency-path": "frontend/package-lock.json"
@@ -558,7 +565,7 @@ jobs:
           fi
       # The compile cache is wired as a RUSTC_WRAPPER at the runner level, so
       # cargo routes even its `rustc -vV` probe through it and the FIRST cargo
-      # invocation dies if it cannot answer. engine-ci.yml has carried this
+      # invocation dies if it cannot answer. merge-gate.yml has carried this
       # backstop since a squatted port broke the gate; the release lane needs it
       # for the same reason - a compile cache must never be able to block a
       # release. Probe it as cargo does; if it cannot answer, drop it and build
@@ -581,19 +588,23 @@ jobs:
             echo "Compile cache reachable via $RUSTC_WRAPPER"
           fi
       - name: Install dist
-        run: ${{ matrix.install_dist.run }}
+        # dist plans this command from committed config; it is not user input.
+        run: ${{ matrix.install_dist.run }} # zizmor: ignore[template-injection]
       # Get the dist-manifest
       - name: Fetch local artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           pattern: artifacts-*
           path: target/distrib/
           merge-multiple: true
       - name: Install dependencies
-        run: |
+        run: | # zizmor: ignore[template-injection] dist plans this from committed config
           ${{ matrix.packages_install }}
+      # Both expansions come from the plan job: dist's argv for this leg, and
+      # the release tag that job validated. They stay inline because this step
+      # runs under both bash and pwsh, which split an env var differently.
       - name: Build artifacts
-        run: |
+        run: | # zizmor: ignore[template-injection]
           # Actually do builds and make zips and whatnot
           dist build ${{ needs.plan.outputs.tag-flag }} --print=linkage --output-format=json ${{ matrix.dist_args }} > dist-manifest.json
           echo "dist ran successfully"
@@ -613,7 +624,7 @@ jobs:
 
           cp dist-manifest.json "$BUILD_MANIFEST_NAME"
       - name: "Upload artifacts"
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: artifacts-build-local-${{ join(matrix.targets, '_') }}
           path: |
@@ -663,6 +674,7 @@ jobs:
 
   # Build and package all the platform-agnostic(ish) things
   build-global-artifacts:
+    name: "Build: Global artifacts (Linux)"
     timeout-minutes: 120
     needs:
       - plan
@@ -673,19 +685,19 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       BUILD_MANIFEST_NAME: target/distrib/global-dist-manifest.json
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
           submodules: recursive
       - name: Install cached dist
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: cargo-dist-cache
           path: ~/.cargo/bin/
       - run: chmod +x ~/.cargo/bin/dist
       # Get all the local artifacts for the global tasks to use (for e.g. checksums)
       - name: Fetch local artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           pattern: artifacts-*
           path: target/distrib/
@@ -705,7 +717,7 @@ jobs:
 
           cp dist-manifest.json "$BUILD_MANIFEST_NAME"
       - name: "Upload artifacts"
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: artifacts-build-global
           path: |
@@ -714,7 +726,11 @@ jobs:
       # Hand-set for the self-hosted fleet; re-apply if `dist generate-ci` regenerates this file.
   # Determines if we should publish/announce
   host:
+    name: "Build: Release upload (Linux)"
     timeout-minutes: 120
+    # The only job that writes to the release: it uploads to the draft.
+    permissions:
+      contents: write
     needs:
       - plan
       - build-local-artifacts
@@ -728,19 +744,19 @@ jobs:
     outputs:
       val: ${{ steps.host.outputs.manifest }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
           submodules: recursive
       - name: Install cached dist
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: cargo-dist-cache
           path: ~/.cargo/bin/
       - run: chmod +x ~/.cargo/bin/dist
       # Fetch artifacts from scratch-storage
       - name: Fetch artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           pattern: artifacts-*
           path: target/distrib/
@@ -753,14 +769,14 @@ jobs:
           cat dist-manifest.json
           echo "manifest=$(jq -c "." dist-manifest.json)" >> "$GITHUB_OUTPUT"
       - name: "Upload dist-manifest.json"
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           # Overwrite the previous copy
           name: artifacts-dist-manifest
           path: dist-manifest.json
       # Create a GitHub Release while uploading all files to it
       - name: "Download GitHub Artifacts"
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           pattern: artifacts-*
           path: artifacts
@@ -769,13 +785,14 @@ jobs:
         run: |
           # Remove the granular manifests
           rm -f artifacts/*-dist-manifest.json
-      - name: Create GitHub Release
+      - name: Upload to the draft GitHub Release
         env:
           PRERELEASE_FLAG: "${{ fromJson(steps.host.outputs.manifest).announcement_is_prerelease && '--prerelease' || '' }}"
           RELEASE_COMMIT: "${{ github.sha }}"
         run: |
-          # If we're editing a release in place, we need to upload things ahead of time
-          gh release upload "${{ needs.plan.outputs.tag }}" artifacts/*
+          # The release stays a DRAFT here. Only the orchestrator publishes it,
+          # and only after every gate has passed.
+          gh release upload "${{ needs.plan.outputs.tag }}" artifacts/* --clobber
 
           # PRERELEASE_FLAG is deliberately UNQUOTED. It holds either
           # `--prerelease` or the empty string, and the empty case must expand to
@@ -783,62 +800,22 @@ jobs:
           # empty argument and break every stable (non-prerelease) release. This
           # is intentional word-removal, not an oversight — do not "fix" it.
           # shellcheck disable=SC2086
-          gh release edit "${{ needs.plan.outputs.tag }}" --target "$RELEASE_COMMIT" $PRERELEASE_FLAG --draft=false
-      # Hand-set for the self-hosted fleet; re-apply if `dist generate-ci` regenerates this file.
-  announce:
-    timeout-minutes: 30
-    needs:
-      - plan
-      - host
-    # use "always() && ..." to allow us to wait for all publish jobs while
-    # still allowing individual publish jobs to skip themselves (for prereleases).
-    # "host" however must run to completion, no skipping allowed!
-    if: ${{ always() && needs.host.result == 'success' }}
-    # Hand-set for the self-hosted fleet; re-apply if `dist generate-ci` regenerates this file.
-    runs-on: [self-hosted, Linux, X64]
-    env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-          submodules: recursive
+          gh release edit "${{ needs.plan.outputs.tag }}" --target "$RELEASE_COMMIT" $PRERELEASE_FLAG
       # Hand-set for the self-hosted fleet; re-apply if `dist generate-ci` regenerates this file.
   # Hand-added; not produced by `dist generate-ci`. Re-apply if that regenerates
   # this file.
   #
-  # release-please publishes the GitHub Release as soon as its PR merges, and
-  # this workflow attaches the artifacts afterwards. So any failure between
-  # those two points leaves a published, non-draft, asset-less release serving
-  # as `releases/latest` - which is where every badge, install instruction and
-  # package-manager manifest points. v0.1.4 sat that way for six weeks because
-  # five TypeScript errors failed the SPA bundle on every build leg, `host`
-  # skipped, and nothing said so.
-  #
-  # Draft-until-attached is not available as a fix: GitHub does not create the
-  # tag ref for a draft release, and this workflow triggers on that tag push, so
-  # drafting would deadlock the release rather than protect it.
-  #
-  # This job runs on every terminal outcome and makes the two states honest -
-  # publish only what actually carries artifacts, and demote what does not so
-  # `latest` falls back to the previous good release instead of advertising an
-  # empty one.
+  # `host` can succeed while uploading nothing - a build leg that produced no
+  # archive, or a manifest that listed none - and a release that goes live in
+  # that state is the empty `latest` v0.1.4 served for six weeks. This refuses
+  # the run, so the orchestrator never publishes the draft.
   verify-release-assets:
     timeout-minutes: 30
-    name: Verify the release carries artifacts
+    name: "Check: Release archives attached (Linux)"
     needs:
       - plan
       - host
-    if: ${{ always() && needs.plan.outputs.publishing == 'true' }}
-    # ON THE FLEET, and it shares the single Linux/X64 runner with the build,
-    # so it is only scheduled once that runner is free. The cost of that is
-    # measured, not hypothetical: at v0.1.7 every Compose leg failed, this
-    # guard sat QUEUED for over an hour behind the build, and the empty release
-    # went on serving as `latest` until a person demoted it by hand. A
-    # congested or down fleet delays this demotion rather than performing it.
-    #
-    # Nothing here needs a fleet capability: the job calls `gh release view`
-    # and `gh release edit` and nothing else.
+    if: ${{ always() && needs.plan.result == 'success' }}
     runs-on: [self-hosted, Linux, X64]
     permissions:
       contents: write
@@ -846,60 +823,16 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       TAG: ${{ needs.plan.outputs.tag }}
       HOST_RESULT: ${{ needs.host.result }}
-      # Whether this version is *meant* to be a prerelease. Demotion below
-      # reuses the prerelease flag as a "not latest" marker, so promotion must
-      # consult the plan rather than assume every release wants to be latest -
-      # otherwise a genuine -rc tag gets promoted into `latest` by this job.
-      PLANNED_PRERELEASE: ${{ fromJson(needs.plan.outputs.val).announcement_is_prerelease }}
     steps:
-      - name: Require artifacts on the published release
+      - name: Require artifacts on the draft release
         shell: bash
         run: |
           set -euo pipefail
           assets=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
-            --json assets --jq '.assets | length')
-          echo "release ${TAG} carries ${assets} asset(s); host=${HOST_RESULT}"
-
+            --json assets --jq '[.assets[] | select(.name | startswith("vaultspec-cli-"))] | length')
+          echo "release ${TAG} carries ${assets} CLI archive asset(s); host=${HOST_RESULT}"
           if [ "$HOST_RESULT" = "success" ] && [ "$assets" -gt 0 ]; then
             exit 0
           fi
-
-          # Demote so `releases/latest` resolves to the last release that has
-          # artifacts. A prerelease keeps the tag, the notes and the URL intact
-          # and reachable - it only stops this one answering as `latest`.
-          if [ "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
-                  --json isPrerelease --jq '.isPrerelease')" != "true" ]; then
-            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --prerelease
-            echo "::notice::demoted ${TAG} to a prerelease so latest skips it"
-          fi
-
-          echo "::error::${TAG} has ${assets} assets (host=${HOST_RESULT}). A \
-          release with no artifacts must not serve as latest; it has been \
-          demoted to a prerelease. Fix the build and re-run this workflow for \
-          this tag - the last step promotes it back once artifacts attach."
+          echo "::error::${TAG} carries ${assets} CLI archive(s) (host=${HOST_RESULT}); the draft must not be published."
           exit 1
-
-      - name: Promote a repaired release back to latest
-        if: ${{ needs.host.result == 'success' && !fromJson(needs.plan.outputs.val).announcement_is_prerelease }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          # A re-run after a fixed build must undo an earlier demotion, or the
-          # repaired release stays invisible to `latest` forever. Only reached
-          # when host succeeded, the asset check above passed, and the plan says
-          # this version was meant to be a full release.
-          test "$PLANNED_PRERELEASE" = "false"
-          if [ "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
-                  --json isPrerelease --jq '.isPrerelease')" = "true" ]; then
-            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --prerelease=false
-            echo "::notice::promoted ${TAG} back to a full release"
-          fi
-
-  custom-scoop-bump:
-    needs:
-      - plan
-      - announce
-    uses: ./.github/workflows/scoop-bump.yml
-    with:
-      plan: ${{ needs.plan.outputs.val }}
-    secrets: inherit

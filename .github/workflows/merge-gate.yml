@@ -1,0 +1,603 @@
+# The full verification tier, run BEFORE merge and reported as ONE check.
+#
+# Every push to a branch under review pays only for the cheap lane (ci.yml).
+# This workflow measures everything a change must pass - every gating linter,
+# the engine suite on Linux and Windows, the live-wire frontend suite, the
+# consumer-typed wire conformance, the release inputs and the dependency
+# advisories - and folds the results into `Check: Merge gate (Linux)`, the
+# single context the `protect-main` ruleset requires.
+#
+# WHEN IT RUNS. A maintainer adds the `ci:full` label. A push never starts it,
+# so a new commit carries no gate result and cannot merge until the label is
+# added again; the gate removes the label when it finishes so that re-adding it
+# is always a fresh request. The release orchestrator also calls it through
+# `workflow_call`, so the tagged tree is measured by exactly this job set before
+# anything is built from it. Nothing here runs on a push to `main`: the ruleset
+# requires linear history, so the merged tree is the tree this gate measured.
+#
+# THE VERDICT IS NEVER SKIPPED. A skipped required check counts as passed, so
+# the gate job runs `always()` and depends on every measuring job. A run
+# started by some OTHER label measures nothing; the gate then carries the most
+# recent completed verdict for the same head commit, and fails when there is
+# none rather than passing on an absence.
+#
+# Every gate step is `just <recipe>`. The steps that are not yet recipes are
+# named in .github/ci-contract-allow.txt with the recipe each is waiting for.
+name: Dashboard Merge Gate
+
+on:
+  pull_request:
+    branches: [main]
+    types: [labeled]
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # The label is part of the key: adding an unrelated label must never cancel
+  # a `ci:full` run that is already measuring.
+  group: merge-gate-${{ github.event.pull_request.number || github.ref }}-${{ github.event.label.name || 'run' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lint:
+    name: "Check: Full lint (Linux)"
+    if: ${{ github.event_name != 'pull_request' || (github.event.label.name == 'ci:full' && github.event.pull_request.head.repo.full_name == github.repository) }}
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 45
+    steps:
+      # Before checkout, because checkout is the step the EACCES lands on.
+      # `|| true` so a workspace that has never been checked out - where the
+      # script does not exist yet - simply skips it.
+      - name: Reclaim the workspace from a job that may not have finished
+        shell: bash
+        run: bash .github/scripts/reclaim-workspace.sh || true
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Set up just
+        uses: taiki-e/install-action@6012bba2f8e3e666a2b212f8823c06831704ce92 # just
+        with:
+          tool: just@1.38.0
+      # Developers get these from mise; the fleet runners do not carry mise.
+      - name: Set up the pinned lint tools
+        uses: taiki-e/install-action@6012bba2f8e3e666a2b212f8823c06831704ce92 # just
+        with:
+          tool: typos@1.47.2,taplo@0.10.0,cargo-deny@0.19.0
+      - name: Read pinned toolchain
+        id: toolchain
+        shell: bash
+        run: echo "channel=$(grep -m1 '^channel' engine/rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+      - name: Warm the pinned toolchain, retrying a dropped connection
+        shell: bash
+        run: bash .github/scripts/warm-toolchain.sh "${{ steps.toolchain.outputs.channel }}" || true
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+        with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
+          components: rustfmt, clippy
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          # The runners already share UV_CACHE_DIR; the action's own cache save
+          # hung the post step on the fleet.
+          enable-cache: false
+      # The design-system guard parses frontend sources with the TypeScript
+      # compiler, and the frontend linters need the SPA's dependencies.
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Provision the dev toolchain
+        run: just init
+      # Every blocking linter in one recipe: workflows and the CI contract,
+      # TOML, markdown, the dev harness, Rust, the SPA, spelling and the repo
+      # guards. `keep_going` inside the target reports every red dimension in
+      # one run rather than stopping at the first.
+      - name: Every gating dimension (just check-all)
+        run: just check-all
+
+  engine:
+    name: "Test: Engine suite (${{ matrix.os }})"
+    if: ${{ github.event_name != 'pull_request' || (github.event.label.name == 'ci:full' && github.event.pull_request.head.repo.full_name == github.repository) }}
+    timeout-minutes: 60
+    # WINDOWS GATES HERE, and this is the only place in the repository where a
+    # `just` recipe runs on Windows at all. The justfile declares
+    # `set windows-shell` and every recipe body is a single command with no
+    # shell dialect, but a claim CI never executes is a claim nobody has
+    # tested; this leg is what makes the platform-agnostic property true
+    # rather than asserted.
+    runs-on: [self-hosted, "${{ matrix.os }}", "${{ matrix.arch }}"]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: Linux, arch: X64 }
+          - { os: Windows, arch: X64 }
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      # Pin CI to the repo toolchain (engine/rust-toolchain.toml) instead of
+      # floating stable: the action exports RUSTUP_TOOLCHAIN, which overrides
+      # the file, so the pin must be read and passed explicitly.
+      - name: Read pinned toolchain
+        id: toolchain
+        shell: bash
+        run: echo "channel=$(grep -m1 '^channel' engine/rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+        with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
+          components: rustfmt, clippy
+      # A compile cache must never be able to block the gate. sccache is wired
+      # in as a RUSTC_WRAPPER at the runner level, so cargo routes even its
+      # `rustc -vV` probe through it: if the sccache server is unreachable the
+      # FIRST cargo invocation dies and nothing compiles. On 2026-07-31 WSL's
+      # localhost relay held sccache's default port on the Windows runner and
+      # every Rust step failed before a single crate was checked. Probe the
+      # wrapper exactly the way cargo does, and if it cannot answer, drop it for
+      # the rest of the job so the gate still runs - uncached and loudly
+      # warned, never skipped.
+      #
+      # `sccache --show-stats` is NOT a usable health check: against a squatted
+      # port it exits 0 and prints default-valued stats without ever reaching a
+      # server. Only the real wrapper invocation distinguishes the two.
+      - name: Verify the compile cache cannot block the gate
+        shell: bash
+        run: |
+          set +e
+          if [ -z "${RUSTC_WRAPPER:-}" ]; then
+            echo "No RUSTC_WRAPPER on this runner — nothing to verify."
+            exit 0
+          fi
+          probe=$("$RUSTC_WRAPPER" "$(rustup which rustc)" -vV 2>&1)
+          rc=$?
+          if [ "$rc" -ne 0 ]; then
+            echo "$probe"
+            echo "::warning::Compile cache unreachable on port ${SCCACHE_SERVER_PORT:-4226} (exit $rc) — continuing WITHOUT it. Builds are slower; clippy and the tests still run in full."
+            echo "RUSTC_WRAPPER=" >> "$GITHUB_ENV"
+          else
+            echo "Compile cache reachable on port ${SCCACHE_SERVER_PORT:-4226} via $RUSTC_WRAPPER"
+          fi
+      - name: Set up just
+        uses: taiki-e/install-action@6012bba2f8e3e666a2b212f8823c06831704ce92 # just
+        with:
+          tool: just@1.38.0
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          # The runners already share UV_CACHE_DIR; the action's own cache save
+          # hung the post step on the fleet.
+          enable-cache: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Provision the dev toolchain
+        run: just init
+      # The e2e + declared-tier integration tests spawn `vaultspec-core` from
+      # PATH. `just init` installs it INTO the project environment; putting it
+      # on PATH for the rest of the job is what `init-tools` should absorb.
+      - name: Put vaultspec-core on PATH for the e2e tier
+        shell: bash
+        run: |
+          uv tool install vaultspec-core
+          uv tool dir --bin >> "$GITHUB_PATH"
+      - name: Build (just build-rust)
+        run: just build-rust
+      - name: Unit, integration, e2e and bench (just test-rust)
+        run: just test-rust
+      - name: Reclaim runner disk (always · unix)
+        if: always() && runner.os != 'Windows'
+        shell: bash
+        run: |
+          set +e
+          df -h . 2>/dev/null | tail -1
+          pkill -f 'vaultspec .*serve' 2>/dev/null || true
+          pkill -f '/debug/vaultspec' 2>/dev/null || true
+          rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
+          if [ "${{ job.status }}" = "failure" ]; then
+            rm -rf engine/target frontend/node_modules 2>/dev/null || true
+          fi
+          df -h . 2>/dev/null | tail -1
+      - name: Reclaim runner disk (always · windows)
+        if: always() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used } | Format-Table -AutoSize
+          Get-Process vaultspec -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force $env:TEMP\vaultspec-* -ErrorAction SilentlyContinue
+          if ('${{ job.status }}' -eq 'failure') {
+            Remove-Item -Recurse -Force engine\target, frontend\node_modules -ErrorAction SilentlyContinue
+          }
+          Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used } | Format-Table -AutoSize
+
+  frontend:
+    name: "Test: Frontend suite (Linux)"
+    if: ${{ github.event_name != 'pull_request' || (github.event.label.name == 'ci:full' && github.event.pull_request.head.repo.full_name == github.repository) }}
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 60
+    steps:
+      - name: Reclaim the workspace from a job that may not have finished
+        shell: bash
+        run: bash .github/scripts/reclaim-workspace.sh || true
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Set up just
+        uses: taiki-e/install-action@6012bba2f8e3e666a2b212f8823c06831704ce92 # just
+        with:
+          tool: just@1.38.0
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          # The runners already share UV_CACHE_DIR; the action's own cache save
+          # hung the post step on the fleet.
+          enable-cache: false
+      - name: Provision the dev toolchain
+        run: just init
+      # The frontend suite is online-live by design (no in-memory doubles): its
+      # vitest global setup spawns a REAL `vaultspec serve` and runs
+      # `vaultspec-core install` against a scratch vault. Provision both - the
+      # built engine binary and vaultspec-core on PATH - before vitest, or the
+      # whole suite errors at global setup.
+      - name: Read pinned toolchain
+        id: toolchain
+        shell: bash
+        run: echo "channel=$(grep -m1 '^channel' engine/rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+      # Absorb a transient `socket hang up`: the action does not retry, and a
+      # dropped connection here aborts the job before the suite starts, which
+      # reads exactly like a test failure.
+      - name: Warm the pinned toolchain, retrying a dropped connection
+        shell: bash
+        run: bash .github/scripts/warm-toolchain.sh "${{ steps.toolchain.outputs.channel }}" || true
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+        with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
+      # The runners share one persistent cargo target directory outside the
+      # workspace, while a plain checkout builds into `engine/target`. Read-side
+      # only: this names the directory the build used, it never redirects it.
+      - name: Resolve the engine build output directory
+        shell: bash
+        run: echo "ENGINE_TARGET_DIR=${CARGO_TARGET_DIR:-$GITHUB_WORKSPACE/engine/target}" >> "$GITHUB_ENV"
+      - name: Build engine binary (just build-rust)
+        run: just build-rust
+      - name: Install vaultspec-core (live-engine declared-tier dependency)
+        shell: bash
+        run: |
+          uv tool install vaultspec-core
+          uv tool dir --bin >> "$GITHUB_PATH"
+      # Captured to a file rather than piped, so the suite's OWN exit code is
+      # what fails the step, and so the classifier below has the output to read
+      # even when the job is killed before anything else can inspect it.
+      - name: Unit tests (just test-frontend)
+        shell: bash
+        run: |
+          set +e
+          just test-frontend > "${RUNNER_TEMP}/frontend-suite.log" 2>&1
+          status=$?
+          cat "${RUNNER_TEMP}/frontend-suite.log"
+          exit $status
+        env:
+          # Pin the exact binary the live suite spawns. Its own fallback probes
+          # `engine/target/{release,debug}`, which does not exist when the build
+          # landed in the shared directory.
+          VAULTSPEC_TEST_ENGINE_BIN: ${{ env.ENGINE_TARGET_DIR }}/debug/vaultspec
+      # A red here means one of two unrelated things: an assertion failed, or
+      # the runner died. vitest prints its summary only after running to
+      # completion, so its ABSENCE is what separates them.
+      - name: Say which kind of red this is
+        if: failure()
+        shell: bash
+        run: |
+          log="${RUNNER_TEMP}/frontend-suite.log"
+          uv run --no-sync python -m dev.classify_failure "$log" | tee -a "${GITHUB_STEP_SUMMARY}"
+      - name: Reclaim runner disk (always)
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          df -h . 2>/dev/null | tail -1
+          pkill -f 'vaultspec .*serve' 2>/dev/null || true
+          pkill -f '/debug/vaultspec' 2>/dev/null || true
+          rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
+          if [ "${{ job.status }}" = "failure" ]; then
+            rm -rf engine/target frontend/node_modules 2>/dev/null || true
+          fi
+          df -h . 2>/dev/null | tail -1
+
+  conformance:
+    # Consumer-typed conformance: boot a live vaultspec serve binary against a
+    # two-commit fixture and drive EngineClient against it, so wire-vs-
+    # TypeScript-type drift fails the gate. This closes the seam the Rust
+    # conformance suite cannot reach.
+    name: "Test: Engine conformance (Linux)"
+    if: ${{ github.event_name != 'pull_request' || (github.event.label.name == 'ci:full' && github.event.pull_request.head.repo.full_name == github.repository) }}
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 90
+    steps:
+      - name: Reclaim the workspace from a job that may not have finished
+        shell: bash
+        run: bash .github/scripts/reclaim-workspace.sh || true
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Read pinned toolchain
+        id: toolchain
+        shell: bash
+        run: echo "channel=$(grep -m1 '^channel' engine/rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+      - name: Warm the pinned toolchain, retrying a dropped connection
+        shell: bash
+        run: bash .github/scripts/warm-toolchain.sh "${{ steps.toolchain.outputs.channel }}" || true
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+        with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
+      - name: Resolve the engine build output directory
+        shell: bash
+        run: echo "ENGINE_TARGET_DIR=${CARGO_TARGET_DIR:-$GITHUB_WORKSPACE/engine/target}" >> "$GITHUB_ENV"
+      - name: Set up just
+        uses: taiki-e/install-action@6012bba2f8e3e666a2b212f8823c06831704ce92 # just
+        with:
+          tool: just@1.38.0
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          # The runners already share UV_CACHE_DIR; the action's own cache save
+          # hung the post step on the fleet.
+          enable-cache: false
+      - name: Build engine binary (just build-rust)
+        run: just build-rust
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install vaultspec-core (live-engine declared-tier dependency)
+        # The engine startup gate probes vaultspec-core on PATH; without it
+        # `vaultspec serve` fails and the conformance test errors with
+        # "executable not found on PATH: vaultspec-core".
+        shell: bash
+        run: |
+          uv tool install vaultspec-core
+          uv tool dir --bin >> "$GITHUB_PATH"
+      - name: Create fixture and start serve
+        shell: bash
+        run: |
+          set -euo pipefail
+          FIXTURE=$(mktemp -d)
+          cd "$FIXTURE"
+          git init -b main .
+          git config user.email "ci@test"
+          git config user.name "CI"
+          git config core.autocrlf false
+          mkdir -p .vault/adr
+          printf '%s\n' '---' 'tags:' "  - '#adr'" "  - '#engine-conformance'" \
+            "date: '2026-06-13'" '---' '' '# conformance adr' '' 'CI fixture.' \
+            > .vault/adr/2026-06-13-conformance-adr.md
+          # Commit at fixed PAST dates relative to now: the conformance test's
+          # graph/diff window is `corpusTs(now) - 14d .. now`, so the root commit
+          # must predate it (else the engine 400s "timestamp predates the root
+          # commit"). T1 at 30d ago anchors the root behind the window; T2 at 7d
+          # ago lands inside it so the diff carries a real delta.
+          T1_DATE="$(date -u -d '30 days ago' '+%Y-%m-%dT%H:%M:%S')"
+          T2_DATE="$(date -u -d '7 days ago' '+%Y-%m-%dT%H:%M:%S')"
+          git add .
+          GIT_AUTHOR_DATE="$T1_DATE" GIT_COMMITTER_DATE="$T1_DATE" git commit -m "T1: adr"
+          printf 'update\n' >> .vault/adr/2026-06-13-conformance-adr.md
+          git add .
+          GIT_AUTHOR_DATE="$T2_DATE" GIT_COMMITTER_DATE="$T2_DATE" git commit -m "T2: update"
+
+          # Start serve on an OS-assigned port; service.json carries the real
+          # port + token.
+          "$ENGINE_TARGET_DIR/debug/vaultspec" serve --port 0 &
+          SERVE_PID=$!
+          echo "SERVE_PID=$SERVE_PID" >> "$GITHUB_ENV"
+
+          SERVICE_JSON="$FIXTURE/.vault/data/engine-data/service.json"
+          for _ in $(seq 30); do
+            if [ -f "$SERVICE_JSON" ]; then
+              PORT=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d['port'])" "$SERVICE_JSON")
+              TOKEN=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d['service_token'])" "$SERVICE_JSON")
+              if [ "$PORT" != "0" ] && [ -n "$TOKEN" ]; then break; fi
+            fi
+            sleep 1
+          done
+
+          echo "ENGINE_BASE_URL=http://127.0.0.1:$PORT" >> "$GITHUB_ENV"
+          echo "ENGINE_TOKEN=$TOKEN" >> "$GITHUB_ENV"
+      - name: Run TS conformance test
+        run: npx vitest run src/testing/engineConformance.test.ts --reporter=verbose
+        working-directory: frontend
+        env:
+          ENGINE_BASE_URL: ${{ env.ENGINE_BASE_URL }}
+          ENGINE_TOKEN: ${{ env.ENGINE_TOKEN }}
+      - name: Stop serve
+        if: always()
+        run: kill "$SERVE_PID" 2>/dev/null || true
+      - name: Reclaim runner disk (always)
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          df -h . 2>/dev/null | tail -1
+          pkill -f 'vaultspec .*serve' 2>/dev/null || true
+          pkill -f '/debug/vaultspec' 2>/dev/null || true
+          rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
+          if [ "${{ job.status }}" = "failure" ]; then
+            rm -rf engine/target frontend/node_modules 2>/dev/null || true
+          fi
+          df -h . 2>/dev/null | tail -1
+
+  release-inputs:
+    # Validate the component lock, the release-set-manifest schema, and the
+    # product builder + its manifest verifiers BEFORE any release job may run.
+    # The vaultspec-product suite composes and self-verifies real product trees
+    # against the committed lock, so a drift between the pins, the schema and
+    # the builder fails here rather than at release.
+    name: "Check: Release inputs (Linux)"
+    if: ${{ github.event_name != 'pull_request' || (github.event.label.name == 'ci:full' && github.event.pull_request.head.repo.full_name == github.repository) }}
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 30
+    steps:
+      - name: Reclaim the workspace from a job that may not have finished
+        shell: bash
+        run: bash .github/scripts/reclaim-workspace.sh || true
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Read pinned toolchain
+        id: toolchain
+        shell: bash
+        run: echo "channel=$(grep -m1 '^channel' engine/rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+      - name: Warm the pinned toolchain, retrying a dropped connection
+        shell: bash
+        run: bash .github/scripts/warm-toolchain.sh "${{ steps.toolchain.outputs.channel }}" || true
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+        with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
+      - name: Component lock + release-set-manifest schema are well-formed
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -c "import json; json.load(open('packaging/a2a-component.lock.json'))"
+          python3 -c "import json; json.load(open('schemas/release-set-manifest.json'))"
+      # The committed lock must agree with the manifest. release-please bumps
+      # `[workspace.package] version` in engine/Cargo.toml and does not
+      # regenerate engine/Cargo.lock; without `--locked` cargo silently
+      # refreshes the lock in memory and every build succeeds over a tree that
+      # is not reproducible. `cargo metadata` resolves without building.
+      - name: The committed Cargo.lock agrees with Cargo.toml
+        run: cargo metadata --locked --format-version 1 > /dev/null
+        working-directory: engine
+      - name: Product builder, manifest verifiers, and lock/capsule/release pins
+        run: cargo test -p vaultspec-product
+        working-directory: engine
+      - name: Reclaim runner disk (always)
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          df -h . 2>/dev/null | tail -1
+          pkill -f 'vaultspec .*serve' 2>/dev/null || true
+          pkill -f '/debug/vaultspec' 2>/dev/null || true
+          rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
+          if [ "${{ job.status }}" = "failure" ]; then
+            rm -rf engine/target frontend/node_modules 2>/dev/null || true
+          fi
+          df -h . 2>/dev/null | tail -1
+
+  dependencies:
+    name: "Check: Dependency advisories (Linux)"
+    if: ${{ github.event_name != 'pull_request' || (github.event.label.name == 'ci:full' && github.event.pull_request.head.repo.full_name == github.repository) }}
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 45
+    steps:
+      - name: Reclaim the workspace from a job that may not have finished
+        shell: bash
+        run: bash .github/scripts/reclaim-workspace.sh || true
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Set up just
+        uses: taiki-e/install-action@6012bba2f8e3e666a2b212f8823c06831704ce92 # just
+        with:
+          tool: just@1.38.0
+      # Developers get cargo-deny from mise; the fleet runners do not carry mise.
+      - name: Set up the pinned lint tools
+        uses: taiki-e/install-action@6012bba2f8e3e666a2b212f8823c06831704ce92 # just
+        with:
+          tool: cargo-deny@0.19.0
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          # The runners already share UV_CACHE_DIR; the action's own cache save
+          # hung the post step on the fleet.
+          enable-cache: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Provision the dev toolchain
+        run: just init
+      # The flags are the whole content of a supply-chain gate, so they live
+      # once, in the recipes. The advisory build-tooling audit is not a gate
+      # and runs in the code-health lane instead.
+      - name: Dependency advisories (just audit-deps)
+        run: just audit-deps
+      - name: Licences, bans and sources (just audit-rust)
+        run: just audit-rust
+
+  gate:
+    name: "Check: Merge gate (Linux)"
+    needs: [lint, engine, frontend, conformance, release-inputs, dependencies]
+    if: ${{ always() }}
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 10
+    permissions:
+      checks: read
+      contents: read
+      pull-requests: write
+    steps:
+      # A fork's code never reaches a self-hosted runner: every measuring job
+      # is conditioned off for it, and this refusal turns that absence into a
+      # red verdict instead of a vacuous one.
+      - name: Refuse fork pull requests
+        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        shell: bash
+        run: |
+          echo "::error::Pull requests from forks are not run on self-hosted runners."
+          exit 1
+      - name: Decide the merge verdict
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          LABEL: ${{ github.event.label.name }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          RUN_ID: ${{ github.run_id }}
+          NEEDS: ${{ toJSON(needs) }}
+          GATE_NAME: "Check: Merge gate (Linux)"
+        run: |
+          set -euo pipefail
+          printf '%s' "$NEEDS" | jq -r 'to_entries[] | "  \(.key): \(.value.result)"'
+
+          if [ "$EVENT" = "pull_request" ] && [ "$LABEL" != "ci:full" ]; then
+            # This run measured nothing. Carry the most recent COMPLETED
+            # verdict for this exact head, and refuse when there is none - an
+            # unrelated label must neither pass an unmeasured commit nor erase
+            # a real result.
+            prior=$(gh api -X GET "repos/${REPO}/commits/${HEAD_SHA}/check-runs" \
+              -f check_name="$GATE_NAME" -f filter=all -f per_page=100 \
+              --jq '[.check_runs[] | select(.status == "completed")] | sort_by(.completed_at) | last | .conclusion // ""')
+            echo "label '${LABEL}' measures nothing; latest completed gate on ${HEAD_SHA}: '${prior:-none}'"
+            if [ "$prior" = "success" ]; then
+              exit 0
+            fi
+            echo "::error::No passing ci:full run has measured ${HEAD_SHA}. Add the ci:full label to run the merge gate."
+            exit 1
+          fi
+
+          failed=$(printf '%s' "$NEEDS" | jq -r 'to_entries[] | select(.value.result != "success") | .key')
+          if [ -n "$failed" ]; then
+            echo "::error::The merge gate requires every measuring job to succeed; not successful: $(echo $failed)"
+            exit 1
+          fi
+          echo "every measuring job succeeded on ${HEAD_SHA} (run ${RUN_ID})"
+      # Removing the label makes re-adding it a fresh request, and leaves the
+      # PR visibly un-labelled once a push invalidates the verdict.
+      - name: Remove the ci:full label
+        if: ${{ always() && github.event_name == 'pull_request' && github.event.label.name == 'ci:full' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X DELETE "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/labels/ci:full" --silent || true

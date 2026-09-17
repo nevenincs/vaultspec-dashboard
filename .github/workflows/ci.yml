@@ -1,0 +1,87 @@
+# The cheap lane: minimal code health on every pull-request push.
+#
+# Every push to a branch under review pays for this workflow, so it answers
+# only the static questions that need neither a Rust build nor a live engine:
+# the workflows and the CI/justfile contract, the dev harness, the README and
+# spelling. The full tier lives in merge-gate.yml and reports the one check
+# the ruleset requires; this lane is fast feedback, not the merge verdict.
+#
+# Nothing runs on a push to `main`: the merge gate already measured that tree.
+name: Dashboard CI
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  static:
+    name: "Check: Lint (Linux)"
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 20
+    steps:
+      - name: Refuse fork pull requests
+        id: fork-guard
+        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        shell: bash
+        run: |
+          echo "::error::Pull requests from forks are not run on self-hosted runners."
+          exit 1
+      # Before checkout, because checkout is the step the EACCES lands on.
+      # `|| true` so a workspace that has never been checked out - where the
+      # script does not exist yet - simply skips it.
+      - name: Reclaim the workspace from a job that may not have finished
+        shell: bash
+        run: bash .github/scripts/reclaim-workspace.sh || true
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Set up just
+        uses: taiki-e/install-action@6012bba2f8e3e666a2b212f8823c06831704ce92 # just
+        with:
+          tool: just@1.38.0
+      # Developers get typos from mise; the fleet runners do not carry mise.
+      - name: Set up the pinned lint tools
+        uses: taiki-e/install-action@6012bba2f8e3e666a2b212f8823c06831704ce92 # just
+        with:
+          tool: typos@1.47.2
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          # The runners already share UV_CACHE_DIR; the action's own cache save
+          # hung the post step on the fleet.
+          enable-cache: false
+      # `dev.init` probes node and npm before any phase, so they must be on
+      # PATH even though this lane installs only Python and the pinned tools.
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Provision the Python environment
+        id: init-python
+        run: just init-python
+      - name: Provision the pinned tools
+        id: init-tools
+        run: just init-tools
+      # Each check runs whatever the one before it concluded, so a single push
+      # reports every red dimension rather than the first.
+      - name: Workflows and the CI contract (just check-workflow)
+        if: ${{ !cancelled() && steps.init-python.outcome == 'success' }}
+        run: just check-workflow
+      - name: Dev harness (just check-python)
+        if: ${{ !cancelled() && steps.init-python.outcome == 'success' }}
+        run: just check-python
+      - name: README (just check-markdown)
+        if: ${{ !cancelled() && steps.init-python.outcome == 'success' }}
+        run: just check-markdown
+      - name: Spelling (just check-typos)
+        if: ${{ !cancelled() && steps.init-tools.outcome == 'success' }}
+        run: just check-typos
