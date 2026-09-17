@@ -42,7 +42,7 @@ jobs:
             exit 1
           fi
       - name: third-party bash-using action
-        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # stable
       - run: cargo --version
       - name: release prerequisites the service must see
         # This machine carries the publish path: `gh release upload` and
@@ -97,7 +97,7 @@ jobs:
             exit 1
           fi
       - name: third-party bash-using action
-        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # stable
       - run: cargo --version
       - name: release prerequisites the service must see
         # Same reasoning as the macOS leg: the release workflow REQUIRES uv and
@@ -144,7 +144,7 @@ jobs:
             exit 1
           fi
       - name: third-party bash-using action
-        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # stable
       - run: cargo --version
       - name: release prerequisites the service must see
         # The release workflow REQUIRES uv rather than installing it, and fails
@@ -173,5 +173,5 @@ jobs:
         run: |
           Write-Output "pwsh ok $($PSVersionTable.PSVersion)"
       - name: third-party bash-using action (failed on WSL bash before)
-        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # stable
       - run: cargo --version
