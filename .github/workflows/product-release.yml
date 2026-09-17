@@ -11,19 +11,17 @@
 # to compose + self-verify the tree through the S06 authority. The tree is
 # archived as `vaultspec-<version>-<target>.{tar.gz,zip}` + a sibling `.sha256`.
 #
-# VERIFICATION REALITY: authored here; the real proof is a release-CI run on a
-# clean runner (the self-verify job below), not a local green.
+# VERIFICATION REALITY: authored here; every native matrix leg extracts its
+# archive into fresh staging and runs the shipped verifier and executable.
 #
 # The A2A runtime is deliberately NOT built or bundled here. The compose step
 # below carries the reason and the condition that brings it back; read it there
 # before adding a freeze leg to this workflow.
 #
-# Runners are selected by OS *and* architecture, and the architecture half is
-# there for scheduling determinism alone: both self-hosted Linux runners carry
-# the auto-assigned `Linux` label, so an OS-only selector places the two Linux
-# targets nondeterministically. Nothing here is architecture-bound any more —
-# every build is a cargo build for an explicit `--target`, which succeeds from
-# any host — so no leg requires a native-architecture runner.
+# Runners are selected by OS *and* architecture because every release member is
+# extracted, verified, and launched on its declared native target. An OS-only
+# selector could place an ARM artifact on x86-64 (or the reverse) and produce no
+# valid runtime evidence.
 
 name: Product Release
 
@@ -36,15 +34,24 @@ on:
       version:
         description: "Release version (without the leading v)"
         required: true
+      validation_only:
+        description: "Build and validate release artifacts without publishing"
+        required: true
+        type: boolean
+        default: true
+
+concurrency:
+  group: product-release-${{ github.event.inputs.version || github.ref_name }}
+  cancel-in-progress: false
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   # Refuse a release build whose runners cannot serve it.
   #
-  # Two of this matrix's four targets land on the power-gated MacBook, which
-  # serves runners only on AC. A selector with no ONLINE runner does not fail -
+  # Two of this matrix's four targets use intermittently available native ARM
+  # capacity. A selector with no ONLINE runner does not fail -
   # it QUEUES, unbounded by timeout-minutes - so without this the release
   # appears to be progressing for up to a day and then reports failed with no
   # assets attached. That is the same silent shape as the six weeks v0.1.4 spent
@@ -291,58 +298,34 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { target: x86_64-pc-windows-msvc, os: Windows, arch: X64, host: windows-x64, ext: zip }
-          - { target: x86_64-unknown-linux-gnu, os: Linux, arch: X64, host: linux-x64, ext: tar.gz }
-          - { target: aarch64-unknown-linux-gnu, os: Linux, arch: ARM64, host: apple-silicon, ext: tar.gz }
-          - { target: aarch64-apple-darwin, os: macOS, arch: ARM64, host: apple-silicon, ext: tar.gz }
+          - { target: x86_64-pc-windows-msvc, os: Windows, arch: X64, constrained_arm: false, ext: zip }
+          - { target: x86_64-unknown-linux-gnu, os: Linux, arch: X64, constrained_arm: false, ext: tar.gz }
+          - { target: aarch64-unknown-linux-gnu, os: Linux, arch: ARM64, constrained_arm: true, ext: tar.gz }
+          - { target: aarch64-apple-darwin, os: macOS, arch: ARM64, constrained_arm: true, ext: tar.gz }
     # Selection is by OS *and* architecture, and DETERMINISTIC SCHEDULING is the
     # whole of the reason. Two Linux runners are registered and both carry the
     # auto-assigned `Linux` label, so an OS-only selection would send the two
     # Linux targets to machines nondeterministically — the same target landing
     # on a different box run to run, and two legs able to collide on one.
     #
-    # It is no longer a correctness requirement. It was, while this job froze a
-    # PyInstaller onedir per target: that cannot cross-compile, so an
-    # x86_64-scheduled aarch64 leg produced a mislabelled artifact. Nothing in
-    # this job is architecture-bound now — the cargo builds cross-compile from
-    # whatever host they land on — so a mis-scheduled leg would build correctly,
-    # just not where it was meant to. Keep the label anyway; scheduling that is
-    # reproducible is worth having on its own.
+    # Native execution remains a correctness requirement: each archive is
+    # extracted below and its verifier and executable are launched on the
+    # declared target. Keep the OS/architecture selector exact so a successful
+    # job proves both artifact construction and native runtime compatibility.
     runs-on: [self-hosted, "${{ matrix.os }}", "${{ matrix.arch }}"]
-    # The two ARM legs share one physical machine — the macOS runner and a colima
-    # Linux VM on the same Apple Silicon laptop — so scheduling them together
-    # runs two full builds against 8 GiB of RAM, 6 GiB of which is reserved by
-    # the VM, on a host measured at 7.0 of 8.2 GB of swap in use while idle. This
-    # is the heaviest of the four-target matrices; serialise that pair.
-    #
-    # `host` is the physical machine, not the runner. Only the shared one takes a
-    # common group; the other legs get a per-run, per-target group so they never
-    # wait. The group name is not scoped to this workflow on purpose: a release
-    # and a certification run reaching that laptop together contend for the same
-    # RAM.
-    #
-    # WHAT WOULD RETIRE THIS CONSTRAINT. It is insurance against an UNMEASURED
-    # risk, not a measured one, and it should be dropped once that stops being
-    # true rather than kept out of habit. a2a-product-contract — the light proof,
-    # same two runners, same host — was measured and does NOT serialise: under
-    # load its darwin leg added 225 MB of swap over idle and its ARM Linux leg
-    # peaked at 11,935 pageouts/15s transiently, with available memory never
-    # below 985 MB and host free disk flat. The alarming-looking idle state
-    # (~7 of 8 GB swap in use, 6 GiB of 8 GiB reserved by the VM) turned out to
-    # be this machine's steady state rather than a machine near its limit.
-    #
-    # This workflow is heavier — a full cargo release build, the SPA bundle and
-    # composition — so that result does not transfer. To retire this: run a
-    # four-target dispatch WITHOUT the group, sample the host through it, and
-    # confirm the two ARM legs overlapping keep available memory off the floor
-    # and pageouts non-degrading. If they do, delete this block and the `host:`
-    # matrix keys. Do not delete it on the strength of the contract-proof numbers
-    # alone; that is the extrapolation this comment exists to prevent.
+    # The constrained native ARM capabilities are serialized because concurrent
+    # full release builds exceed the available capacity. Other targets use a
+    # per-run, per-target group and retain useful parallelism.
     concurrency:
-      group: ${{ matrix.host == 'apple-silicon' && 'fleet-apple-silicon-host' || format('{0}-{1}-{2}', github.workflow, github.run_id, matrix.target) }}
+      group: ${{ matrix.constrained_arm && 'vaultspec-native-arm-release' || format('{0}-{1}-{2}', github.workflow, github.run_id, matrix.target) }}
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
+      - name: Set up packaging Python
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
       - name: Read pinned toolchain
         id: toolchain
         shell: bash
@@ -453,6 +436,23 @@ jobs:
           ( sha256sum "$archive" || shasum -a 256 "$archive" ) | awk '{print $1}' > "${archive}.sha256"
           # The member manifest (release.json) drives the S166 cohort digest.
           cp "$GEN_ROOT/release.json" "release-${{ matrix.target }}.json"
+      - name: Extract and validate the native release archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="vaultspec-${{ steps.version.outputs.value }}-${{ matrix.target }}.${{ matrix.ext }}"
+          stage="${RUNNER_TEMP}/vaultspec-release-${{ matrix.target }}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          rm -rf "$stage"
+          mkdir -p "$stage"
+          if [ "${{ matrix.ext }}" = "zip" ]; then
+            7z x "$archive" "-o${stage}" -y
+          else
+            tar -xzf "$archive" -C "$stage"
+          fi
+          executable="$stage/bin/vaultspec"
+          [ "${{ matrix.ext }}" = "zip" ] && executable="${executable}.exe"
+          "$executable" verify-release "$stage"
+          "$executable" --version
       - name: Upload the release-set member
         uses: actions/upload-artifact@v4
         with:
@@ -484,37 +484,6 @@ jobs:
           if ('${{ job.status }}' -eq 'failure') {
             Remove-Item -Recurse -Force engine\target, out -ErrorAction SilentlyContinue
           }
-          Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used } | Format-Table -AutoSize
-
-  self-verify:
-    timeout-minutes: 90
-    name: Clean-runner self-verify
-    needs: build-product-tree
-    runs-on: [self-hosted, Windows, X64]
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: product-x86_64-pc-windows-msvc
-          path: dl
-      - name: Extract + verify-release on a clean runner
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Extract the composed tree and run the shipped bounded authority against
-          # it — the same verify a consumer's installer runs. A tree that composed
-          # but does not verify fails the release.
-          mkdir -p installed
-          archive=$(ls dl/*.zip)
-          7z x "$archive" -oinstalled -y
-          ./installed/bin/vaultspec.exe verify-release ./installed
-      - name: Reclaim runner disk (always)
-        if: always()
-        shell: pwsh
-        run: |
-          Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used } | Format-Table -AutoSize
-          Get-Process vaultspec -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-          Remove-Item -Recurse -Force $env:TEMP\vaultspec-* -ErrorAction SilentlyContinue
-          Remove-Item -Recurse -Force installed, dl -ErrorAction SilentlyContinue
           Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used } | Format-Table -AutoSize
 
   cohort-digest:
@@ -573,12 +542,48 @@ jobs:
           fi
           df -h . 2>/dev/null | tail -1
 
+  python-compatibility:
+    timeout-minutes: 30
+    name: Python ${{ matrix.python-version }} release validation
+    needs: preflight
+    runs-on: [self-hosted, Linux, X64]
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        python-version: ["3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up just
+        uses: taiki-e/install-action@d56249f532886d210664917b882ad7e152e17d68 # v2
+        with:
+          tool: just@1.38.0
+      - name: Set up uv without cloud caching
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: false
+          python-version: ${{ matrix.python-version }}
+      - name: Validate the Python development harness
+        run: |
+          uv sync --frozen --python "${{ matrix.python-version }}"
+          just check-python
+
+  artifact-correctness:
+    timeout-minutes: 15
+    name: Four-target artifact correctness
+    needs: [build-product-tree, cohort-digest, python-compatibility]
+    runs-on: [self-hosted, Linux, X64]
+    steps:
+      - name: Confirm every release correctness gate passed
+        run: echo "All four native archives and both supported Python versions passed validation."
+
   # Resolve the release version, then run the phase-zero
-  # channel feasibility proof over the published complete archive/MSI. The proof
+  # channel feasibility proof over the published complete archives. The proof
   # writes its outcome into the support matrix (S148), which the channel-publish
   # gate reads before any Scoop/WinGet publication. Runs at release, after the
   # tree is built + self-verified; fails closed (matrix untouched) until the
-  # release assets + capsule (#1) + MSI (S76) make a real proof possible.
+  # release assets, channel manifests, and lifecycle fixtures make a real proof
+  # possible.
   resolve-version:
     timeout-minutes: 15
     name: Resolve release version
@@ -636,7 +641,10 @@ jobs:
           echo "resolved version=${version} prior=${prior:-<none>}"
   channel-feasibility:
     name: Phase-zero channel feasibility
-    needs: [resolve-version, self-verify]
+    if: github.event_name != 'workflow_dispatch' || !inputs.validation_only
+    needs: [resolve-version, attach-to-release]
+    permissions:
+      contents: write
     uses: ./.github/workflows/a2a-channel-feasibility.yml
     with:
       version: ${{ needs.resolve-version.outputs.value }}
@@ -651,14 +659,15 @@ jobs:
   # ON THE RELEASE, an asset nothing has ever uploaded there.
   #
   # `needs` covers the whole build matrix plus both verification jobs, so a
-  # partial cohort cannot be published: `self-verify` and `cohort-digest` each
+  # partial cohort cannot be published: artifact correctness and cohort digest
   # depend on all four members, and attaching before they pass would put an
   # unverified member on a release that `verify-release-assets` would then
   # report as healthy.
   attach-to-release:
     timeout-minutes: 45
     name: Attach the product tree to the release
-    needs: [build-product-tree, self-verify, cohort-digest, resolve-version]
+    if: github.event_name != 'workflow_dispatch' || !inputs.validation_only
+    needs: [build-product-tree, cohort-digest, python-compatibility, artifact-correctness, resolve-version]
     runs-on: [self-hosted, Linux, X64]
     permissions:
       contents: write
@@ -784,7 +793,8 @@ jobs:
   promote-release:
     timeout-minutes: 30
     name: Promote the release once the gates pass
-    needs: [resolve-version, attach-to-release, channel-feasibility]
+    if: github.event_name != 'workflow_dispatch' || !inputs.validation_only
+    needs: [resolve-version, artifact-correctness, attach-to-release, channel-feasibility]
     runs-on: [self-hosted, Linux, X64]
     permissions:
       contents: write
@@ -818,6 +828,7 @@ jobs:
   # `v<version>` from exactly this value.
   homebrew-bump:
     name: Publish the Homebrew formula
+    if: github.event_name != 'workflow_dispatch' || !inputs.validation_only
     needs: [resolve-version, promote-release]
     uses: ./.github/workflows/homebrew-bump.yml
     with:

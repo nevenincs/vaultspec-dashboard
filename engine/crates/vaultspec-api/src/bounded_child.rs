@@ -96,6 +96,11 @@ pub(crate) enum BoundedFault {
 const MAX_OWNED_GROUPS: usize = 64;
 static GROUP_PERMITS: LazyLock<Arc<tokio::sync::Semaphore>> =
     LazyLock::new(|| Arc::new(tokio::sync::Semaphore::new(MAX_OWNED_GROUPS)));
+
+#[cfg(test)]
+tokio::task_local! {
+    static TEST_GROUP_PERMITS: Arc<tokio::sync::Semaphore>;
+}
 static REAP_TASKS: LazyLock<Mutex<HashMap<u64, tokio::task::JoinHandle<()>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 static REAP_SEQ: AtomicU64 = AtomicU64::new(1);
@@ -255,14 +260,21 @@ pub(crate) fn test_register_wedged_reaper() {
 }
 
 #[cfg(test)]
-pub(crate) fn test_reserve_all_group_slots() -> Vec<tokio::sync::OwnedSemaphorePermit> {
-    (0..MAX_OWNED_GROUPS)
-        .map(|_| {
-            Arc::clone(&GROUP_PERMITS)
-                .try_acquire_owned()
-                .expect("reserve process-group test slot")
-        })
-        .collect()
+pub(crate) async fn test_with_exhausted_group_capacity<F, T>(future: F) -> T
+where
+    F: std::future::Future<Output = T>,
+{
+    TEST_GROUP_PERMITS
+        .scope(Arc::new(tokio::sync::Semaphore::new(0)), future)
+        .await
+}
+
+fn group_permits() -> Arc<tokio::sync::Semaphore> {
+    #[cfg(test)]
+    if let Ok(permits) = TEST_GROUP_PERMITS.try_with(Arc::clone) {
+        return permits;
+    }
+    Arc::clone(&GROUP_PERMITS)
 }
 
 /// Run `command` to completion under both bounds, draining stdout and stderr
@@ -280,7 +292,7 @@ pub(crate) async fn run_bounded(
     limits: BoundedLimits,
     cap_policy: CapPolicy,
 ) -> Result<BoundedOutcome, BoundedFault> {
-    let permit = Arc::clone(&GROUP_PERMITS)
+    let permit = group_permits()
         .try_acquire_owned()
         .map_err(|_| BoundedFault::AtCapacity)?;
     command

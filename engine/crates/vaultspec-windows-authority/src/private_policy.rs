@@ -161,10 +161,21 @@ fn validate(
 
     let required = [current_user_sid, LOCAL_SYSTEM_SID, ADMINISTRATORS_SID];
     if entries.len() != required.len() {
+        let role_counts = required.map(|principal| {
+            entries
+                .iter()
+                .filter(|entry| {
+                    entry.entry_type() == DaclAceKind::AccessAllowed && entry.sid() == principal
+                })
+                .count()
+        });
         return Err(PrivatePolicyViolation::new(format!(
-            "DACL must hold exactly {} explicit allow entries, found {}",
+            "DACL must hold exactly {} explicit allow entries, found {}; role counts: current={}, LocalSystem={}, Administrators={}",
             required.len(),
-            entries.len()
+            entries.len(),
+            role_counts[0],
+            role_counts[1],
+            role_counts[2]
         )));
     }
 

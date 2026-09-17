@@ -42,6 +42,43 @@ fn installer_acquires_and_releases_on_drop() {
     lock.acquire(Actor::Installer, "seat-b").unwrap().unwrap();
 }
 
+#[cfg(windows)]
+#[test]
+fn prepared_claim_access_denied_is_contention_only_with_a_valid_winner() {
+    let dir = tempfile::tempdir().unwrap();
+    let lock_path = dir.path().join("install.lock");
+    let lock = InstallLock::new(&lock_path);
+    let guard = lock.acquire(Actor::Installer, "winner").unwrap().unwrap();
+    let parent = parent_authority(&lock_path).unwrap();
+    let denied = std::io::Error::from_raw_os_error(5);
+
+    assert!(claim::prepared_create_permission_denied_is_contention(
+        &parent,
+        &guard.claim_path,
+        &denied,
+    ));
+    assert!(!claim::prepared_create_permission_denied_is_contention(
+        &parent,
+        &guard.claim_path,
+        &std::io::Error::from(std::io::ErrorKind::AlreadyExists),
+    ));
+}
+
+#[cfg(windows)]
+#[test]
+fn prepared_claim_access_denied_without_a_valid_winner_stays_an_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let lock_path = dir.path().join("install.lock");
+    let claim_path = claim_path(&lock_path).unwrap();
+    let parent = parent_authority(&lock_path).unwrap();
+
+    assert!(!claim::prepared_create_permission_denied_is_contention(
+        &parent,
+        &claim_path,
+        &std::io::Error::from_raw_os_error(5),
+    ));
+}
+
 #[test]
 fn quarantine_matches_owner_and_requires_death() {
     // Our own live pid can never be quarantined.

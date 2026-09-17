@@ -385,6 +385,11 @@ mod windows_owner_restricted {
         .map_err(win_error)?;
         for sid_text in [current, LOCAL_SYSTEM_SID, ADMINISTRATORS_SID] {
             let sid = windows_acl::helper::string_to_sid(sid_text).map_err(win_error)?;
+            acl.remove_entry(sid.as_ptr().cast_mut().cast(), None, None)
+                .map_err(win_error)?;
+        }
+        for sid_text in [current, LOCAL_SYSTEM_SID, ADMINISTRATORS_SID] {
+            let sid = windows_acl::helper::string_to_sid(sid_text).map_err(win_error)?;
             acl.add_entry(
                 sid.as_ptr().cast_mut().cast(),
                 AceType::AccessAllow,

@@ -181,19 +181,19 @@ jobs:
             "reason=$reason" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           }
 
-          # PREFLIGHT (fail-closed, authored-pending-MSI): WinGet installs the
-          # complete product MSI, which requires the WiX MSI (DEFERRED —
-          # WiX not on the build box). The installer manifest still carries a
-          # placeholder InstallerSha256 until the MSI publishes → `blocked`.
+          # PREFLIGHT (fail-closed, authored-pending): WinGet installs the
+          # complete-product Windows ZIP through the checked-in portable
+          # manifest. Its placeholder InstallerSha256 keeps the channel blocked
+          # until the manifest is reconciled to a published archive and digest.
           $installer = Get-Content packaging/winget/vaultspec.vaultspec.installer.yaml -Raw
           if ($installer -match 'InstallerSha256:\s*"?0{64}') {
-            Write-Host "winget preflight: installer digest is placeholder — complete MSI not yet built/published"
-            Emit 'blocked' 'complete product MSI not yet built (WiX deferred) — winget authored-pending-MSI'
+            Write-Host "winget preflight: portable ZIP manifest digest is still the placeholder"
+            Emit 'blocked' 'portable ZIP manifest version and digest are not reconciled to a published release'
             exit 1
           }
 
           # CLEAN-MACHINE REVERSIBILITY SEQUENCE (real WinGet, manager-owned). Runs
-          # only once the MSI is a real published artifact.
+          # only once the portable ZIP manifest names a real published artifact.
           try {
             winget install --manifest packaging/winget --accept-package-agreements --accept-source-agreements --scope user ; if ($LASTEXITCODE) { throw "install failed" }
             winget list vaultspec.vaultspec ; if ($LASTEXITCODE) { throw "install not registered" }

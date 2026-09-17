@@ -587,6 +587,11 @@ fn harden_created(created: &PrivateFileCreation) -> std::io::Result<()> {
 fn add_three_principals(acl: &mut ACL, current: &str, required_flags: u8) -> std::io::Result<()> {
     for sid_text in [current, LOCAL_SYSTEM_SID, ADMINISTRATORS_SID] {
         let sid = windows_acl::helper::string_to_sid(sid_text).map_err(win_error)?;
+        acl.remove_entry(sid.as_ptr().cast_mut().cast(), None, None)
+            .map_err(win_error)?;
+    }
+    for sid_text in [current, LOCAL_SYSTEM_SID, ADMINISTRATORS_SID] {
+        let sid = windows_acl::helper::string_to_sid(sid_text).map_err(win_error)?;
         acl.add_entry(
             sid.as_ptr().cast_mut().cast(),
             AceType::AccessAllow,

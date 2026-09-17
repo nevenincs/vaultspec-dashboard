@@ -307,14 +307,18 @@ describe("AgentPanel transcript states", () => {
     expect(useAgentPanel.getState().teamRunId).toBeNull();
   });
 
-  it("shows the BEGIN idiom, not an empty transcript, when no session is current", () => {
+  it("shows the BEGIN idiom, not an empty transcript, when no session is current", async () => {
     useAgentPanel.setState({ currentSessionId: null });
-    renderPanel();
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    renderPanel(queryClient);
     // G1/G8: nothing to continue means the composer IS the content, centered under
     // the headline — not a transcript region reporting its own emptiness.
     expect(document.querySelector("[data-agent-begin]")).not.toBeNull();
     expect(document.querySelector("[data-agent-composer]")).not.toBeNull();
     expect(document.querySelector("[data-agent-transcript]")).toBeNull();
+    await awaitPanelFiniteReads(queryClient);
   });
 
   it("shows an honest error (not an empty snapshot) when the session id faults", async () => {
@@ -494,33 +498,45 @@ describe("AgentPanel refused-run remediation", () => {
 });
 
 describe("AgentPanel pending-changes disclosure (D9 — no view switch)", () => {
-  it("renders ONE view: no switcher exists, and the composer is always present", () => {
+  it("renders ONE view: no switcher exists, and the composer is always present", async () => {
     useAgentPanel.setState({ currentSessionId: null });
-    renderPanel();
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    renderPanel(queryClient);
     // The Conversation|Pending-changes switch is DELETED, not restyled.
     expect(document.querySelector("[data-agent-view-switcher]")).toBeNull();
     expect(document.querySelector("[data-agent-composer-slot]")).not.toBeNull();
     // The pending region is closed by default — no standing chrome.
     expect(document.querySelector("[data-agent-pending-changes]")).toBeNull();
+    await awaitPanelFiniteReads(queryClient);
   });
 
-  it("expands the in-flow region WITHOUT unmounting the composer", () => {
+  it("expands the in-flow region WITHOUT unmounting the composer", async () => {
     useAgentPanel.setState({ currentSessionId: null, pendingChangesOpen: true });
-    renderPanel();
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    renderPanel(queryClient);
     // The region renders inside the one conversation view…
     expect(document.querySelector("[data-agent-pending-changes]")).not.toBeNull();
     // …and the composer stays mounted around it — the disclosure is a region,
     // never a second view.
     expect(document.querySelector("[data-agent-composer-slot]")).not.toBeNull();
+    await awaitPanelFiniteReads(queryClient);
   });
 
-  it("collapses the region from the store seam", () => {
+  it("collapses the region from the store seam", async () => {
     useAgentPanel.setState({ currentSessionId: null, pendingChangesOpen: true });
-    renderPanel();
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    renderPanel(queryClient);
     expect(document.querySelector("[data-agent-pending-changes]")).not.toBeNull();
     act(() => setAgentPendingChangesOpen(false));
     expect(document.querySelector("[data-agent-pending-changes]")).toBeNull();
     expect(document.querySelector("[data-agent-composer-slot]")).not.toBeNull();
+    await awaitPanelFiniteReads(queryClient);
   });
 });
 
@@ -593,7 +609,10 @@ async function seedOutOfSessionProposal(): Promise<void> {
 describe("AgentPanel autonomy + bridge", () => {
   it("carries NO standing permission pill in the composer row", async () => {
     useAgentPanel.setState({ currentSessionId: null });
-    renderPanel();
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    renderPanel(queryClient);
     // No captured composer renders a standing permission/autonomy control in its
     // control row — the pill was our invention and is DELETED. The C7 banner is
     // the elevated-posture surface, and the mode SETTER lives on the review
@@ -614,12 +633,16 @@ describe("AgentPanel autonomy + bridge", () => {
       scopeControls.compareDocumentPosition(thinking!) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+    await awaitPanelFiniteReads(queryClient);
   });
 
   it("shows the pending bridge for out-of-session changes and expands the region in place", async () => {
     await seedOutOfSessionProposal();
     useAgentPanel.setState({ currentSessionId: null });
-    renderPanel();
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    renderPanel(queryClient);
     const bridge = await waitFor(
       () => {
         const el = document.querySelector<HTMLElement>("[data-pending-changes-bridge]");
@@ -645,13 +668,17 @@ describe("AgentPanel autonomy + bridge", () => {
     expect(openBridge?.getAttribute("aria-expanded")).toBe("true");
     fireEvent.click(openBridge!);
     expect(useAgentPanel.getState().pendingChangesOpen).toBe(false);
+    await awaitPanelFiniteReads(queryClient);
   });
 });
 
 describe("AgentPanel header", () => {
-  it("offers New and History; End conversation does not exist (D10)", () => {
+  it("offers New and History; End conversation does not exist (D10)", async () => {
     useAgentPanel.setState({ currentSessionId: null });
-    renderPanel();
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    renderPanel(queryClient);
     // New conversation and the recents History popover are standing icon
     // affordances — never buried in a sessions dropdown.
     expect(document.querySelector("[data-agent-new-session]")).not.toBeNull();
@@ -661,12 +688,16 @@ describe("AgentPanel header", () => {
     expect(document.querySelector("[data-agent-end-conversation]")).toBeNull();
     // With no open conversation the title is plain text — no empty menu.
     expect(document.querySelector("[data-agent-title]")).not.toBeNull();
+    await awaitPanelFiniteReads(queryClient);
   });
 
   it("archives the open conversation from the title's own menu", async () => {
     const sessionId = await createLiveSession(`Archive drill ${run}`);
     useAgentPanel.setState({ currentSessionId: sessionId });
-    renderPanel();
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    renderPanel(queryClient);
     // The conversation title carries its own actions menu once the session
     // resolves (the captured title-with-menu idiom).
     const titleMenu = await waitFor(
@@ -683,5 +714,6 @@ describe("AgentPanel header", () => {
     await waitFor(() => expect(useAgentPanel.getState().currentSessionId).toBeNull(), {
       timeout: 10_000,
     });
+    await awaitPanelFiniteReads(queryClient);
   });
 });
