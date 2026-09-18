@@ -35,7 +35,7 @@ tough = { version = "=0.24.0", default-features = false }
 url = "2.5.7"
 
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.29", default-features = false, features = ["user"] }
+nix = { version = "0.31", default-features = false, features = ["user"] }
 # cap-std holds directories as O_PATH descriptors, on which fchmod/fsync fail
 # EBADF; rustix reopens them relative to the capability for durability syncs,
 # matching the credentials lane's directory handling.
