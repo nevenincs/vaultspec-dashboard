@@ -143,8 +143,14 @@ fn tree_command(heartbeat: &std::path::Path) -> tokio::process::Command {
     command
 }
 
+/// Wait for the descendant to publish its first tick. This is a READINESS
+/// wait, not a proof bound: the wrapper re-executes the whole test binary and
+/// its grandchild does so again, so on a runner already executing the rest of
+/// the suite the chain can take far longer to reach its first write than it
+/// does on an idle machine. A tight bound here fails the test before the
+/// behaviour it proves has even started. Nothing downstream is relaxed.
 async fn wait_for_heartbeat(path: &std::path::Path) {
-    tokio::time::timeout(std::time::Duration::from_secs(15), async {
+    tokio::time::timeout(std::time::Duration::from_secs(90), async {
         loop {
             if path.is_file() {
                 return;

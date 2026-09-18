@@ -922,7 +922,7 @@ async fn real_process_malformed_timeout_and_output_cap_never_validate_as_success
         &command("[Console]::Out.Write('not-json')"),
         BoundedLimits {
             cap: 1024,
-            timeout: Duration::from_secs(5),
+            timeout: Duration::from_secs(20),
         },
     )
     .await;
@@ -936,14 +936,20 @@ async fn real_process_malformed_timeout_and_output_cap_never_validate_as_success
 
     let marker = dir.path().join(".claude");
     let script = format!(
-        "New-Item -ItemType Directory -Path '{}' | Out-Null; Start-Sleep -Seconds 5",
+        "New-Item -ItemType Directory -Path '{}' | Out-Null; Start-Sleep -Seconds 120",
         marker.display()
     );
+    // The child must REACH the marker and only then be cancelled, so the
+    // budget has to cover a cold PowerShell start on a loaded machine —
+    // which alone can outlast a two-second bound, leaving the directory
+    // uncreated and this proof failing for a reason it does not test. The
+    // trailing sleep stays far longer than the budget, so the termination
+    // assertion below is unchanged.
     let timed = run_capability_with_limits(
         &command(&script),
         BoundedLimits {
             cap: 1024,
-            timeout: Duration::from_secs(2),
+            timeout: Duration::from_secs(20),
         },
     )
     .await;
@@ -957,7 +963,7 @@ async fn real_process_malformed_timeout_and_output_cap_never_validate_as_success
         &command("[Console]::Out.Write(('x' * 4096))"),
         BoundedLimits {
             cap: 32,
-            timeout: Duration::from_secs(5),
+            timeout: Duration::from_secs(20),
         },
     )
     .await;
