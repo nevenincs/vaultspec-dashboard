@@ -5,7 +5,8 @@
 # with its tag and dispatches this workflow at that tag. From there:
 #
 #   1. Check    - the ref is the tag, and the tagged tree passes the full merge
-#                 gate (the same job set that guards `main`).
+#                 gate (the same job set that guards `main`), while a watchdog
+#                 over this run's own jobs cancels it if the work cannot start.
 #   2. Build    - the dist CLI archives (release.yml) and the complete product
 #                 tree per target, both uploaded to the DRAFT.
 #   3. Check    - every leg extracts its archive and runs the shipped verifier
@@ -129,266 +130,66 @@ jobs:
       contents: read
       pull-requests: write
 
-  # Refuse a release build whose runners cannot serve it.
+  # A job dispatched to a selector with no ONLINE runner does not fail: it
+  # QUEUES, and `timeout-minutes` bounds how long a job RUNS, not how long it
+  # waits to start. v0.1.9 spent 4h46m that way while the release served as
+  # `latest` with no assets attached, and GitHub then reports `cancelled`,
+  # which is not red anywhere.
   #
-  # Two of this matrix's four targets land on the power-gated MacBook, which
-  # serves runners only on AC. A selector with no ONLINE runner does not fail -
-  # it QUEUES, unbounded by timeout-minutes - so without this the release
-  # appears to be progressing for up to a day and then reports failed with no
-  # assets attached. That is the same silent shape as the six weeks v0.1.4 spent
-  # answering as `releases/latest` with nothing on it.
-  #
-  # It does not fight the gate: stopping runners on battery is correct, and a
-  # running job is never killed. It refuses to spend a day discovering it.
-  #
-  # Hosted, deliberately - a preflight that needs the fleet cannot report that
-  # the fleet is down.
-  # DERIVATION ONLY. What this workflow schedules onto is repo-specific and
-  # stays here; the CHECK is one implementation shared by the whole runner
-  # fleet and rendered in below. This file used to carry a second copy
-  # of that check as a local composite action - the copy that never gets the
-  # fix is the one that ships the bug.
-  derive-selectors:
-    timeout-minutes: 15
-    name: "Check: Runner selectors (Linux)"
+  # This watchdog reads THIS RUN's own jobs - the work this repository asked
+  # for - and never the fleet's inventory. When a job is still queued after the
+  # budget, it cancels the run so the outcome is a bounded, legible failure
+  # instead of a day of silence.
+  queue-watchdog:
+    name: "Check: Queue watchdog (Linux)"
+    timeout-minutes: 90
     needs: prove-ref
-    # ON THE FLEET. This job derives the selectors the preflight below
-    # checks, and it was left hosted when that preflight was migrated -
-    # two adjacent jobs, one moved and one missed. It needs nothing the
-    # fleet lacks: a checkout and an awk.
     runs-on: [self-hosted, Linux, X64]
-    outputs:
-      selectors: ${{ steps.derive.outputs.selectors }}
+    permissions:
+      actions: write
     steps:
-      # Only what the steps below read, only this commit.
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          persist-credentials: false
-          fetch-depth: 1
-          path: .sparse-derive-selectors
-          sparse-checkout: |
-            .github/workflows/product-release.yml
-          sparse-checkout-cone-mode: false
-
-      - name: Derive the selectors this workflow schedules onto
-        id: derive
-        shell: bash
-        # The sparse checkout above lives in its own directory so its sparse
-        # state never reaches the runner's shared workspace (the fleet's
-        # checkout audit); the paths below are relative to it.
-        working-directory: .sparse-derive-selectors
-        run: |
-          set -uo pipefail
-          workflow=".github/workflows/product-release.yml"
-          [ -f "${workflow}" ] || { echo "::error::${workflow} not checked out; cannot derive selectors" >&2; exit 1; }
-
-          # DERIVED, not hand-listed. This job used to carry the four label sets
-          # in a literal bash array. That is the defect the sibling project paid
-          # for twice: its hand-kept list outlived its matrix, and the first time
-          # the named host was down while every real leg was up, it refused a
-          # release every leg could serve, citing a target that no longer
-          # existed. A list that must be edited in lockstep with a matrix
-          # eventually is not, and neither copy of that mistake was caught in
-          # review.
-          #
-          # The staleness is currently harmless only because the check is blind:
-          # `actions/runners` needs `administration: read`, the default
-          # GITHUB_TOKEN does not have it, and every run so far has taken the 403
-          # path and passed. Arming FLEET_PREFLIGHT_TOKEN is exactly what would
-          # detonate a stale list, so deriving has to land BEFORE the token does.
-          #
-          # Two sources, matching the two ways this file selects a runner:
-          #   1. The compose matrix, which schedules by OS *and* architecture
-          #      through `[self-hosted, os, arch]`.
-          #   2. Every other job, which carries a literal label list.
-          #
-          # Both readings assume a shape, so both assert it. A derivation that
-          # silently describes something the file no longer says is worse than no
-          # derivation, because it still prints a confident ok.
-          # The braces are escaped so this stays a bash string: Actions expands
-          # a bare expression inside `run:` before bash ever sees it, and the
-          # guard would then be matching the empty string against itself.
-          grep -qE 'runs-on:[[:space:]]*\[self-hosted,[[:space:]]*"\$\{\{[[:space:]]*matrix\.os[[:space:]]*\}\}",[[:space:]]*"\$\{\{[[:space:]]*matrix\.arch[[:space:]]*\}\}"\]' "${workflow}" || {
-            echo "::error::${workflow} no longer schedules the compose matrix by [self-hosted, os, arch]; this derivation would miss every build leg. Re-check it." >&2
-            exit 1
-          }
-
-          mapfile -t selectors < <(
-            {
-              # Literal label lists. Templated ones are handled below; parsing
-              # them here would yield a selector containing an unexpanded
-              # expression, which matches no runner and reads as a real failure.
-              grep -vE '\$\{\{' "${workflow}" |
-                awk -F'[][]' '/^[[:space:]]*runs-on:[[:space:]]*\[/ && NF > 2 {print $2}' |
-                tr -d ' ' | tr '[:upper:]' '[:lower:]'
-              # The compose matrix, whose os/arch pairs fill the templated
-              # runs-on asserted above.
-              awk '/target:/ && /os:/ && /arch:/ {
-                     os = ""; arch = ""
-                     if (match($0, /os:[[:space:]]*[A-Za-z0-9_-]+/))   { os   = substr($0, RSTART, RLENGTH); sub(/os:[[:space:]]*/, "", os) }
-                     if (match($0, /arch:[[:space:]]*[A-Za-z0-9_-]+/)) { arch = substr($0, RSTART, RLENGTH); sub(/arch:[[:space:]]*/, "", arch) }
-                     if (length(os) && length(arch)) print tolower("self-hosted," os "," arch)
-                   }' "${workflow}"
-            } | sort -u
-          )
-          if [ "${#selectors[@]}" -eq 0 ]; then
-            echo "::error::derived no runner selector from ${workflow}; refusing to pass vacuously" >&2
-            exit 1
-          fi
-          {
-            echo "selectors<<SELECTORS_EOF"
-            printf '%s\n' "${selectors[@]}"
-            echo "SELECTORS_EOF"
-          } >> "${GITHUB_OUTPUT}"
-
-  # HOSTED, DELIBERATELY, and that decision now lives with the check itself: a
-  # preflight that needs the fleet cannot report that the fleet is down.
-  #
-  # The token is passed with NO fallback. GITHUB_TOKEN can never read
-  # `actions/runners` - that endpoint needs Administration:read, which no
-  # `permissions:` value grants it - so the old `|| secrets.GITHUB_TOKEN`
-  # guaranteed a 403 wherever the PAT was absent. A reusable workflow enforces
-  # `required: true` on a secret; a composite action does not, which is the
-  # second reason this moved.
-  preflight:
-    timeout-minutes: 15
-    name: "Check: Preflight runners (Linux)"
-    needs: derive-selectors
-    runs-on: [self-hosted, Linux, X64]
-    steps:
-      - name: Every required selector has an online runner
+      - name: Cancel the run if its work cannot start
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.FLEET_PREFLIGHT_TOKEN }}
-          TARGET_REPO: ${{ github.event.repository.name }}
-          SELECTORS: ${{ needs.derive-selectors.outputs.selectors }}
-          ALLOW_GATED: false
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          # How long a job may sit queued before this run is abandoned. Long
+          # enough for an ordinary busy fleet, far short of GitHub's 24h ceiling.
+          BUDGET_MINUTES: "45"
         run: |
-          # BEGIN generated runner preflight - do not edit here
-          # THE canonical runner preflight. One implementation for the whole fleet.
-          #
-          # WHY THIS IS A SCRIPT AND NOT A REUSABLE WORKFLOW. It was one, and every
-          # consumer's call was rejected before a single job started: its source
-          # repository is PRIVATE and all six consuming repos are PUBLIC, and a public repository
-          # cannot call a reusable workflow from a private one. GitHub reports that as a
-          # run with zero jobs and "this run likely failed because of a workflow file
-          # issue", which is why it survived actionlint, survived review, and would have
-          # surfaced first on a release.
-          #
-          # So the sharing model is DEPLOYMENT, not runtime resolution: this file is the
-          # source, it is rendered into each consumer's workflow, and a parity check
-          # fails when a rendered copy drifts from it.
-          #
-          # Contract - the caller sets these, all required:
-          #   GH_TOKEN     PAT with Administration:read. NEVER the default GITHUB_TOKEN:
-          #                it cannot read actions/runners at any `permissions:` value.
-          #   TARGET_REPO  repository name, without the owner
-          #   SELECTORS    newline-separated, each a comma-joined label set
-          #   ALLOW_GATED  "true" tolerates registered-but-offline runners
-
           set -euo pipefail
-
-          if [ -z "${GH_TOKEN:-}" ]; then
-            echo "::error::fleet_token is empty. This check needs a PAT with Administration:read; GITHUB_TOKEN cannot read actions/runners." >&2
-            exit 1
-          fi
-
-          # GitHub-HOSTED runners are not in `actions/runners`, which lists only
-          # self-hosted ones. A hosted label is therefore indistinguishable from
-          # a self-hosted label nobody registered, so checking one would fail
-          # every run for a runner that is always available. Two legs on this
-          # fleet are hosted BY DECISION - the aarch64 Linux builds, because the
-          # ARM machine cannot host a `container:` job - and this check must not
-          # contradict that decision.
-          #
-          # The prefixes are GitHub's hosted-image vocabulary, not ours, and a
-          # hosted image label always carries a version or channel suffix
-          # (`ubuntu-latest`, `ubuntu-24.04-arm`, `windows-2022`, `macos-15`).
-          # Fleet labels carry no such suffix and are checked normally. Never
-          # name a fleet label `windows-<something>`: it would be skipped here
-          # and go unchecked.
-          checkable=""
-          while IFS= read -r selector; do
-            [ -n "${selector}" ] || continue
-            case "${selector}" in
-              ubuntu-*|windows-*|macos-*)
-                echo "hosted    [${selector}] -> GitHub-hosted, not in the self-hosted list; not checked"
-                ;;
-              *) checkable+="${selector}"$'\n' ;;
-            esac
-          done <<< "${SELECTORS}"
-
-          if [ -z "${checkable}" ]; then
-            echo "every selector is GitHub-hosted; nothing to check against the fleet."
-            exit 0
-          fi
-
-          runners=$(gh api "repos/${GITHUB_REPOSITORY_OWNER}/${TARGET_REPO}/actions/runners" \
-            --jq '.runners[] | [.status, ([.labels[].name] | map(ascii_downcase) | join(","))] | @tsv')
-
-          if [ -z "${runners}" ]; then
-            echo "::error::${TARGET_REPO} has no registered self-hosted runners at all" >&2
-            exit 1
-          fi
-
-          failed=0
-          while IFS= read -r selector; do
-            [ -n "${selector}" ] || continue
-            # Normalise: lowercase, strip spaces. GitHub matches labels
-            # case-insensitively, and a selector written `Linux` must match a
-            # runner advertising `linux`.
-            want=$(printf '%s' "${selector}" | tr '[:upper:]' '[:lower:]' | tr -d ' ')
-
-            online=0; registered=0
-            while IFS=$'\t' read -r status labels; do
-              missing=0
-              IFS=',' read -ra parts <<< "${want}"
-              for part in "${parts[@]}"; do
-                case ",${labels}," in
-                  *",${part},"*) ;;
-                  *) missing=1; break ;;
-                esac
-              done
-              [ "${missing}" -eq 0 ] || continue
-              registered=$((registered + 1))
-              [ "${status}" = "online" ] && online=$((online + 1))
-            done <<< "${runners}"
-
-            if [ "${online}" -gt 0 ]; then
-              echo "ok        [${want}] -> ${online} online"
-            elif [ "${registered}" -eq 0 ]; then
-              echo "::error::[${want}] is carried by NO registered runner. A job dispatched to it queues until GitHub cancels it." >&2
-              failed=1
-            elif [ "${ALLOW_GATED}" = "true" ]; then
-              echo "::warning::[${want}] matches ${registered} runner(s), all offline. Continuing because allow_gated is set."
-            else
-              echo "::error::[${want}] matches ${registered} registered runner(s) but NONE are online. On this fleet that usually means the power-gated host is on battery; a job dispatched now would queue rather than fail." >&2
-              failed=1
+          deadline=$(( $(date +%s) + BUDGET_MINUTES * 60 ))
+          while :; do
+            queued=$(gh api "repos/${REPO}/actions/runs/${RUN_ID}/jobs" --paginate \\
+              --jq '[.jobs[] | select(.status == "queued") | .name] | join(", ")' | tr -d '\\n')
+            if [ -z "${queued}" ]; then
+              echo "no job is waiting for a runner; watchdog done"
+              exit 0
             fi
-          done <<< "${checkable}"
+            if [ "$(date +%s)" -ge "${deadline}" ]; then
+              echo "::error::still waiting for a runner after ${BUDGET_MINUTES}m: ${queued}. Cancelling this run rather than queueing to GitHub's 24h ceiling."
+              gh run cancel "${RUN_ID}" --repo "${REPO}"
+              exit 1
+            fi
+            echo "waiting for a runner: ${queued}"
+            sleep 60
+          done
 
-          if [ "${failed}" -ne 0 ]; then
-            echo "::error::preflight refused to start work that cannot be scheduled" >&2
-            exit 1
-          fi
-          echo "preflight passed: every required selector has an online runner"
-          # END generated runner preflight
   # The dist CLI archives, uploaded to the draft by release.yml's own host job.
   archives:
     name: "Build: CLI archives"
     if: ${{ !inputs.validation_only }}
-    needs: [prove-ref, merge-gate, preflight]
+    needs: [prove-ref, merge-gate]
     uses: ./.github/workflows/release.yml
     with:
       tag: ${{ inputs.tag }}
     permissions:
       contents: write
-    secrets:
-      FLEET_PREFLIGHT_TOKEN: ${{ secrets.FLEET_PREFLIGHT_TOKEN }}
 
   build-product-tree:
     timeout-minutes: 120
-    needs: [prove-ref, merge-gate, preflight]
+    needs: [prove-ref, merge-gate]
     name: "Build: Product tree (${{ matrix.platform }})"
     strategy:
       fail-fast: false
@@ -651,7 +452,7 @@ jobs:
   python-compatibility:
     timeout-minutes: 30
     name: "Check: Python harness (Linux ${{ matrix.python-version }})"
-    needs: [prove-ref, preflight]
+    needs: prove-ref
     runs-on: [self-hosted, Linux, X64]
     strategy:
       fail-fast: false
