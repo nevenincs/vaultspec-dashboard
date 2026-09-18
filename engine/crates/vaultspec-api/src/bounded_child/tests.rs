@@ -2,6 +2,22 @@ use super::*;
 
 use std::io::Write as _;
 
+/// Serializes every test that drives a real process group. `OwnedGroup::drop`
+/// inserts the group's waiter into the process-global `REAP_TASKS`, and
+/// `reap_terminated_groups` DRAINS that map, so two tests in flight at once
+/// observe — and steal — each other's waiters. Without this the registry
+/// assertions race whichever sibling happens to overlap them, which is why
+/// they only fail on a loaded runner.
+///
+/// The mutex guards `()` and protects no invariant a panic could leave
+/// broken. It is tokio's, not `std`'s, because every one of these tests
+/// holds the guard across an await point.
+static GROUP_REGISTRY_TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+async fn group_registry_lock() -> tokio::sync::MutexGuard<'static, ()> {
+    GROUP_REGISTRY_TEST_LOCK.lock().await
+}
+
 /// Env switch that turns this test binary into the chatty child below.
 const ENV_CHATTY: &str = "VAULTSPEC_BOUNDED_CHILD_CHATTY";
 /// Env switch that turns this test binary into a child which never exits by
@@ -63,8 +79,7 @@ fn bounded_child_timeout_process() {
         std::env::var_os(ENV_TIMEOUT_HEARTBEAT).expect("timeout child receives a heartbeat path");
     let mut tick = 0_u64;
     loop {
-        std::fs::write(&heartbeat, tick.to_le_bytes())
-            .expect("timeout child updates its liveness heartbeat");
+        publish_heartbeat(std::path::Path::new(&heartbeat), tick);
         tick += 1;
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
@@ -96,10 +111,22 @@ fn bounded_child_tree_process() {
     }
     let mut tick = 0_u64;
     loop {
-        std::fs::write(&heartbeat, tick.to_le_bytes()).expect("descendant heartbeat");
+        publish_heartbeat(std::path::Path::new(&heartbeat), tick);
         tick += 1;
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
+}
+
+/// Publish one heartbeat tick ATOMICALLY. `std::fs::write` truncates and then
+/// writes, so a kill landing between the two steps leaves a zero-length file
+/// behind forever — which the liveness assertions below then read as a value
+/// that "changed", reporting a correctly reaped descendant as a surviving one.
+/// Writing a sibling temp file and renaming it over the target means the
+/// heartbeat only ever holds a COMPLETE tick, whenever the process dies.
+fn publish_heartbeat(path: &std::path::Path, tick: u64) {
+    let staging = path.with_extension("staging");
+    std::fs::write(&staging, tick.to_le_bytes()).expect("stage heartbeat tick");
+    std::fs::rename(&staging, path).expect("publish heartbeat tick");
 }
 
 fn tree_command(heartbeat: &std::path::Path) -> tokio::process::Command {
@@ -161,6 +188,7 @@ const PROOF_LIMITS: BoundedLimits = BoundedLimits {
 
 #[tokio::test]
 async fn a_child_that_overflows_the_stderr_pipe_completes_instead_of_wedging() {
+    let _registry = group_registry_lock().await;
     let outcome = run_bounded(chatty_command(), None, PROOF_LIMITS, CapPolicy::Refuse)
         .await
         .expect("the chatty child must complete under both bounds");
@@ -183,6 +211,7 @@ async fn a_child_that_overflows_the_stderr_pipe_completes_instead_of_wedging() {
 /// the call wedges until its wall-clock bound fires.
 #[tokio::test]
 async fn draining_stdout_alone_wedges_until_the_wall_clock_bound() {
+    let _registry = group_registry_lock().await;
     let mut child = chatty_command()
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -208,6 +237,7 @@ async fn draining_stdout_alone_wedges_until_the_wall_clock_bound() {
 
 #[tokio::test]
 async fn the_byte_cap_refuses_a_runaway_child_and_kills_it() {
+    let _registry = group_registry_lock().await;
     let limits = BoundedLimits {
         cap: 4 * 1024,
         timeout: std::time::Duration::from_secs(20),
@@ -220,6 +250,7 @@ async fn the_byte_cap_refuses_a_runaway_child_and_kills_it() {
 
 #[tokio::test]
 async fn a_timed_out_child_is_killed_and_reaped_before_the_fault_returns() {
+    let _registry = group_registry_lock().await;
     let heartbeat_dir = tempfile::tempdir().expect("temporary heartbeat directory");
     let heartbeat = heartbeat_dir.path().join("timeout-child-heartbeat");
     let timeout = std::time::Duration::from_millis(500);
@@ -253,6 +284,7 @@ async fn a_timed_out_child_is_killed_and_reaped_before_the_fault_returns() {
 
 #[tokio::test]
 async fn timeout_terminates_and_reaps_the_real_wrapper_descendant_tree() {
+    let _registry = group_registry_lock().await;
     let dir = tempfile::tempdir().expect("tree heartbeat directory");
     let heartbeat = dir.path().join("descendant-heartbeat");
     let run = tokio::spawn(run_bounded(
@@ -275,6 +307,7 @@ async fn timeout_terminates_and_reaps_the_real_wrapper_descendant_tree() {
 
 #[tokio::test]
 async fn dropping_the_runner_future_terminates_the_real_descendant_tree() {
+    let _registry = group_registry_lock().await;
     let dir = tempfile::tempdir().expect("tree heartbeat directory");
     let heartbeat = dir.path().join("descendant-heartbeat");
     let run = tokio::spawn(run_bounded(
@@ -297,6 +330,7 @@ async fn dropping_the_runner_future_terminates_the_real_descendant_tree() {
 
 #[tokio::test]
 async fn repeated_cancelled_groups_self_prune_without_registry_growth() {
+    let _registry = group_registry_lock().await;
     let dir = tempfile::tempdir().expect("cancelled group heartbeat directory");
     for index in 0..12 {
         let heartbeat = dir.path().join(format!("cancelled-{index}"));
@@ -327,6 +361,7 @@ async fn repeated_cancelled_groups_self_prune_without_registry_growth() {
 
 #[tokio::test]
 async fn wedged_group_waiter_exhausts_one_shutdown_budget_as_unresolved() {
+    let _registry = group_registry_lock().await;
     test_register_wedged_reaper();
     let started = std::time::Instant::now();
     assert_eq!(
@@ -342,6 +377,7 @@ async fn wedged_group_waiter_exhausts_one_shutdown_budget_as_unresolved() {
 
 #[tokio::test]
 async fn process_group_admission_refuses_work_at_the_explicit_cap() {
+    let _registry = group_registry_lock().await;
     let fault = test_with_exhausted_group_capacity(run_bounded(
         chatty_command(),
         None,
@@ -355,6 +391,7 @@ async fn process_group_admission_refuses_work_at_the_explicit_cap() {
 
 #[tokio::test]
 async fn keep_partial_returns_the_bounded_prefix_marked_truncated() {
+    let _registry = group_registry_lock().await;
     let limits = BoundedLimits {
         cap: 4 * 1024,
         timeout: std::time::Duration::from_secs(20),
@@ -388,6 +425,7 @@ fn bounded_child_echo_process() {
 
 #[tokio::test]
 async fn a_stdin_body_is_written_and_the_handle_closed() {
+    let _registry = group_registry_lock().await;
     let mut command = tokio::process::Command::new(std::env::current_exe().unwrap());
     command
         .args([
