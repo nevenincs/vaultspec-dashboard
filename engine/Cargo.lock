@@ -238,6 +238,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
+name = "base64"
+version = "0.23.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5"
+
+[[package]]
 name = "bitflags"
 version = "2.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2602,7 +2608,7 @@ version = "3.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d30c53c26bc5b31a98cd02d20f25a7c8567146caf63ed593a9d87b2775291be"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "serde_core",
 ]
 
@@ -3747,7 +3753,7 @@ name = "vaultspec-distribution-authority"
 version = "0.1.12"
 dependencies = [
  "aws-lc-rs",
- "base64",
+ "base64 0.23.1",
  "cap-std",
  "fs4",
  "futures-util",
@@ -3803,7 +3809,7 @@ name = "vaultspec-release-fixtures"
 version = "0.1.12"
 dependencies = [
  "aws-lc-rs",
- "base64",
+ "base64 0.23.1",
  "jiff",
  "serde",
  "serde_json",

@@ -406,5 +406,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
 }
 
 #[cfg(test)]
+mod test_child;
+
+#[cfg(test)]
 #[path = "lib_tests/mod.rs"]
 mod tests;
