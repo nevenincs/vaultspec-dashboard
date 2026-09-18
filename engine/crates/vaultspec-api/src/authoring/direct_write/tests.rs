@@ -769,7 +769,7 @@ mod plan_tick {
                 "-Command".into(),
                 format!(
                     "& {{ uv run --no-sync vaultspec-core vault plan step {verb} '{plan_ref}' \
-                         '{step_id}' --json | Out-Null; Start-Sleep -Seconds 30 }}"
+                         '{step_id}' --json | Out-Null; Start-Sleep -Seconds 120 }}"
                 ),
             ]
         } else {
@@ -778,11 +778,15 @@ mod plan_tick {
                 "-c".into(),
                 format!(
                     "uv run --no-sync vaultspec-core vault plan step {verb} '{plan_ref}' \
-                         '{step_id}' --json >/dev/null 2>&1; sleep 30"
+                         '{step_id}' --json >/dev/null 2>&1; sleep 120"
                 ),
             ]
         };
-        CoreAdapter::from_invocation(invocation).with_timeout(Duration::from_secs(10))
+        // This fixture must first complete a real uv-managed core mutation and
+        // only then time out in the trailing sleep. A contended Windows run
+        // disproved the former 10-second startup assumption; use the same
+        // measured headroom as the equivalent two-command landing fixture.
+        CoreAdapter::from_invocation(invocation).with_timeout(Duration::from_secs(45))
     }
 
     /// The full plan-tick lifecycle against the REAL core, consolidating

@@ -2,6 +2,28 @@
 
 use super::helpers::*;
 
+/// Path to the dev-only child in `examples/`, which `cargo test` builds
+/// alongside this binary. Resolved from the test executable's own location
+/// (`<target>/<profile>/deps/<bin>`) rather than assumed, so it follows
+/// whatever target directory the run uses.
+pub(super) fn test_child_bin() -> PathBuf {
+    let exe = std::env::current_exe().expect("test executable path");
+    let profile = exe
+        .parent()
+        .and_then(|deps| deps.parent())
+        .expect("<target>/<profile>/deps/<test binary>");
+    let child = profile.join("examples").join(format!(
+        "authoring_test_child{}",
+        std::env::consts::EXE_SUFFIX
+    ));
+    assert!(
+        child.is_file(),
+        "the authoring test child is missing at {}. `cargo test --workspace` (what          the suite runs) builds it; a target-filtered run such as `--lib` does not.          Build it with `cargo build -p vaultspec-api --example authoring_test_child`.",
+        child.display()
+    );
+    child
+}
+
 /// A REAL `vaultspec-core` `rename` invocation, wrapped to LAND the write and
 /// THEN hang past the deadline — mirrors `landing_frontmatter_timeout_adapter`
 /// for `Rename`'s own core-authoritative post-verify.
@@ -254,24 +276,22 @@ pub(super) fn landing_section_edit_timeout_adapter(
     spliced_body: &str,
 ) -> CoreAdapter {
     std::fs::write(worktree_root.join(".landing-source-se"), spliced_body).unwrap();
-    let invocation = if cfg!(windows) {
-        vec![
-            "powershell".to_string(),
-            "-NoProfile".into(),
-            "-Command".into(),
-            format!(
-                "& {{ Copy-Item '.landing-source-se' '{LIVE_SECTION_EDIT_DOC_PATH}' -Force; \
-                 Start-Sleep -Seconds 30 }}"
-            ),
-        ]
-    } else {
-        vec![
-            "sh".to_string(),
-            "-c".into(),
-            format!("cp .landing-source-se '{LIVE_SECTION_EDIT_DOC_PATH}'; sleep 30"),
-        ]
-    };
-    CoreAdapter::from_invocation(invocation).with_timeout(Duration::from_millis(2500))
+    // The child copies the spliced body into place and then refuses to exit,
+    // so the deadline below is what ends it: the write has LANDED but the
+    // outcome is indeterminate, which is the state this fixture exists to
+    // produce. This used to be a shell doing the copy and the sleep, which
+    // charged a cold PowerShell start against a 2.5s budget — on a loaded
+    // runner the budget was gone before the copy ever ran, and the test failed
+    // reporting that the write did not land. The child starts like any other
+    // built executable and copies before it parks.
+    let invocation = vec![
+        test_child_bin().to_string_lossy().into_owned(),
+        "--copy".into(),
+        ".landing-source-se".into(),
+        LIVE_SECTION_EDIT_DOC_PATH.into(),
+        "--hang".into(),
+    ];
+    CoreAdapter::from_invocation(invocation).with_timeout(Duration::from_secs(10))
 }
 
 // --- CreateDocument against the REAL core ----------------------
