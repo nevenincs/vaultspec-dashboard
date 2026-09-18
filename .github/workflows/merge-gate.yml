@@ -361,6 +361,12 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      # `npx vitest` below loads frontend/vite.config.ts, which imports the SPA's
+      # own dev dependencies, so the lockfile has to be restored first: without
+      # it the run dies at startup on "Cannot find package '@tailwindcss/vite'"
+      # rather than on anything the wire did.
+      - name: Provision the dev toolchain
+        run: just init
       - name: Install vaultspec-core (live-engine declared-tier dependency)
         # The engine startup gate probes vaultspec-core on PATH; without it
         # `vaultspec serve` fails and the conformance test errors with
