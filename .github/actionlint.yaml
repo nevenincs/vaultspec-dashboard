@@ -81,30 +81,29 @@
 # enumeration:
 #
 #   Windows / X64    literal  a2a-channel-feasibility, a2a-product-certification,
-#                             ci-runner-probe, product-release, winget-publish
+#                             product-release, winget-publish
 #                    matrix   merge-gate, a2a-product-certification,
 #                             a2a-product-contract, product-release,
 #                             release (dist-planned matrix.runner)
 #   Linux / X64      literal  a2a-channel-feasibility, a2a-product-certification,
 #                             acquisition, channel-publish-gate, ci,
-#                             ci-runner-probe, code-health, homebrew-bump,
+#                             code-health, homebrew-bump,
 #                             merge-gate, product-release, release-please,
 #                             release, scoop-bump
 #                    matrix   the same five matrices as above
-#   Linux / ARM64    literal  ci-runner-probe ONLY
+#   Linux / ARM64    literal  none
 #                    matrix   a2a-product-certification, a2a-product-contract,
 #                             acquisition, product-release,
 #                             release (dist-planned matrix.runner)
-#   macOS / ARM64    literal  ci-runner-probe ONLY
+#   macOS / ARM64    literal  none
 #                    matrix   a2a-product-certification, a2a-product-contract,
 #                             product-release, release
 #
-# The two ARM legs are reached by no literal `runs-on:` outside the probe, which
-# is exactly why the probe exists: an absent or mislabelled runner on those legs
-# presents as a job that queues forever rather than one that fails — no log, no
-# annotation, no conclusion. `ci-runner-probe.yml` is dispatch-only and asserts
-# `uname -m` on each leg, so the label-to-machine mapping is proven rather than
-# assumed.
+# The two ARM legs are reached only through matrix `include:` blocks, so an
+# absent or mislabelled runner there presents as a job that queues forever
+# rather than one that fails — no log, no annotation, no conclusion. The
+# orchestrator's queue watchdog is what bounds that: it reads this run's own
+# jobs and cancels the run rather than waiting out GitHub's 24h ceiling.
 #
 # `.github/release-build-setup.yml` is deliberately absent from this accounting:
 # it is a bare step-list fragment injected into dist's generated build jobs, not
