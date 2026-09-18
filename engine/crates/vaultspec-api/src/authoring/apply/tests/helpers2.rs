@@ -2,28 +2,6 @@
 
 use super::helpers::*;
 
-/// Path to the dev-only child in `examples/`, which `cargo test` builds
-/// alongside this binary. Resolved from the test executable's own location
-/// (`<target>/<profile>/deps/<bin>`) rather than assumed, so it follows
-/// whatever target directory the run uses.
-pub(super) fn test_child_bin() -> PathBuf {
-    let exe = std::env::current_exe().expect("test executable path");
-    let profile = exe
-        .parent()
-        .and_then(|deps| deps.parent())
-        .expect("<target>/<profile>/deps/<test binary>");
-    let child = profile.join("examples").join(format!(
-        "authoring_test_child{}",
-        std::env::consts::EXE_SUFFIX
-    ));
-    assert!(
-        child.is_file(),
-        "the authoring test child is missing at {}. `cargo test --workspace` (what          the suite runs) builds it; a target-filtered run such as `--lib` does not.          Build it with `cargo build -p vaultspec-api --example authoring_test_child`.",
-        child.display()
-    );
-    child
-}
-
 /// A REAL `vaultspec-core` `rename` invocation, wrapped to LAND the write and
 /// THEN hang past the deadline — mirrors `landing_frontmatter_timeout_adapter`
 /// for `Rename`'s own core-authoritative post-verify.
@@ -31,7 +9,7 @@ pub(super) fn landing_rename_timeout_adapter(doc_ref: &str, new_stem: &str) -> C
     // The wrapped verb is a REAL core subprocess; the child only sequences it
     // and then parks, which a shell used to do at the cost of its own startup.
     let invocation = vec![
-        test_child_bin().to_string_lossy().into_owned(),
+        crate::test_child::test_child_argv0(),
         "--run".into(),
         serde_json::to_string(&[
             "uv",
@@ -285,7 +263,7 @@ pub(super) fn landing_section_edit_timeout_adapter(
     // reporting that the write did not land. The child starts like any other
     // built executable and copies before it parks.
     let invocation = vec![
-        test_child_bin().to_string_lossy().into_owned(),
+        crate::test_child::test_child_argv0(),
         "--copy".into(),
         ".landing-source-se".into(),
         LIVE_SECTION_EDIT_DOC_PATH.into(),
@@ -541,7 +519,7 @@ pub(super) fn landing_create_timeout_adapter(
     // The wrapped verb is a REAL core subprocess; the child only sequences it
     // and then parks, which a shell used to do at the cost of its own startup.
     let invocation = vec![
-        test_child_bin().to_string_lossy().into_owned(),
+        crate::test_child::test_child_argv0(),
         "--run".into(),
         serde_json::to_string(&[
             "uv",
@@ -585,7 +563,7 @@ pub(super) fn landing_create_two_step_timeout_adapter(
     std::fs::write(worktree_root.join(body_file), body_prose).unwrap();
     // Two ordered verbs — what the shell's `;` used to sequence.
     let invocation = vec![
-        test_child_bin().to_string_lossy().into_owned(),
+        crate::test_child::test_child_argv0(),
         "--run".into(),
         serde_json::to_string(&[
             "uv",
@@ -638,7 +616,7 @@ pub(super) fn landing_frontmatter_timeout_adapter(doc_ref: &str, date: &str) -> 
     // The wrapped verb is a REAL core subprocess; the child only sequences it
     // and then parks, which a shell used to do at the cost of its own startup.
     let invocation = vec![
-        test_child_bin().to_string_lossy().into_owned(),
+        crate::test_child::test_child_argv0(),
         "--run".into(),
         serde_json::to_string(&[
             "uv",
@@ -662,11 +640,7 @@ pub(super) fn envelope_adapter(status: &str) -> CoreAdapter {
     let json = format!(
         "{{\"schema\":\"vaultspec.vault.write.v1\",\"status\":\"{status}\",\"data\":{{}}}}"
     );
-    let invocation = vec![
-        test_child_bin().to_string_lossy().into_owned(),
-        "--emit".into(),
-        json,
-    ];
+    let invocation = vec![crate::test_child::test_child_argv0(), "--emit".into(), json];
     CoreAdapter::from_invocation(invocation)
 }
 
@@ -676,10 +650,7 @@ pub(super) fn envelope_adapter(status: &str) -> CoreAdapter {
 pub(super) fn timeout_adapter() -> CoreAdapter {
     // Nothing runs before the park, so this deadline bounds a pure hang and
     // measures only the code under test.
-    let invocation = vec![
-        test_child_bin().to_string_lossy().into_owned(),
-        "--hang".into(),
-    ];
+    let invocation = vec![crate::test_child::test_child_argv0(), "--hang".into()];
     CoreAdapter::from_invocation(invocation).with_timeout(Duration::from_millis(300))
 }
 
@@ -695,7 +666,7 @@ pub(super) fn landing_timeout_adapter(worktree_root: &Path) -> CoreAdapter {
     // budget had to cover a cold shell start as well as the copy, which is the
     // part that made it unreliable.
     let invocation = vec![
-        test_child_bin().to_string_lossy().into_owned(),
+        crate::test_child::test_child_argv0(),
         "--copy".into(),
         ".landing-source".into(),
         DOC_PATH.into(),
@@ -712,7 +683,7 @@ pub(super) fn removing_timeout_adapter() -> CoreAdapter {
     // The removal must COMPLETE before the kill, for the same reason and with
     // the same former shell-startup problem as the landing adapter above.
     let invocation = vec![
-        test_child_bin().to_string_lossy().into_owned(),
+        crate::test_child::test_child_argv0(),
         "--remove".into(),
         DOC_PATH.into(),
         "--hang".into(),

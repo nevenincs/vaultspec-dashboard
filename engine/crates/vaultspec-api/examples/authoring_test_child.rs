@@ -33,6 +33,7 @@ const HANG: std::time::Duration = std::time::Duration::from_secs(600);
 /// express a sequence — create, then set a body, then park — without a shell.
 enum Step {
     Copy(PathBuf, PathBuf),
+    Mkdir(PathBuf),
     Remove(PathBuf),
     Run(Vec<String>),
     Emit(String),
@@ -57,6 +58,10 @@ fn main() {
                     PathBuf::from(&argv[index + 2]),
                 ));
                 index += 3;
+            }
+            "--mkdir" => {
+                steps.push(Step::Mkdir(PathBuf::from(&argv[index + 1])));
+                index += 2;
             }
             "--remove" => {
                 steps.push(Step::Remove(PathBuf::from(&argv[index + 1])));
@@ -96,6 +101,9 @@ fn main() {
         match step {
             Step::Copy(from, to) => {
                 std::fs::copy(&from, &to).expect("child copies its source into place");
+            }
+            Step::Mkdir(path) => {
+                std::fs::create_dir_all(&path).expect("child creates its directory");
             }
             Step::Remove(path) => {
                 std::fs::remove_file(&path).expect("child removes its target");
