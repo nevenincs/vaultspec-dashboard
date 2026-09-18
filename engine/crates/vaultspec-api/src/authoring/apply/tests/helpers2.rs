@@ -28,26 +28,26 @@ pub(super) fn test_child_bin() -> PathBuf {
 /// THEN hang past the deadline — mirrors `landing_frontmatter_timeout_adapter`
 /// for `Rename`'s own core-authoritative post-verify.
 pub(super) fn landing_rename_timeout_adapter(doc_ref: &str, new_stem: &str) -> CoreAdapter {
-    let invocation = if cfg!(windows) {
-        vec![
-            "powershell".to_string(),
-            "-NoProfile".into(),
-            "-Command".into(),
-            format!(
-                "& {{ uv run --no-sync vaultspec-core vault rename '{doc_ref}' --to \
-                 '{new_stem}' --json | Out-Null; Start-Sleep -Seconds 120 }}"
-            ),
-        ]
-    } else {
-        vec![
-            "sh".to_string(),
-            "-c".into(),
-            format!(
-                "uv run --no-sync vaultspec-core vault rename '{doc_ref}' --to '{new_stem}' \
-                 --json >/dev/null 2>&1; sleep 120"
-            ),
-        ]
-    };
+    // The wrapped verb is a REAL core subprocess; the child only sequences it
+    // and then parks, which a shell used to do at the cost of its own startup.
+    let invocation = vec![
+        test_child_bin().to_string_lossy().into_owned(),
+        "--run".into(),
+        serde_json::to_string(&[
+            "uv",
+            "run",
+            "--no-sync",
+            "vaultspec-core",
+            "vault",
+            "rename",
+            doc_ref,
+            "--to",
+            new_stem,
+            "--json",
+        ])
+        .expect("child argv serializes"),
+        "--hang".into(),
+    ];
     CoreAdapter::from_invocation(invocation).with_timeout(Duration::from_secs(30))
 }
 
@@ -538,28 +538,30 @@ pub(super) fn landing_create_timeout_adapter(
     title: &str,
     date: &str,
 ) -> CoreAdapter {
-    let invocation = if cfg!(windows) {
-        vec![
-            "powershell".to_string(),
-            "-NoProfile".into(),
-            "-Command".into(),
-            format!(
-                "& {{ uv run --no-sync vaultspec-core vault add '{doc_type}' --feature \
-                 '{feature}' --title '{title}' --date '{date}' --json | Out-Null; \
-                 Start-Sleep -Seconds 120 }}"
-            ),
-        ]
-    } else {
-        vec![
-            "sh".to_string(),
-            "-c".into(),
-            format!(
-                "uv run --no-sync vaultspec-core vault add '{doc_type}' --feature \
-                 '{feature}' --title '{title}' --date '{date}' --json >/dev/null 2>&1; \
-                 sleep 120"
-            ),
-        ]
-    };
+    // The wrapped verb is a REAL core subprocess; the child only sequences it
+    // and then parks, which a shell used to do at the cost of its own startup.
+    let invocation = vec![
+        test_child_bin().to_string_lossy().into_owned(),
+        "--run".into(),
+        serde_json::to_string(&[
+            "uv",
+            "run",
+            "--no-sync",
+            "vaultspec-core",
+            "vault",
+            "add",
+            doc_type,
+            "--feature",
+            feature,
+            "--title",
+            title,
+            "--date",
+            date,
+            "--json",
+        ])
+        .expect("child argv serializes"),
+        "--hang".into(),
+    ];
     CoreAdapter::from_invocation(invocation).with_timeout(Duration::from_secs(30))
 }
 
@@ -581,42 +583,44 @@ pub(super) fn landing_create_two_step_timeout_adapter(
 ) -> CoreAdapter {
     let body_file = ".landing-source-create";
     std::fs::write(worktree_root.join(body_file), body_prose).unwrap();
-    let invocation = if cfg!(windows) {
-        vec![
-            "powershell".to_string(),
-            "-NoProfile".into(),
-            "-Command".into(),
-            format!(
-                "& {{ uv run --no-sync vaultspec-core vault add '{doc_type}' --feature \
-                 '{feature}' --title '{title}' --date '{date}' --json | Out-Null; \
-                 uv run --no-sync vaultspec-core vault set-body '{stem}' --body-file \
-                 '{body_file}' --json | Out-Null; Start-Sleep -Seconds 120 }}"
-            ),
-        ]
-    } else {
-        vec![
-            "sh".to_string(),
-            "-c".into(),
-            format!(
-                "uv run --no-sync vaultspec-core vault add '{doc_type}' --feature '{feature}' \
-                 --title '{title}' --date '{date}' --json >/dev/null 2>&1; \
-                 uv run --no-sync vaultspec-core vault set-body '{stem}' --body-file \
-                 '{body_file}' --json >/dev/null 2>&1; sleep 120"
-            ),
-        ]
-    };
-    // This fixture is a two-sided race and BOTH sides are load-sensitive, so the
-    // deadline is a fixture parameter rather than anything under test:
-    //   lower bound - both real `uv run` core subprocesses must COMPLETE first,
-    //     or the kill lands between them and the body never lands;
-    //   upper bound - the trailing sleep must still be running at the deadline,
-    //     so the adapter observes a Timeout rather than a clean exit.
-    // 20s violated the lower bound on a contended CI runner: two cold `uv run`
-    // starts exceeded it, only the scaffold landed, and the test read the
-    // resulting honest fail-closed as a failure. Widened with real headroom on
-    // both sides. Do not tighten either value to make the suite faster - the
-    // sleep must stay comfortably above the deadline.
-    CoreAdapter::from_invocation(invocation).with_timeout(Duration::from_secs(45))
+    // Two ordered verbs — what the shell's `;` used to sequence.
+    let invocation = vec![
+        test_child_bin().to_string_lossy().into_owned(),
+        "--run".into(),
+        serde_json::to_string(&[
+            "uv",
+            "run",
+            "--no-sync",
+            "vaultspec-core",
+            "vault",
+            "add",
+            doc_type,
+            "--feature",
+            feature,
+            "--title",
+            title,
+            "--date",
+            date,
+            "--json",
+        ])
+        .expect("child argv serializes"),
+        "--run".into(),
+        serde_json::to_string(&[
+            "uv",
+            "run",
+            "--no-sync",
+            "vaultspec-core",
+            "vault",
+            "set-body",
+            stem,
+            "--body-file",
+            body_file,
+            "--json",
+        ])
+        .expect("child argv serializes"),
+        "--hang".into(),
+    ];
+    CoreAdapter::from_invocation(invocation).with_timeout(Duration::from_secs(30))
 }
 
 /// A REAL `vaultspec-core` `set-frontmatter` invocation, wrapped to LAND the
@@ -631,29 +635,26 @@ pub(super) fn landing_create_two_step_timeout_adapter(
 /// `landing_timeout_adapter`'s synthetic-mutation pattern but with a genuine
 /// core subprocess instead of a file copy.
 pub(super) fn landing_frontmatter_timeout_adapter(doc_ref: &str, date: &str) -> CoreAdapter {
-    let invocation = if cfg!(windows) {
-        vec![
-            "powershell".to_string(),
-            "-NoProfile".into(),
-            "-Command".into(),
-            format!(
-                "& {{ uv run --no-sync vaultspec-core vault set-frontmatter '{doc_ref}' \
-                 --date '{date}' --json | Out-Null; Start-Sleep -Seconds 120 }}"
-            ),
-        ]
-    } else {
-        vec![
-            "sh".to_string(),
-            "-c".into(),
-            format!(
-                "uv run --no-sync vaultspec-core vault set-frontmatter '{doc_ref}' \
-                 --date '{date}' --json >/dev/null 2>&1; sleep 120"
-            ),
-        ]
-    };
-    // A generous deadline: the wrapped command is a REAL `uv run` subprocess
-    // (venv resolution + Python startup), not a synthetic file mutation, so it
-    // needs materially more slack than `landing_timeout_adapter`'s 2.5s.
+    // The wrapped verb is a REAL core subprocess; the child only sequences it
+    // and then parks, which a shell used to do at the cost of its own startup.
+    let invocation = vec![
+        test_child_bin().to_string_lossy().into_owned(),
+        "--run".into(),
+        serde_json::to_string(&[
+            "uv",
+            "run",
+            "--no-sync",
+            "vaultspec-core",
+            "vault",
+            "set-frontmatter",
+            doc_ref,
+            "--date",
+            date,
+            "--json",
+        ])
+        .expect("child argv serializes"),
+        "--hang".into(),
+    ];
     CoreAdapter::from_invocation(invocation).with_timeout(Duration::from_secs(30))
 }
 
@@ -661,20 +662,11 @@ pub(super) fn envelope_adapter(status: &str) -> CoreAdapter {
     let json = format!(
         "{{\"schema\":\"vaultspec.vault.write.v1\",\"status\":\"{status}\",\"data\":{{}}}}"
     );
-    let invocation = if cfg!(windows) {
-        vec![
-            "powershell".to_string(),
-            "-NoProfile".into(),
-            "-Command".into(),
-            format!("& {{ [Console]::Out.Write('{json}') }}"),
-        ]
-    } else {
-        vec![
-            "sh".to_string(),
-            "-c".into(),
-            format!("printf '%s' '{json}'"),
-        ]
-    };
+    let invocation = vec![
+        test_child_bin().to_string_lossy().into_owned(),
+        "--emit".into(),
+        json,
+    ];
     CoreAdapter::from_invocation(invocation)
 }
 
@@ -682,16 +674,12 @@ pub(super) fn envelope_adapter(status: &str) -> CoreAdapter {
 /// OUTCOME-INDETERMINATE Timeout. The file effect (if any) is simulated by the
 /// test itself, exactly the "killed but maybe-completed" case R1 codified.
 pub(super) fn timeout_adapter() -> CoreAdapter {
-    let invocation = if cfg!(windows) {
-        vec![
-            "powershell".to_string(),
-            "-NoProfile".into(),
-            "-Command".into(),
-            "& { Start-Sleep -Seconds 30 }".into(),
-        ]
-    } else {
-        vec!["sh".to_string(), "-c".into(), "sleep 30".into()]
-    };
+    // Nothing runs before the park, so this deadline bounds a pure hang and
+    // measures only the code under test.
+    let invocation = vec![
+        test_child_bin().to_string_lossy().into_owned(),
+        "--hang".into(),
+    ];
     CoreAdapter::from_invocation(invocation).with_timeout(Duration::from_millis(300))
 }
 
@@ -702,26 +690,18 @@ pub(super) fn timeout_adapter() -> CoreAdapter {
 /// base. The body is staged in Rust (no shell escaping); the core copies it in place.
 pub(super) fn landing_timeout_adapter(worktree_root: &Path) -> CoreAdapter {
     std::fs::write(worktree_root.join(".landing-source"), NEW_BODY).unwrap();
-    let invocation = if cfg!(windows) {
-        vec![
-            "powershell".to_string(),
-            "-NoProfile".into(),
-            "-Command".into(),
-            format!(
-                "& {{ Copy-Item '.landing-source' '{DOC_PATH}' -Force; Start-Sleep -Seconds 30 }}"
-            ),
-        ]
-    } else {
-        vec![
-            "sh".to_string(),
-            "-c".into(),
-            format!("cp .landing-source '{DOC_PATH}'; sleep 30"),
-        ]
-    };
-    // A longer deadline than the bare hang: the mutation must COMPLETE (past a cold
-    // shell/PowerShell start) before the kill; the process is still sleeping at the
-    // deadline, so the invoke is still an OUTCOME-INDETERMINATE Timeout.
-    CoreAdapter::from_invocation(invocation).with_timeout(Duration::from_millis(2500))
+    // The copy must COMPLETE before the kill; the child is still parked at the
+    // deadline, so the invoke stays an OUTCOME-INDETERMINATE Timeout. The old
+    // budget had to cover a cold shell start as well as the copy, which is the
+    // part that made it unreliable.
+    let invocation = vec![
+        test_child_bin().to_string_lossy().into_owned(),
+        "--copy".into(),
+        ".landing-source".into(),
+        DOC_PATH.into(),
+        "--hang".into(),
+    ];
+    CoreAdapter::from_invocation(invocation).with_timeout(Duration::from_secs(10))
 }
 
 /// A core that REMOVES the target during the invoke and then hangs — the "killed, and
@@ -729,22 +709,15 @@ pub(super) fn landing_timeout_adapter(worktree_root: &Path) -> CoreAdapter {
 /// the preflight, which sees the intact base), so the fail-closed post-verify path is
 /// exercised without an artificial pre-apply anchor drift.
 pub(super) fn removing_timeout_adapter() -> CoreAdapter {
-    let invocation = if cfg!(windows) {
-        vec![
-            "powershell".to_string(),
-            "-NoProfile".into(),
-            "-Command".into(),
-            format!("& {{ Remove-Item '{DOC_PATH}' -Force; Start-Sleep -Seconds 30 }}"),
-        ]
-    } else {
-        vec![
-            "sh".to_string(),
-            "-c".into(),
-            format!("rm '{DOC_PATH}'; sleep 30"),
-        ]
-    };
-    // A longer deadline than the bare hang so the removal COMPLETES before the kill.
-    CoreAdapter::from_invocation(invocation).with_timeout(Duration::from_millis(2500))
+    // The removal must COMPLETE before the kill, for the same reason and with
+    // the same former shell-startup problem as the landing adapter above.
+    let invocation = vec![
+        test_child_bin().to_string_lossy().into_owned(),
+        "--remove".into(),
+        DOC_PATH.into(),
+        "--hang".into(),
+    ];
+    CoreAdapter::from_invocation(invocation).with_timeout(Duration::from_secs(10))
 }
 
 pub(super) fn apply(
