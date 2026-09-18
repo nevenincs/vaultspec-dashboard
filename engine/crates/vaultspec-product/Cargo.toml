@@ -63,7 +63,7 @@ tokio = { version = "1.49.0", features = ["macros", "rt"] }
 vaultspec-release-fixtures = { path = "../vaultspec-release-fixtures" }
 tar = "0.4"
 tempfile = "3.27.0"
-zip = { version = "2.2", default-features = false, features = ["deflate"] }
+zip = { version = "8.6", default-features = false, features = ["deflate"] }
 
 [lints]
 workspace = true
