@@ -54,7 +54,7 @@ jobs:
       - name: Reclaim the workspace from a job that may not have finished
         shell: bash
         run: bash .github/scripts/reclaim-workspace.sh || true
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Set up just
@@ -78,14 +78,14 @@ jobs:
           toolchain: ${{ steps.toolchain.outputs.channel }}
           components: rustfmt, clippy
       - name: Set up uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
           # The runners already share UV_CACHE_DIR; the action's own cache save
           # hung the post step on the fleet.
           enable-cache: false
       # The design-system guard parses frontend sources with the TypeScript
       # compiler, and the frontend linters need the SPA's dependencies.
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
           cache: npm
@@ -117,7 +117,7 @@ jobs:
           - { os: Linux, arch: X64 }
           - { os: Windows, arch: X64 }
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # Pin CI to the repo toolchain (engine/rust-toolchain.toml) instead of
@@ -166,12 +166,12 @@ jobs:
         with:
           tool: just@1.38.0
       - name: Set up uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
           # The runners already share UV_CACHE_DIR; the action's own cache save
           # hung the post step on the fleet.
           enable-cache: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
           cache: npm
@@ -224,10 +224,10 @@ jobs:
       - name: Reclaim the workspace from a job that may not have finished
         shell: bash
         run: bash .github/scripts/reclaim-workspace.sh || true
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
           cache: npm
@@ -237,7 +237,7 @@ jobs:
         with:
           tool: just@1.38.0
       - name: Set up uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
           # The runners already share UV_CACHE_DIR; the action's own cache save
           # hung the post step on the fleet.
@@ -328,7 +328,7 @@ jobs:
       - name: Reclaim the workspace from a job that may not have finished
         shell: bash
         run: bash .github/scripts/reclaim-workspace.sh || true
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Read pinned toolchain
@@ -349,14 +349,14 @@ jobs:
         with:
           tool: just@1.38.0
       - name: Set up uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
           # The runners already share UV_CACHE_DIR; the action's own cache save
           # hung the post step on the fleet.
           enable-cache: false
       - name: Build engine binary (just build-rust)
         run: just build-rust
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
           cache: npm
@@ -452,7 +452,7 @@ jobs:
       - name: Reclaim the workspace from a job that may not have finished
         shell: bash
         run: bash .github/scripts/reclaim-workspace.sh || true
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Read pinned toolchain
@@ -505,7 +505,7 @@ jobs:
       - name: Reclaim the workspace from a job that may not have finished
         shell: bash
         run: bash .github/scripts/reclaim-workspace.sh || true
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Set up just
@@ -518,12 +518,12 @@ jobs:
         with:
           tool: cargo-deny@0.19.0
       - name: Set up uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
           # The runners already share UV_CACHE_DIR; the action's own cache save
           # hung the post step on the fleet.
           enable-cache: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
           cache: npm
