@@ -906,23 +906,22 @@ async fn version_probe_interprets_a_real_process() {
     );
 }
 
-#[cfg(windows)]
+/// Runs on every platform. It used to be Windows-only because it drove
+/// `powershell.exe` directly, which left the cap-and-deadline path with no
+/// coverage at all on the platform the engine actually ships its CI on.
 #[tokio::test]
 async fn real_process_malformed_timeout_and_output_cap_never_validate_as_success() {
-    let command = |script: &str| {
-        vec![
-            "powershell.exe".to_string(),
-            "-NoProfile".to_string(),
-            "-NonInteractive".to_string(),
-            "-Command".to_string(),
-            script.to_string(),
-        ]
+    let child = crate::test_child::test_child_argv0();
+    let command = |args: &[&str]| {
+        let mut argv = vec![child.clone()];
+        argv.extend(args.iter().map(|arg| (*arg).to_string()));
+        argv
     };
     let malformed = run_capability_with_limits(
-        &command("[Console]::Out.Write('not-json')"),
+        &command(&["--emit", "not-json"]),
         BoundedLimits {
             cap: 1024,
-            timeout: Duration::from_secs(20),
+            timeout: Duration::from_secs(5),
         },
     )
     .await;
@@ -935,21 +934,17 @@ async fn real_process_malformed_timeout_and_output_cap_never_validate_as_success
     );
 
     let marker = dir.path().join(".claude");
-    let script = format!(
-        "New-Item -ItemType Directory -Path '{}' | Out-Null; Start-Sleep -Seconds 120",
-        marker.display()
-    );
-    // The child must REACH the marker and only then be cancelled, so the
-    // budget has to cover a cold PowerShell start on a loaded machine —
-    // which alone can outlast a two-second bound, leaving the directory
-    // uncreated and this proof failing for a reason it does not test. The
-    // trailing sleep stays far longer than the budget, so the termination
-    // assertion below is unchanged.
+    let marker_arg = marker.to_string_lossy().into_owned();
+    // The child must REACH the marker and only then be cancelled. It creates
+    // the directory immediately on start, and the park that follows far
+    // outlasts this budget, so the termination assertion below is unchanged.
+    // The child creates the directory and then parks, so the deadline below is
+    // what ends it and a partial effect is on disk when it does.
     let timed = run_capability_with_limits(
-        &command(&script),
+        &command(&["--mkdir", &marker_arg, "--hang"]),
         BoundedLimits {
             cap: 1024,
-            timeout: Duration::from_secs(20),
+            timeout: Duration::from_secs(5),
         },
     )
     .await;
@@ -959,28 +954,29 @@ async fn real_process_malformed_timeout_and_output_cap_never_validate_as_success
         "partial directory may exist but cannot prove success"
     );
 
+    let payload = "x".repeat(4096);
     let over = run_capability_with_limits(
-        &command("[Console]::Out.Write(('x' * 4096))"),
+        &command(&["--emit", &payload]),
         BoundedLimits {
             cap: 32,
-            timeout: Duration::from_secs(20),
+            timeout: Duration::from_secs(5),
         },
     )
     .await;
     assert_eq!(over.termination, RunTermination::OutputCapped);
 }
 
-#[cfg(windows)]
+/// Runs on every platform, for the same reason as the proof above.
 #[tokio::test]
 async fn failed_child_stderr_is_digested_but_never_served_as_receipt_evidence() {
     let target = tempfile::tempdir().expect("failed-child target");
     let secret = "FAILED_CHILD_RAW_STDERR_MUST_NOT_CROSS_THE_WIRE";
     let argv = vec![
-        "powershell.exe".to_string(),
-        "-NoProfile".to_string(),
-        "-NonInteractive".to_string(),
-        "-Command".to_string(),
-        format!("[Console]::Error.Write('{secret}'); exit 7"),
+        crate::test_child::test_child_argv0(),
+        "--emit-err".to_string(),
+        secret.to_string(),
+        "--exit".to_string(),
+        "7".to_string(),
     ];
     let (_, outcome) = setup::run_current_setup(
         "failed-stderr",
@@ -1002,7 +998,10 @@ async fn failed_child_stderr_is_digested_but_never_served_as_receipt_evidence() 
     assert!(!outcome.to_string().contains(secret));
 }
 
-#[cfg(windows)]
+/// Runs on every platform. Handing the receipt to a child as an argument also
+/// retires the doubled-quote escaping this needed to survive a PowerShell
+/// command line: with no shell in the path there are no quoting rules to get
+/// right.
 #[tokio::test]
 async fn four_real_process_install_v1_receipts_can_form_complete_only_after_validation() {
     let dir = tempfile::tempdir().expect("target");
@@ -1019,13 +1018,10 @@ async fn four_real_process_install_v1_receipts_can_form_complete_only_after_vali
             "action":"install","path":dir.path(),"providers":providers,"items":[[rel,"current"]]
         }})
         .to_string();
-        let escaped = raw.replace('\'', "''");
         let argv = vec![
-            "powershell.exe".into(),
-            "-NoProfile".into(),
-            "-NonInteractive".into(),
-            "-Command".into(),
-            format!("[Console]::Out.Write('{escaped}')"),
+            crate::test_child::test_child_argv0(),
+            "--emit".to_string(),
+            raw.clone(),
         ];
         let capture = run_capability_with_limits(
             &argv,
