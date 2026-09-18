@@ -35,7 +35,7 @@
 - name: Verify the compile cache cannot block the release
   shell: bash
   run: |
-    # Same backstop the gate carries in engine-ci.yml, for the same reason: the
+    # Same backstop the gate carries in merge-gate.yml, for the same reason: the
     # wrapper is wired at the runner level, so cargo routes even its `rustc -vV`
     # probe through it and the FIRST cargo invocation dies if it cannot answer.
     # The release lane lacked this, so when the Windows runner's

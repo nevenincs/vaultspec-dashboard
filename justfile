@@ -419,7 +419,7 @@ dev-review:
 # gates it claims to run cannot disagree. It mirrors what CI proves, so a green
 # run here means what a green CI run means.
 
-# Run the full local gate: static analysis, vault check, tests.
+# Run the merge gate locally: lint, dependency audits, build, tests.
 [group('check')]
 ci:
     {{dev}} ci

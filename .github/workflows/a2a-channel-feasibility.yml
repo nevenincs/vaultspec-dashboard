@@ -24,7 +24,7 @@
 # The channel-publish-gate then publishes only channels the matrix marks
 # `supported`, so publication requires this proof to have passed on real runners.
 
-name: a2a-channel-feasibility
+name: Dashboard Channel Feasibility
 
 on:
   workflow_call:
@@ -69,23 +69,27 @@ on:
         default: ''
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: a2a-channel-feasibility-${{ github.ref }}
-  cancel-in-progress: true
+  # Never cancellable: this is a release-critical gate, and a cancelled run
+  # reports `cancelled`, not `failed`.
+  group: a2a-channel-feasibility-${{ inputs.version }}
+  cancel-in-progress: false
 
 jobs:
   scoop:
     timeout-minutes: 60
-    name: Phase-zero Scoop proof
+    name: "Test: Scoop reversibility (Windows)"
     if: contains(inputs.channels, 'scoop')
     runs-on: [self-hosted, Windows, X64]
     outputs:
       result: ${{ steps.proof.outputs.result }}
       reason: ${{ steps.proof.outputs.reason }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
       - name: Install → upgrade → downgrade → repair → uninstall (real Scoop)
         id: proof
         shell: pwsh
@@ -160,14 +164,16 @@ jobs:
           }
   winget:
     timeout-minutes: 60
-    name: Phase-zero WinGet proof
+    name: "Test: WinGet reversibility (Windows)"
     if: contains(inputs.channels, 'winget')
     runs-on: [self-hosted, Windows, X64]
     outputs:
       result: ${{ steps.proof.outputs.result }}
       reason: ${{ steps.proof.outputs.reason }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
       - name: Install → upgrade → downgrade → repair → uninstall (real WinGet)
         id: proof
         shell: pwsh
@@ -219,12 +225,15 @@ jobs:
           }
   record:
     timeout-minutes: 20
-    name: Record channel outcomes into the support matrix
+    name: "Build: Support matrix record (Linux)"
     needs: [scoop, winget]
     if: always()
     runs-on: [self-hosted, Linux, X64]
+    # The only job that writes: it commits the verdicts to the support matrix.
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # zizmor: ignore[artipacked] pushes the matrix verdicts to main with this token
         with:
           ref: main
       - name: Write proof outcomes into a2a-support-matrix.json

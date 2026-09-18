@@ -25,31 +25,21 @@
 # acquire for a branch, so a PR run could only ever test the PREVIOUS release
 # and would fail on every PR until a new one was cut - a red check nobody can
 # act on, which is a check people learn to ignore.
-name: Acquisition
+name: Dashboard Acquisition
 
 on:
-  # TRIGGERED BY THE PRODUCER FINISHING, not by the release being created.
+  # CALLED BY THE RELEASE ORCHESTRATOR, after the release is published as a
+  # prerelease and before it is promoted to `latest`. A release whose published
+  # binary does not load is therefore never the one `latest` answers with.
   #
-  # `release: published` fires when release-please publishes the release object,
-  # which is BEFORE the Release workflow has built or uploaded anything. On
-  # v0.1.9 that ordering was: release published at 23:58:15, this workflow
-  # started at 23:58:16, and the run that uploads the assets started at
-  # 23:58:17. The consumer went looking one second before the producer began.
-  #
-  # Waiting on the asset (below) fixes the correctness of that, but not the
-  # cost: on this fleet the Release run can sit QUEUED for hours behind one
-  # self-hosted machine, so a wait long enough to be reliable is a wait long
-  # enough to be useless, and a check that goes red on every release because of
-  # queue depth is a check people stop reading.
-  #
-  # So the trigger waits for Release to COMPLETE, and the asset probe below
-  # still decides whether to proceed. The `workflow_run` event is only choosing
-  # WHEN TO START LOOKING; it is never the authority on whether the artefact is
-  # there. That distinction is the whole design - a proxy used as a scheduler is
-  # sound, a proxy used as evidence is not.
-  workflow_run:
-    workflows: [Release]
-    types: [completed]
+  # The asset probe below still decides whether to proceed: being called says
+  # the producer finished, never that the artefact is fetchable.
+  workflow_call:
+    inputs:
+      tag:
+        description: "Release tag to acquire."
+        required: true
+        type: string
   # WEEKLY, because the answer can change without a release. Nothing in this
   # repository was scheduled before this - no workflow used `schedule` at all -
   # so every check here answered only for the commit that triggered it, and a
@@ -74,38 +64,15 @@ permissions:
   contents: read
 
 concurrency:
-  group: acquisition-${{ github.event.workflow_run.head_branch || inputs.tag || github.ref }}
-  cancel-in-progress: true
+  group: acquisition-${{ inputs.tag || github.ref }}
+  # A release-critical gate is never cancellable: a cancelled run reports
+  # `cancelled`, not `failed`, and promotion waits on this one.
+  cancel-in-progress: false
 
 jobs:
   acquire:
-    name: acquire ${{ matrix.arch }} on ${{ matrix.image }}
-    # A FAILED Release IS NOT THIS WORKFLOW'S FINDING TO REPORT. `workflow_run`
-    # fires on completion whatever the conclusion, so without this gate a
-    # Release that failed to build would be followed by six legs reporting that
-    # an asset "never appeared" - attributing a build failure to distribution,
-    # in six red legs, next to the one red run that already said it properly.
-    # A release whose build failed has no assets by definition, and
-    # `verify-release-assets` in release.yml is what reports an empty release.
-    # The schedule and manual dispatch are unaffected, which is what keeps a
-    # deliberate look at a known-bad release available.
-    #
-    # AND ONLY FOR A TAG'S RUN. `workflow_run` fires for EVERY Release run,
-    # including the ones dist executes on pull-request branches, which publish
-    # nothing. On v0.1.10 that is exactly what happened: the Release run for
-    # branch `fix/breadcrumb-waits-for-the-listing` completed at 05:22:46, this
-    # workflow started at 05:22:48, and it then hunted for assets on v0.1.10
-    # whose upload job did not even START until 05:55. All six Linux legs failed
-    # on `never appeared ... (last HTTP 404, 21 attempts over 10m)` -- a red that
-    # says nothing about the release and everything about which run woke it.
-    #
-    # A tag-triggered run carries the tag in `head_branch`, so requiring the `v`
-    # prefix keeps the producer-finished design while discarding the runs that
-    # produce no release. Schedule and manual dispatch are unaffected.
-    if: >-
-      github.event_name != 'workflow_run'
-      || (github.event.workflow_run.conclusion == 'success'
-          && startsWith(github.event.workflow_run.head_branch, 'v'))
+    name: "Test: Acquisition on ${{ matrix.image }} (Linux ${{ matrix.arch }})"
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -172,21 +139,17 @@ jobs:
         shell: bash
         env:
           REPO: ${{ github.repository }}
-          # For a Release run started by a tag push, `head_branch` carries the
-          # TAG, which is the release this acquisition is about. It is remote
-          # input either way, so it is shape-checked below before it reaches a
-          # URL rather than trusted for being ours.
-          EVENT_TAG: ${{ github.event.workflow_run.head_branch }}
+          # Supplied by the orchestrator or a dispatch; empty on the weekly
+          # schedule. It is shape-checked below before it reaches a URL rather
+          # than trusted for being ours.
           INPUT_TAG: ${{ inputs.tag }}
           TRIPLE: ${{ matrix.triple }}
         run: |
           set -euo pipefail
-          tag="${EVENT_TAG:-${INPUT_TAG:-}}"
-          # A Release run can be started by something other than a tag push - a
-          # dispatch, or a pull request under `pr-run-mode` - and then
-          # `head_branch` is a branch name, not a release. Falling back to the
-          # latest release is right for those: it is the release a user would
-          # get today, which is the thing worth proving loads.
+          tag="${INPUT_TAG:-}"
+          # The weekly schedule names no tag. Falling back to the latest
+          # release is right there: it is the release a user would get today,
+          # which is the thing worth proving loads.
           #
           # Character check FIRST, shape check second, and the order is the
           # point. A shell glob's `*` matches slashes and dots, so a version

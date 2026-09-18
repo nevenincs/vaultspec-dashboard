@@ -1,35 +1,39 @@
-# Post-announce scoop-manifest bump: dist calls
-# this AFTER the GitHub Release publishes (`post-announce-jobs` in
-# dist-workspace.toml). `scoop update` reads the COMMITTED manifest — scoop's
-# checkver/autoupdate stanzas only serve maintainer tooling — so each release
-# must land one bump commit. The released tag is read from the dist plan
-# (passed as the `plan` workflow_call input); the hash comes from the
-# published per-asset .sha256. The commit type is changelog-hidden (`chore`)
-# so release-please treats it as noise.
+# Post-release scoop-manifest bump: the release orchestrator
+# (product-release.yml) calls this AFTER the release is promoted, the same way
+# it calls homebrew-bump.yml. `scoop update` reads the COMMITTED manifest —
+# scoop's checkver/autoupdate stanzas only serve maintainer tooling — so each
+# release must land one bump commit. The hash comes from the published
+# per-asset .sha256. The commit type is changelog-hidden (`chore`) so
+# release-please treats it as noise.
 #
 # Recovery note: if a post-release PR merge clobbers the bump commit (a
 # long-lived branch whose manifest commit predates the bump is merged
 # without rebasing), the bucket silently regresses. Recover by triggering this
-# workflow via workflow_dispatch with the plan JSON from the release run's
-# "plan" artifact (copy the `manifest` output field).
+# workflow via workflow_dispatch with the released version.
 
-name: scoop-bump
+name: Dashboard Scoop Bump
 
 on:
   workflow_call:
     inputs:
-      plan:
+      version:
+        description: 'Released version, without the leading v.'
         required: true
         type: string
+    secrets:
+      CHANNEL_ROOT_DEPLOY_KEY:
+        description: 'Deploy key with write access to the org channel root.'
+        required: true
   workflow_dispatch:
     inputs:
-      plan:
-        description: 'dist manifest JSON from the release run (plan artifact manifest field)'
+      version:
+        description: 'Released version, without the leading v (e.g. 0.1.10).'
         required: true
         type: string
 
+# The push authenticates with the channel-root deploy key, not GITHUB_TOKEN.
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: scoop-bump-${{ github.ref }}
@@ -42,11 +46,13 @@ jobs:
   # this fails closed (matrix marks scoop `feasibility_gated`), which is the
   # correct honest state until the phase-zero proof flips it to `supported`.
   gate:
+    name: "Check: Scoop publication"
     uses: ./.github/workflows/channel-publish-gate.yml
     with:
       channel: scoop
 
   bump:
+    name: "Build: Scoop manifest (Linux)"
     timeout-minutes: 30
     needs: gate
     runs-on: [self-hosted, Linux, X64]
@@ -57,7 +63,7 @@ jobs:
       # user's Scoop can see. Check out the org distribution repo and commit
       # there. The deploy key authenticates that push; the checkout below is
       # the only writable handle this job has on the channel root.
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # zizmor: ignore[artipacked] pushes the manifest to the channel root with this deploy key
         with:
           repository: nevenincs/homebrew-tap
           ref: main
@@ -66,11 +72,10 @@ jobs:
       - name: Bump the org bucket manifest to the released version
         shell: bash
         env:
-          PLAN: ${{ inputs.plan }}
+          VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          TAG=$(printf '%s' "$PLAN" | jq -r '.announcement_tag')
-          VERSION="${TAG#v}"
+          TAG="v${VERSION}"
           # Bump to the COMPLETE product archive (the whole offline
           # tree), never the binary-only vaultspec-cli archive.
           ASSET="vaultspec-${VERSION}-x86_64-pc-windows-msvc.zip"

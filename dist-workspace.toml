@@ -73,8 +73,9 @@ features = ["embed-spa"]
 github-build-setup = "../release-build-setup.yml"
 # release.yml is hand-managed and dist must not re-verify it. Two things live in
 # that file which dist cannot express and would therefore delete on regeneration:
-# the `runs-on` labels for the non-target jobs (plan, host, announce — they have
-# no target, so dist emits ubuntu-22.04, and this fleet has no such runner), and
+# the `runs-on` labels for the non-target jobs (plan, host — they have no
+# target, so dist emits ubuntu-22.04, and this fleet has no such runner), the
+# `workflow_call` trigger through which the release orchestrator runs it, and
 # the per-job disk-reclaim steps this shared workstation needs (dist's only build
 # hook, github-build-setup, runs BEFORE the build, not after it). A third: the
 # build-local-artifacts `runs-on` TRANSLATION that turns each runner key named in
@@ -92,8 +93,8 @@ allow-dirty = ["ci"]
 pr-run-mode = "plan"
 # Whether dist should create a Github Release or use an existing draft
 create-release = false
-# Post-announce jobs to run in CI
-post-announce-jobs = ["./scoop-bump"]
+# No post-announce jobs: channel publication (Scoop, Homebrew) runs from the
+# release orchestrator, product-release.yml, after the release is promoted.
 
   # Artifact builds run on the shared self-hosted fleet. Each target selects a
   # runner of its OWN architecture, which is not a preference: every leg is a

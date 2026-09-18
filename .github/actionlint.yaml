@@ -22,21 +22,13 @@
 #   self-hosted, Linux,   ARM64, linux-arm64 →  aarch64-unknown-linux-gnu
 #   self-hosted, macOS,   ARM64              →  aarch64-apple-darwin
 #
-# Almost every job runs on that self-hosted fleet. Two kinds deliberately do
-# not, and both are hosted for a reason that does not generalise:
-#
-#   - The `aarch64-unknown-linux-gnu` build leg, which runs on the native
-#     `ubuntu-24.04-arm` image. The fleet's ARM64 Linux runner is a colima
-#     container with no reachable docker daemon, so a container job there dies
-#     in `Initialize containers` before any step runs. Hosted runners are free
-#     for this repository, which is PUBLIC.
-#   - The `Preflight runners` jobs in release.yml and product-release.yml. A
-#     preflight that needs the fleet cannot report that the fleet is down: on a
-#     day when the fleet is unreachable, a self-hosted preflight would queue
-#     behind the very outage it exists to announce.
-#
-# Neither adds a label to the list below — both name GitHub-hosted images,
-# which actionlint already knows.
+# Every job runs on that self-hosted fleet, including the runner preflights and
+# the `aarch64-unknown-linux-gnu` release leg. That leg builds inside a
+# digest-pinned manylinux container on the fleet's ARM64 Linux runner, which is
+# itself a colima container: until that runner is re-enrolled with its home
+# bind-mounted from the identical VM path, a container job there dies in
+# `Initialize containers` before any step runs, and the release fails closed on
+# that leg rather than moving it to a hosted image.
 #
 # WHY EVERY LINUX JOB SELECTS ON ARCHITECTURE. The Actions runner gives every
 # self-hosted Linux machine the auto-assigned label `Linux` regardless of its
@@ -89,33 +81,29 @@
 # enumeration:
 #
 #   Windows / X64    literal  a2a-channel-feasibility, a2a-product-certification,
-#                             ci-runner-probe, product-release, winget-publish
-#                    matrix   engine-ci, a2a-product-certification,
+#                             product-release, winget-publish
+#                    matrix   merge-gate, a2a-product-certification,
 #                             a2a-product-contract, product-release,
 #                             release (dist-planned matrix.runner)
 #   Linux / X64      literal  a2a-channel-feasibility, a2a-product-certification,
-#                             channel-publish-gate, ci-runner-probe,
-#                             product-release, quality-gates, release-please,
+#                             acquisition, channel-publish-gate, ci,
+#                             code-health, homebrew-bump,
+#                             merge-gate, product-release, release-please,
 #                             release, scoop-bump
 #                    matrix   the same five matrices as above
-#   Linux / ARM64    literal  ci-runner-probe ONLY
+#   Linux / ARM64    literal  none
 #                    matrix   a2a-product-certification, a2a-product-contract,
-#                             product-release
-#                    NOT release: its aarch64 Linux leg moved to the hosted
-#                    `ubuntu-24.04-arm` image when the Linux legs gained
-#                    digest-pinned manylinux containers, so the fleet's ARM64
-#                    Linux machine is now reached by the probe and the two a2a
-#                    matrices only.
-#   macOS / ARM64    literal  ci-runner-probe ONLY
+#                             acquisition, product-release,
+#                             release (dist-planned matrix.runner)
+#   macOS / ARM64    literal  none
 #                    matrix   a2a-product-certification, a2a-product-contract,
 #                             product-release, release
 #
-# The two ARM legs are reached by no literal `runs-on:` outside the probe, which
-# is exactly why the probe exists: an absent or mislabelled runner on those legs
-# presents as a job that queues forever rather than one that fails — no log, no
-# annotation, no conclusion. `ci-runner-probe.yml` is dispatch-only and asserts
-# `uname -m` on each leg, so the label-to-machine mapping is proven rather than
-# assumed.
+# The two ARM legs are reached only through matrix `include:` blocks, so an
+# absent or mislabelled runner there presents as a job that queues forever
+# rather than one that fails — no log, no annotation, no conclusion. The
+# orchestrator's queue watchdog is what bounds that: it reads this run's own
+# jobs and cancels the run rather than waiting out GitHub's 24h ceiling.
 #
 # `.github/release-build-setup.yml` is deliberately absent from this accounting:
 # it is a bare step-list fragment injected into dist's generated build jobs, not
