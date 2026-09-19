@@ -86,13 +86,13 @@ Store checkpoints in IndexedDB under a key composed from schema version, environ
 Startup and reset follow this sequence:
 
 1. Load a compatible checkpoint.
-2. If none exists, request the checkpointed snapshot.
-3. Validate the snapshot and commit its materialized state and cursor in one IndexedDB transaction.
-4. Publish the committed state to the dashboard.
-5. Open the stream strictly after the committed cursor.
-6. For each event, validate its envelope and payload, derive the next state through an idempotent event handler, commit that state and the event cursor in one IndexedDB transaction, and only then publish it.
-7. If the stream returns `cursor_expired`, delete the incompatible checkpoint and repeat the snapshot sequence.
-8. Malformed events do not advance the cursor and terminate the connection for a retry; they must also produce diagnostics.
+1. If none exists, request the checkpointed snapshot.
+1. Validate the snapshot and commit its materialized state and cursor in one IndexedDB transaction.
+1. Publish the committed state to the dashboard.
+1. Open the stream strictly after the committed cursor.
+1. For each event, validate its envelope and payload, derive the next state through an idempotent event handler, commit that state and the event cursor in one IndexedDB transaction, and only then publish it.
+1. If the stream returns `cursor_expired`, delete the incompatible checkpoint and repeat the snapshot sequence.
+1. Malformed events do not advance the cursor and terminate the connection for a retry; they must also produce diagnostics.
 
 As required by `2026-07-16-pw7-acceptance-codex-1784166683-research`, the parser must correctly handle incremental UTF-8 decoding, split lines, multiple `data` fields, blank-line dispatch, comments, byte-order marks, and the `event`, `id`, and decimal `retry` field grammar. The application retry policy remains authoritative; server `retry` fields do not override it.
 
