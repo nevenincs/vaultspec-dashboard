@@ -757,32 +757,37 @@ mod plan_tick {
         blob_oid(&std::fs::read(fx.root.join(&fx.plan_ref)).unwrap())
     }
 
-    /// A shell adapter that runs the REAL `plan step` verb (landing the
+    /// A child that runs the REAL `plan step` verb (landing the
     /// write) then sleeps past a short deadline — the outcome-indeterminate
     /// (Timeout) falsifier for the core-authoritative post-verify.
     fn landing_tick_timeout_adapter(plan_ref: &str, step_id: &str, check: bool) -> CoreAdapter {
         let verb = if check { "check" } else { "uncheck" };
-        let invocation = if cfg!(windows) {
-            vec![
-                "powershell".to_string(),
-                "-NoProfile".into(),
-                "-Command".into(),
-                format!(
-                    "& {{ uv run --no-sync vaultspec-core vault plan step {verb} '{plan_ref}' \
-                         '{step_id}' --json | Out-Null; Start-Sleep -Seconds 30 }}"
-                ),
-            ]
-        } else {
-            vec![
-                "sh".to_string(),
-                "-c".into(),
-                format!(
-                    "uv run --no-sync vaultspec-core vault plan step {verb} '{plan_ref}' \
-                         '{step_id}' --json >/dev/null 2>&1; sleep 30"
-                ),
-            ]
-        };
-        CoreAdapter::from_invocation(invocation).with_timeout(Duration::from_secs(10))
+        // The child runs the real verb and then parks, so the deadline is what
+        // ends it — the write has LANDED but the outcome is indeterminate,
+        // which is the state this fixture exists to produce. A shell used to
+        // do the sequencing, which put a cold PowerShell start inside the same
+        // budget as the core mutation and made the budget a claim about the
+        // machine. Now only the mutation is inside it.
+        let invocation = vec![
+            crate::test_child::test_child_argv0(),
+            "--run".into(),
+            serde_json::to_string(&[
+                "uv",
+                "run",
+                "--no-sync",
+                "vaultspec-core",
+                "vault",
+                "plan",
+                "step",
+                verb,
+                plan_ref,
+                step_id,
+                "--json",
+            ])
+            .expect("child argv serializes"),
+            "--hang".into(),
+        ];
+        CoreAdapter::from_invocation(invocation).with_timeout(Duration::from_secs(30))
     }
 
     /// The full plan-tick lifecycle against the REAL core, consolidating
