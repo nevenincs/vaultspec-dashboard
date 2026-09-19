@@ -24,16 +24,13 @@ concurrency:
 jobs:
   static:
     name: "Check: Lint (Linux)"
+    # A fork's pull request never starts a job: a step-level refusal would still
+    # have handed the fork's workflow file a runner. The merge gate's verdict is
+    # what turns a fork into a red, unmergeable check.
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 20
     steps:
-      - name: Refuse fork pull requests
-        id: fork-guard
-        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
-        shell: bash
-        run: |
-          echo "::error::Pull requests from forks are not run on self-hosted runners."
-          exit 1
       # Before checkout, because checkout is the step the EACCES lands on.
       # `|| true` so a workspace that has never been checked out - where the
       # script does not exist yet - simply skips it.

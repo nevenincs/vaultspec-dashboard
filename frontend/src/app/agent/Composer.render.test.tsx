@@ -501,6 +501,7 @@ describe("Composer team selector (live a2a tier)", () => {
         ),
       { timeout: 15_000 },
     );
+    await awaitFiniteReads(queryClient, COMPOSER_SCOPE_QUERY_PREFIXES);
 
     const trigger = document.querySelector(
       "[data-composer-team] button",

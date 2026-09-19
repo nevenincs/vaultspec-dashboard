@@ -26,10 +26,8 @@ merge-gate.yml:Reclaim the workspace from a job that may not have finished
 code-health.yml:Reclaim the workspace from a job that may not have finished
 release-please.yml:Reclaim the workspace from a job that may not have finished
 
-# Refuses to run a fork's pull request on a self-hosted machine, before any of
-# its code is checked out. A statement about which code this machine may
-# execute; it has no local meaning.
-ci.yml:Refuse fork pull requests
+# Fails the merge verdict for a fork's pull request, before anything is checked
+# out. A statement about which code may merge; it has no local meaning.
 merge-gate.yml:Refuse fork pull requests
 
 # Folds the run's own job results (`needs`) and the head commit's earlier gate
@@ -103,4 +101,3 @@ homebrew-bump.yml
 scoop-bump.yml
 winget-publish.yml
 acquisition.yml        # recipe: test-acquisition, shared with core and rag
-ci-runner-probe.yml    # runner-plane in full; belongs in the shared runner tooling
