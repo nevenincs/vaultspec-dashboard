@@ -3,8 +3,8 @@ tags:
   - '#adr'
   - '#left-rail-feature-filter'
 date: '2026-06-24'
-modified: '2026-06-26'
-body_hash: 'sha256:489214ea2916f3755a638aa6c6207c9ae0e03f579f954c1013a23410c1567c16'
+modified: '2026-09-19'
+body_hash: 'sha256:7d2b32ac61927edde436adff20eea82e6c373ed735f02dfd6e410d6c88bf797f'
 related:
   - '[[2026-06-24-left-rail-feature-filter-research]]'
   - '[[2026-06-19-filter-controls-adr]]'
@@ -165,3 +165,9 @@ blocked by a pre-existing, unrelated failure: ~42 stale node bindings (chiefly t
 `CoverageMissing` batch, which targets a retired Figma frame) fail validation and,
 because publish is all-or-nothing, abort the run. Clearing that rot is a separate
 Code Connect remediation, not part of this feature.
+
+## Amendment note (2026-09-19), recording the reversal made by `2026-06-27-figma-naming-contract-adr` (accepted)
+
+**The Code Connect status paragraph in `## Status` is superseded.** That paragraph reported that Code Connect mappings for `RailFilterField` → `RailFilter` and `FeatureSearchField` → `FeatureSuggestions` "were authored and validated" (`figma connect parse` and `--dry-run` passing) and that only publishing them to the Code Connect backend was blocked by unrelated stale-node failures. Code Connect was removed entirely (no Org/Enterprise seat, no `figma.config.json`, no `*.figma.tsx`, no `component-map.json` anywhere in the tree) and replaced by the name-as-contract scheme: a component's Figma node name equals its bare PascalCase React export, with an opt-in `// @figma <Name> · <fileKey> · <nodeId>` citation as the only fallback, validated by the local `figma:names` gate. The blocked-publish framing and the described remediation no longer apply; there is no Code Connect backend to publish to.
+
+Everything else in `## Status` stands: D6's divergence is resolved, the binding Figma file carries the backfill (the Filters `IconButton`, `RailFilter`, `FeatureSuggestion`/`FeatureSuggestions` components), and the Filters-button glyph reconciliation to `Filter` (funnel) is unaffected. The rest of the ADR — D1 through D6's UI and filtering decisions — is implemented and unchanged.

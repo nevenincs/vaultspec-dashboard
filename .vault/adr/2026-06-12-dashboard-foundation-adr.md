@@ -3,8 +3,8 @@ tags:
   - '#adr'
   - '#dashboard-foundation'
 date: '2026-06-12'
-modified: '2026-07-21'
-body_hash: 'sha256:5f5deabf2d985dbcd2168216cd415834f819c4772e39a7e73d4e04d299377329'
+modified: '2026-09-19'
+body_hash: 'sha256:3f2b6e1064b90f8ce98e7f08065391ab41be26f12cb4da085dbe29674580589f'
 related:
   - "[[2026-06-12-dashboard-foundation-research]]"
   - "[[2026-06-12-vaultspec-engine-adr]]"
@@ -167,3 +167,12 @@ Base UI committed, citation nits fixed).
   commit metadata) — temporal confidence upgrade, never required.
 - vaultspec-core **ref-scoped `vault graph`** (accept an explicit ref) —
   today the engine must run core inside each checkout.
+
+## Amendment note (2026-09-19), recording the reversal made by `2026-06-19-graph-backend-unification-adr` (accepted)
+
+That record's D1 retires the renderer this ADR committed to; every clause not named below stands unchanged.
+
+- **G6.b's renderer-stack clause is retired.** "PixiJS v8 + graphology/FA2-worker + d3 interpolators + React DOM islands; glyphs as sprite/SDF; sigma.js v3 named fallback" is superseded. The live graph surface is the three.js + d3-force field selected by `createDashboardScene`. `frontend/package.json` no longer lists `pixi.js`, `d3-ease`, or `d3-interpolate`; `three`, `d3-force`, and `culori` are reclassified from dev to runtime dependencies. Sigma.js was never invoked as a fallback and carries no code under the current stack.
+- **The G6.b flagged human verdict ("PixiJS v8 CONFIRMED," the spike-gate waiver, and its frame-time numbers) is superseded by the same reversal** — it recorded a decision gate for a renderer no longer in use, not a standing commitment.
+- **G6.a's architecture-pattern clause stands.** "Hybrid GPU-field + DOM-island architecture regardless of library" is unaffected — the three.js field preserves that pattern; only the named library changed.
+- Every other row in the Engine and GUI tables, the broker-seam section, the engine↔GUI contract section, the remaining ⚑ items, and the upstream-dependency notes stand unchanged.

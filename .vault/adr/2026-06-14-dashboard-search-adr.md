@@ -3,8 +3,8 @@ tags:
   - '#adr'
   - '#dashboard-search'
 date: '2026-06-14'
-modified: '2026-06-14'
-body_hash: 'sha256:e6969b0c27f60e6e26cb73680653f74d5163d5f4e2ad48c8110dd48237b08cf8'
+modified: '2026-09-19'
+body_hash: 'sha256:b645ca780fcd799126400f0500c1b5a8485c4f238ab941c5b793570a57986b3b'
 related:
   - "[[2026-06-14-dashboard-design-language-adr]]"
   - "[[2026-06-14-dashboard-iconography-adr]]"
@@ -65,8 +65,7 @@ expressive doc-type marks that annotate results by node species.
 
 The wire contract requires: results arrive already annotated with their engine node id
 (foundation reference §8), which is the value-add that makes click-through possible; every
-response carries the per-tier `tiers` degradation block (§2), and `semantic.available =
-false` is the canonical "rag is down" signal that the surface must render as a designed
+response carries the per-tier `tiers` degradation block (§2), and `semantic.available = false` is the canonical "rag is down" signal that the surface must render as a designed
 state rather than an error; node ids are stable across queries, scopes, and time (§2), so
 selection by id is durable. The `/search` endpoint is a transparent pass-through to rag —
 the engine adds the node id and the tiers block and otherwise stays read-and-infer.
@@ -274,3 +273,12 @@ views-are-projections and giving cross-region selection consistency at no extra 
   node id the result carries (emitting `selectNode` into the view store), never by a
   surface-local navigation path or a re-fetch — the result list is a projection over the
   one model. (Candidate; promote only after it has held across one full execution cycle.)
+
+## Amendment note (2026-09-19), recording a reversal made elsewhere
+
+**`2026-06-20-left-rail-top-adr` (2026-06-20, D6) and `2026-07-03-search-providers-adr` (2026-07-03, D2/D3) together retire this ADR's implementation surface; every clause not named below stands unchanged.**
+
+- The ADR's entire implementation subject — the `SearchTab.tsx` panel and its `searchFallback.ts` text-match fallback — is gone from the tree. `left-rail-top` D6 first decided semantic search lives exclusively in the Cmd-K palette and the right-rail `SearchTab` "stays retired"; `search-providers` D3 then executed the deletion: "the vestigial right-rail search pillar is DELETED: the 'search' panel tab entry, the focus-search command and keybinding, and the unmounted presentation-view derivations go."
+- The rag-down "designed degraded state with a text-match fallback" clause (Implementation, "Degraded (semantic search offline)") is retired by `search-providers` D2: the fallback folds into the shared files(vault) provider as a rank-banded literal match that serves whether or not rag is up, rather than a mode that switches on rag's outage. `frontend/src/stores/server/searchController.ts:66-70` records the retirement in comment.
+- Result-list rendering, click-through-by-node-id, and the keyboard/a11y contract are superseded in form by the palette's `SearchPaletteSurface.tsx`, not by this ADR's panel.
+- The wire-contract clauses this ADR grounded on (stable node-id addressing, `tiers`-derived degradation, engine-enumerated filter vocabulary) are not reversed; they carry forward unchanged into the palette's provider seam.

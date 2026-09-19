@@ -3,8 +3,8 @@ tags:
   - '#adr'
   - '#graph-force-stability'
 date: '2026-06-16'
-modified: '2026-07-13'
-body_hash: 'sha256:d950e0708a6e28bd091471c3fb9cc846a2a58f8595ba4bc8a8697c5365638dad'
+modified: '2026-09-19'
+body_hash: 'sha256:fbd8ff948de63ea63c5421805e28b23f04e3e4c6828711d3a7ec1ba06249cd07'
 related:
   - "[[2026-06-16-graph-force-stability-research]]"
   - "[[2026-06-15-dashboard-node-graph-stability-adr]]"
@@ -84,16 +84,16 @@ The prior ADR's D10 scope fence holds: every change here applies to **connectivi
 
 ## Decision ledger
 
-| Decision | Verdict | Note |
-| --- | --- | --- |
-| D1 — content delta → `applyChanges` (low reheat ~0.15); re-init only for scope/mode swap; filters never re-init | adopt | Highest-leverage flicker fix (R1); uses existing `applyChanges` |
-| D2 — `beginInteraction/endInteraction` held alphaTarget (~0.1) in the driver; coalesce/debounce `set-layout-params` | adopt | R2; serves slider + node drag; cooling constants untouched |
-| D3 — node-drag branch in `PointerGestures`; node-body drags+pins, empty canvas pans | adopt | R7 headline interaction; click/select/context unchanged |
-| D4 — per-node `forceCollide` via assembly-owned `radiusOf(id)` callback sharing `nodeRadius()`+pad | adopt | R4; callback seam keeps driver render-agnostic |
-| D5 — velocity/dwell early freeze (dwell scales with node count) atop the alpha-floor backstop | adopt | R5/R6; freezes the sim, not just the draw |
-| D6 — collapse double-init (representation no-op when already-applied) and double-fit | adopt | R3; removes the post-load snap-settle |
-| D7 — expose freeze/unfreeze toggle; collision/separation/damping knobs deferred; cooling fixed | adopt-deferred | One honest new knob |
-| D8 — connectivity-only fence held; no drag/freeze on deterministic modes this cycle | adopt | Honors parent D10 |
+| Decision                                                                                                            | Verdict        | Note                                                            |
+| ------------------------------------------------------------------------------------------------------------------- | -------------- | --------------------------------------------------------------- |
+| D1 — content delta → `applyChanges` (low reheat ~0.15); re-init only for scope/mode swap; filters never re-init     | adopt          | Highest-leverage flicker fix (R1); uses existing `applyChanges` |
+| D2 — `beginInteraction/endInteraction` held alphaTarget (~0.1) in the driver; coalesce/debounce `set-layout-params` | adopt          | R2; serves slider + node drag; cooling constants untouched      |
+| D3 — node-drag branch in `PointerGestures`; node-body drags+pins, empty canvas pans                                 | adopt          | R7 headline interaction; click/select/context unchanged         |
+| D4 — per-node `forceCollide` via assembly-owned `radiusOf(id)` callback sharing `nodeRadius()`+pad                  | adopt          | R4; callback seam keeps driver render-agnostic                  |
+| D5 — velocity/dwell early freeze (dwell scales with node count) atop the alpha-floor backstop                       | adopt          | R5/R6; freezes the sim, not just the draw                       |
+| D6 — collapse double-init (representation no-op when already-applied) and double-fit                                | adopt          | R3; removes the post-load snap-settle                           |
+| D7 — expose freeze/unfreeze toggle; collision/separation/damping knobs deferred; cooling fixed                      | adopt-deferred | One honest new knob                                             |
+| D8 — connectivity-only fence held; no drag/freeze on deterministic modes this cycle                                 | adopt          | Honors parent D10                                               |
 
 ## Consequences
 
@@ -137,3 +137,11 @@ The prior ADR's D10 scope fence holds: every change here applies to **connectivi
 - `[[2026-06-15-dashboard-node-graph-stability-adr]]` — the prior ADR this extends (D1–D10; codify candidates `scene-render-work-is-gated-on-the-layout-clock`, `force-layout-cooling-is-fixed-never-exposed`).
 - Code: `forceLayout.ts` (cooling 73–75, reheat alphas 77–80, forces 230–238, fixed collide 87/198, frame loop+freeze 303–327, `setParams` 372–380, `setPinned` 387–403, `applyChanges` 406–451, `start` 285–291); `fieldAssembly.ts` (`dataSignature` 413–414, `apply-deltas` 421–444, `set-visibility` 446–453, `set-pinned` 473–481, settle-fit 219–224, `applyModelToLayers` 753–826); `camera.ts` (`GestureCallbacks` 145–149, `PointerGestures` 156–224, `DRAG_THRESHOLD_PX=4`, `HIT_RADIUS_WORLD=10`); `nodeSprites.ts` (`nodeRadius()` 196–206); `app/stage/GraphControls.tsx` (tune `apply()` per-onChange dispatch); `app/stage/Stage.tsx` (`merged` 302–312, effects 317–358).
 - Rules: `graph-compute-is-cpu-gpu-is-render-and-search`, `dashboard-layer-ownership`, `graph-queries-are-bounded-by-default`.
+
+## Amendment note (2026-09-19), recording the reversal made by `2026-06-19-graph-backend-unification-adr` (accepted)
+
+That record's D1 cutover replaced the connectivity driver this ADR edits; every clause not named below stands unchanged.
+
+- **The entire Decision section (D1-D8) targets a driver that no longer exists.** All eight decisions are expressed as edits to `forceLayout.ts`'s API — `INCREMENTAL_REHEAT_ALPHA`, `INTERACTION_ALPHA_TARGET`, `beginInteraction()`/`endInteraction()`, `FREEZE_MOVE_EPSILON`, `FREEZE_DWELL_TICKS`, and the `radiusOf(id)` collision-radius callback — and to `PointerGestures` in `camera.ts`. Neither `forceLayout.ts` nor `camera.ts` exists, and none of the six named symbols appears anywhere under `frontend/src`. `forceLayout.ts` was deleted, not renamed, when the three.js field's own CPU solver (`frontend/src/scene/three/d3ForceSolver.ts`) was authored from scratch for the D1 cutover.
+- **The stability goals this ADR names are pursued by a differently designed, unnamed mechanism**, not these symbols under new names: `d3ForceSolver.ts` uses its own `GENTLE_REHEAT_ALPHA`/anneal-tier reheats, a per-node sleep/wake set for drag locality in place of a global interaction-alphaTarget hold, and a per-node `radius` carried directly on each simulation node in place of a `radiusOf` callback. This note records only that the named symbols and the driver they belonged to are gone, not that the underlying goals (smooth reheat, drag-to-pin, collision sized to the node body, idle settle) went unmet.
+- **The Context section's account of the prior graphology-to-d3-force rewrite it extends (`2026-06-15-dashboard-node-graph-stability-adr`) is a historical record and stands.**

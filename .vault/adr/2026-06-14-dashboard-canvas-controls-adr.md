@@ -3,8 +3,8 @@ tags:
   - '#adr'
   - '#dashboard-canvas-controls'
 date: '2026-06-14'
-modified: '2026-07-12'
-body_hash: 'sha256:252a3cbe57dc72ec14b47d24f1c4551e6de9b3664183ad55ee42a04fa4e94af7'
+modified: '2026-09-19'
+body_hash: 'sha256:1c1584ddfc914c396cc9c3a9b2a2cbc61090db404d3ffea24871e669b83a36e9'
 related:
   - "[[2026-06-14-dashboard-design-language-adr]]"
   - "[[2026-06-14-dashboard-iconography-adr]]"
@@ -295,3 +295,12 @@ by active project rules (`dashboard-layer-ownership`,
 `graph-compute-is-cpu-gpu-is-render-and-search`,
 `every-wire-response-carries-the-tiers-block`); this ADR applies them to one surface
 rather than introducing a new durable constraint.
+
+## Amendment note (2026-09-19), recording reversals made elsewhere and losses with no governing record
+
+**`2026-06-19-filter-consolidation-adr` (2026-06-19, accepted) retires this ADR's Filter bar/sidebar placement clause; three of the family's other named components are independently absent from the tree with no successor record covering their removal.**
+
+- Filter bar/sidebar clause (Implementation, "Filter bar and sidebar"): `filter-consolidation-adr` made the left rail the one canonical filter surface and every other surface — including the stage toolbar this ADR specified — a pure consumer. `FilterBar.tsx` no longer exists. `FilterSidebar.tsx`/`FilterMenu.tsx` survive as component files under `frontend/src/app/stage/` but are now authored and mounted only from the left rail (`frontend/src/app/left/RailFilterField.tsx`, `frontend/src/app/left/CompactFilterSheet.tsx`), per the filtering rule's canonical-surface discipline.
+- `TierDial.tsx`, `AlgorithmPanel.tsx`, and `Discover.tsx` do not exist anywhere in the current tree, and no ADR was found recording their removal, redesign, or relocation; this note states the absence rather than attributing it to any record.
+- The `POST /nodes/{id}/discover` route this ADR specified is absent from the engine's route table (`engine/crates/vaultspec-api/src/lib.rs`); no successor route or ADR was found either.
+- `WorkingSet.tsx` and the later representation-mode/lens-selector amendment stand unchanged; this note does not touch them.

@@ -3,8 +3,8 @@ tags:
   - '#adr'
   - '#figma-design-bridge'
 date: '2026-06-15'
-modified: '2026-07-12'
-body_hash: 'sha256:6ffcbe32291ebf75e732e89954986741c2a380deb3a7be66889f36b0ab795769'
+modified: '2026-09-19'
+body_hash: 'sha256:f06b79c105d86e23b45f11b22b5c68ed6cf1642ea434d3e39d57748ac25f232a'
 related:
   - "[[2026-06-15-figma-design-bridge-research]]"
 ---
@@ -168,3 +168,9 @@ today (F1).
   Figma node only through the repo-maintained code↔Figma mapping registry with 1:1
   naming parity, never assumed via Code Connect; the CI drift gate must pass before
   the mirror is declared in sync.
+
+## Amendment note (2026-09-19), recording the reversal made by `2026-06-27-figma-naming-contract-adr` (accepted)
+
+**Only the mapping-registry clause of Decision 3(b) is reversed.** That clause committed to a repo-maintained, version-controlled code↔Figma mapping registry — each React component mapped to its Figma node URL/ID with 1:1 naming parity — as the Pro-tier stand-in for Code Connect's binding. No such registry (no `component-map.json` or equivalent) exists in the codebase. It is replaced by the name-as-contract scheme: a component's Figma node name equals its bare PascalCase React export, with an opt-in `// @figma <Name> · <fileKey> · <nodeId>[ · alias-of <Export>]` source citation as the only fallback, validated by the local `figma:names` gate rather than a maintained registry file. The associated codification candidate `figma-code-association-goes-through-the-mapping-registry` is superseded by this same replacement.
+
+This ADR's other Decision-3 clauses (the component gallery as seeding/parity substrate, read-only MCP parity checks) and every clause outside Decision 3(b) stand unchanged and implemented: the DTCG-JSON-in-Git token canon (Decision 1), the one-way Tokens Studio push to Figma (Decision 2), the CI drift gate (Decision 4), and the fenced non-goals (Decision 5) — including the ADR's own correct observation that Code Connect was already unavailable on this Pro seat, which this note does not revise.

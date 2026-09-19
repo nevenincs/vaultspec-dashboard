@@ -3,8 +3,8 @@ tags:
   - '#adr'
   - '#document-editor-backend'
 date: '2026-06-16'
-modified: '2026-07-12'
-body_hash: 'sha256:fda413331af14391eaa26c4c70a27f5cbddfd993f7785d3c047970777fd6ec8b'
+modified: '2026-09-19'
+body_hash: 'sha256:800ddc950eee7b6114e451b7b6c8954b5cb9d5101b603a49ef747daf68a8865c'
 related:
   - "[[2026-06-16-document-editor-backend-research]]"
 ---
@@ -34,8 +34,7 @@ holding the engine's read-and-infer fence.
   sibling proxy; the engine forwards and persists nothing itself.
 - **The conformance machinery already exists and is field-level.** The core
   checker suite produces per-document, per-issue diagnostics carrying
-  `path / message / severity / fixable / fix_description`, and `vault check all
-  --json` already serializes them. This is precisely the "mark invalid / autofix
+  `path / message / severity / fixable / fix_description`, and `vault check all --json` already serializes them. This is precisely the "mark invalid / autofix
   available" surface the editor needs — it is reused, not reinvented.
 - **No edit verb exists.** Core has `add` (create) and `link` (related-edge
   surgery) but no body-save or frontmatter-edit verb. The reusable primitives —
@@ -185,3 +184,11 @@ named as the long pole precisely because they, not the core verb logic, gate
   diagnostic, returning the field-level diagnostics rather than persisting an
   invalid document; WARNING/INFO are surfaced, not blocking. (Candidate; promote
   only if it holds across the feature's cycle.)
+
+## Amendment note (2026-09-19), recording the reversal made by `2026-07-09-ledgered-edit-migration-adr`
+
+**`2026-07-09-ledgered-edit-migration-adr` (2026-07-09, accepted) retires this ADR's write mechanism; every clause not named below stands unchanged.**
+
+- The `/ops/core` write channel this ADR built — `vault set-body`/`set-frontmatter`/`edit` reached through the engine's core sibling proxy, guarded by `--expected-blob-hash` optimistic concurrency — is deleted. `ledgered-edit-migration`'s Implementation names it explicitly: "the `/ops/core` write routes for the migrated content verbs (set-body, set-frontmatter, edit, rename, create, link) and their handlers are deleted, along with the frontend ops write/create/link modes, the `opsCore*` write client methods, the `Ops*Body` types." `frontend/src/stores/server/opsActions.ts:27-28` retains only the `archive` and `autofix` vault-maintenance modes as the surviving remnant of this ADR's dispatch seam.
+- Every genuine document edit (body, frontmatter, rename, create, relate/link) now routes through the changeset ledger (`stores/server/authoring.ts` `directWrite()`) instead of the direct engine-proxy write path this ADR specified.
+- What this ADR's successor does NOT reverse: the conformance requirement (refuse to persist on any ERROR-severity diagnostic), the engine-stays-read-and-infer boundary, and the git-blob-OID optimistic-concurrency identity scheme all survive — carried forward into the ledger's own materialization and conflict-detection machinery rather than superseded.

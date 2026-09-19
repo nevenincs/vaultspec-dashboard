@@ -3,8 +3,8 @@ tags:
   - '#adr'
   - '#graph-lineage-dag'
 date: '2026-06-16'
-modified: '2026-07-13'
-body_hash: 'sha256:7a1c2191bc9adac7b15d2918eee6371097936fa1fbeb1dc18bf680f87ad9c022'
+modified: '2026-09-19'
+body_hash: 'sha256:d6afb1add8a43267239175b151d30259557b8f532f59c4290ab5f57ffad95320'
 related:
   - "[[2026-06-16-graph-lineage-dag-research]]"
   - "[[2026-06-14-graph-node-semantics-adr]]"
@@ -69,16 +69,16 @@ The exec column collapses to **per-plan super-nodes** ("N records, M complete") 
 
 ## Decision ledger
 
-| # | Decision | Verdict | Layer |
-|---|---|---|---|
-| D1 | Full Sugiyama pipeline (cycle-removal, dummy-node layering, median crossing reduction, Brandes-Köpf coords, deterministic) | adopt-v1 | scene |
-| D2 | Off-spine placement: feature-adjacency → temporal → gutter | adopt-v1 | scene |
-| D3 | Close labeling hole by reading `node.kind` in `edge_view`'s container-path gate; additive, non-id-bearing | adopt-v1 | engine |
-| D4 | Wire `/graph/lineage` `lineage_arc` → `derivation_label` | adopt-v1 | engine |
-| D5 | Suppress index nodes from the lineage spine | adopt-v1 | scene + engine projection |
-| D6 | Fold dummy-node waypoints into the existing `line-list` topology | adopt-v1 | scene |
-| D7 | One shared `derivation_label` projection; surfaces stay distinct | adopt-v1 | engine |
-| D8 | Aggregate-LOD: collapse the exec column to per-plan super-nodes at the ceiling | adopt-v1 (ceiling-gated) | scene |
+| #   | Decision                                                                                                                   | Verdict                  | Layer                     |
+| --- | -------------------------------------------------------------------------------------------------------------------------- | ------------------------ | ------------------------- |
+| D1  | Full Sugiyama pipeline (cycle-removal, dummy-node layering, median crossing reduction, Brandes-Köpf coords, deterministic) | adopt-v1                 | scene                     |
+| D2  | Off-spine placement: feature-adjacency → temporal → gutter                                                                 | adopt-v1                 | scene                     |
+| D3  | Close labeling hole by reading `node.kind` in `edge_view`'s container-path gate; additive, non-id-bearing                  | adopt-v1                 | engine                    |
+| D4  | Wire `/graph/lineage` `lineage_arc` → `derivation_label`                                                                   | adopt-v1                 | engine                    |
+| D5  | Suppress index nodes from the lineage spine                                                                                | adopt-v1                 | scene + engine projection |
+| D6  | Fold dummy-node waypoints into the existing `line-list` topology                                                           | adopt-v1                 | scene                     |
+| D7  | One shared `derivation_label` projection; surfaces stay distinct                                                           | adopt-v1                 | engine                    |
+| D8  | Aggregate-LOD: collapse the exec column to per-plan super-nodes at the ceiling                                             | adopt-v1 (ceiling-gated) | scene                     |
 
 ## Consequences
 
@@ -123,3 +123,11 @@ The exec column collapses to **per-plan super-nodes** ("N records, M complete") 
 - Code: `frontend/src/scene/field/lineageLayout.ts:24-49,85-105,131-154`; `edgeMeshes.ts:85-100,470,494-500`; `representationLayout.ts:51-83`; `engine/crates/engine-query/src/ontology.rs:42-58,74-120,127-146`; `graph.rs:51,93-156`; `lineage.rs:77-93,185-220`; `engine-graph/src/index.rs:700-814,822-849,860-928`.
 - Sugiyama method, Brandes-Köpf coordinate assignment, median/barycenter crossing reduction (Healy, *Hierarchical Drawing Algorithms*); CitNetExplorer (arXiv 1404.5322); W3C PROV.
 - Rules: `graph-compute-is-cpu-gpu-is-render-and-search`, `engine-read-and-infer`, `provenance-stable-keys-are-identity-bearing`, `dashboard-layer-ownership`, `views-are-projections-of-one-model`, `every-wire-response-carries-the-tiers-block`, `graph-queries-are-bounded-by-default`.
+
+## Amendment note (2026-09-19), recording the reversal made by commit `77269a2a` (implementing `2026-06-19-graph-backend-unification-adr`)
+
+Commit `77269a2a` ("delete dead representation-mode layout catalog (~2.7k LOC)") deletes the frontend layout this ADR specifies, on the finding that the D1 cutover left the live three.js field rendering the connectivity force layout only, no-oping `set-representation-mode`; every clause not named below stands unchanged.
+
+- **D1 (the full Sugiyama pipeline), D2 (off-spine placement), D6 (dummy-node edge routing), and D8 (aggregate-LOD collapse) are retired.** `frontend/src/scene/field/lineageLayout.ts` (cycle removal, dummy-node layering, crossing reduction, coordinate assignment, off-spine placement) and its test file are deleted, along with `representationLayout.ts`'s dispatch to it and the `edgeMeshes.ts` waypoint-folding it fed. `representationLayout.ts` still enumerates a `"lineage"` `RepresentationMode` only because the engine still serves the `representation_mode` wire field; selecting it is a no-op on the live field.
+- **D3, D4, and D7 — the engine-side derivation-labeling work — stand and are implemented.** `graph/mod.rs`'s `is_exec_container_path` still widens on `NodeKind::PlanContainer` (D3); `lineage.rs::lineage_arc` still calls `ontology::derivation_label` in place of the old hardcoded `None` (D4); `/graph/query` and `/graph/lineage` still share that one projection as distinct surfaces (D7).
+- **D5's index-node-suppression policy is scene-side and shares the fate of the deleted layout;** its engine-projection half is unaffected by this note.
