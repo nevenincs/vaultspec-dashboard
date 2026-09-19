@@ -4,8 +4,8 @@ tags:
   - '#index'
   - '#rag-control-plane'
 date: '2026-08-01'
-modified: '2026-08-01'
-body_schema: 'body-v1'
+modified: '2026-09-19'
+body_schema: 'body-v2'
 body_hash: 'sha256:afe783c3e98e4e2120ac6155fbe59de143b8629335f0c93a6d96c4d0d1144aea'
 related:
   - '[[2026-06-16-rag-control-plane-adr]]'

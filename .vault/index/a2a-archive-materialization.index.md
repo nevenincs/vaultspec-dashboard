@@ -4,8 +4,8 @@ tags:
   - '#index'
   - '#a2a-archive-materialization'
 date: '2026-08-01'
-modified: '2026-08-01'
-body_schema: 'body-v1'
+modified: '2026-09-19'
+body_schema: 'body-v2'
 body_hash: 'sha256:64698c2c5c531beb7ec832889554d5a0c0b5a4e1c5d7d4f959219a3a4a6d52b8'
 related:
   - '[[2026-07-20-a2a-archive-materialization-adr]]'

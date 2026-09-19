@@ -4,12 +4,13 @@ tags:
   - '#index'
   - '#rag-storage-broker'
 date: '2026-08-01'
-modified: '2026-09-03'
-body_schema: 'body-v1'
-body_hash: 'sha256:f2176e1ae3bfd7c1f23de50608fcb170ce58dd25b9065a84bfd474e9c2964cf3'
+modified: '2026-09-19'
+body_schema: 'body-v2'
+body_hash: 'sha256:37faef0e45f39e850e65ec2e7ee180767da970300ffa8dc007c7ae77e7d508fb'
 related:
   - '[[2026-06-27-rag-storage-broker-adr]]'
   - '[[2026-06-27-rag-storage-broker-audit]]'
+  - '[[2026-06-27-rag-storage-broker-ledger]]'
   - '[[2026-06-27-rag-storage-broker-plan]]'
   - '[[2026-06-27-rag-storage-broker-research]]'
 ---
@@ -30,14 +31,7 @@ Auto-generated index of all documents tagged with `#rag-storage-broker`.
 
 ### exec
 
-- `2026-06-27-rag-storage-broker-P01-S01` - Add the RAG_STORAGE_CLI_WHITELIST mapping storage-delete, storage-prune, and storage-migrate to their fixed rag base args
-- `2026-06-27-rag-storage-broker-P01-S02` - Add a validate_namespace_prefix guard rejecting any value that is not rag's canonical r-hash prefix
-- `2026-06-27-rag-storage-broker-P01-S03` - Implement storage_args_for assembling the validated argv per verb (prefix for delete, active-cell root and to-backend enum for migrate, the dry-run or yes flag from apply)
-- `2026-06-27-rag-storage-broker-P01-S04` - Implement a storage-aware bounded runner that forwards the rag ok-and-command envelope verbatim on a non-zero preview exit and 502s only a genuine fault
-- `2026-06-27-rag-storage-broker-P01-S05` - Unit-test the prefix guard, the argv assembly per verb, and the runner envelope-forwarding-on-exit-1 versus 502-on-fault
-- `2026-06-27-rag-storage-broker-P02-S06` - Add the ops_rag_storage route validating the body, gating apply to --yes versus the default --dry-run, and running the storage-aware runner
-- `2026-06-27-rag-storage-broker-P02-S07` - Register the storage route in the router and the brokered ops namespace
-- `2026-06-27-rag-storage-broker-P02-S08` - Add route-level tests asserting an unknown verb 403s, a malformed prefix 400s, the default request previews, and an apply request passes yes
+- `2026-06-27-rag-storage-broker-ledger` - `rag-storage-broker` ledger
 
 ### plan
 

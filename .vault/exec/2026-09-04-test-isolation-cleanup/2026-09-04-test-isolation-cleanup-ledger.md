@@ -1,0 +1,152 @@
+---
+tags:
+  - '#exec'
+  - '#test-isolation-cleanup'
+date: '2026-09-04'
+modified: '2026-09-19'
+body_schema: 'body-v2'
+body_hash: 'sha256:9a3b81110c4cd7679ffcb3e183427056b132ecfaaa879de6dca6fbfa1ebf30fb'
+related:
+  - "[[2026-09-04-test-isolation-cleanup-plan]]"
+---
+
+# `test-isolation-cleanup` ledger
+
+## Changes
+
+- `S01` `A` `frontend/src/testing/rtlCleanup.ts`
+- `S01` `M` `frontend/vite.config.ts`
+- `S02` `A` `frontend/src/testing/rtlCleanup.guard.test.tsx`
+- `S02` `verify:` `npx vitest run src/testing/rtlCleanup.guard.test.tsx` -> `pass`
+- `S02` `verify:` `npx vitest run src/testing/rtlCleanup.guard.test.tsx` -> `fail`
+- `S03` `T`
+- `S03` `verify:` `just test frontend` -> `fail`
+- `S04` `T`
+- `S04` `verify:` `npx vitest run src/stores/server/comments.live.test.ts` -> `pass`
+- `S05` `T`
+- `S05` `verify:` `just lint all` -> `pass`
+- `S05` `verify:` `just test all` -> `pass`
+- `S05` `verify:` `just test frontend` -> `pass`
+- `S06` `A` `frontend/src/testing/happyDOMAbort.ts`
+- `S06` `M` `frontend/src/testing/liveSetup.ts`
+- `S06` `M` `frontend/src/testing/rtlCleanup.ts`
+- `S06` `M` `frontend/vite.config.ts`
+- `S06` `verify:` `npx prettier --check src/testing/happyDOMAbort.ts src/testing/liveSetup.ts src/testing/rtlCleanup.ts vite.config.ts` -> `pass`
+- `S06` `verify:` `npx vitest run src/testing/rtlCleanup.guard.test.tsx` -> `pass`
+- `S06` `verify:` `npm run typecheck` -> `pass`
+- `S06` `verify:` `just lint frontend` -> `pass`
+- `S06` `verify:` `pass`
+- `S07` `A` `frontend/src/testing/happyDOMAbort.guard.test.ts`
+- `S07` `verify:` `remove await; npx vitest run src/testing/happyDOMAbort.guard.test.ts` -> `fail`
+- `S07` `verify:` `restore fixed drain; npx vitest run src/testing/happyDOMAbort.guard.test.ts` -> `fail`
+- `S07` `verify:` `npx prettier --check src/testing/happyDOMAbort.ts src/testing/happyDOMAbort.guard.test.ts` -> `pass`
+- `S07` `verify:` `npx vitest run src/testing/happyDOMAbort.guard.test.ts src/testing/rtlCleanup.guard.test.tsx` -> `pass`
+- `S07` `verify:` `npm run typecheck` -> `pass`
+- `S07` `verify:` `just lint frontend` -> `pass`
+- `S07` `verify:` `pass`
+- `S08` `M` `frontend/src/testing/liveEngine.globalSetup.ts`
+- `S08` `A` `frontend/src/testing/liveEngine.globalSetup.test.ts`
+- `S08` `verify:` `npx prettier --write src/testing/liveEngine.globalSetup.ts src/testing/liveEngine.globalSetup.test.ts` -> `pass`
+- `S08` `verify:` `npx vitest run src/testing/liveEngine.globalSetup.test.ts` -> `pass`
+- `S08` `verify:` `npm run typecheck` -> `pass`
+- `S08` `verify:` `just lint frontend` -> `pass`
+- `S08` `verify:` `pass`
+- `S09` `T`
+- `S09` `verify:` `npx vitest run src/app/left/AddProjectDialog.localization.test.tsx src/app/left/CreateDocDialog.render.test.tsx src/stores/server/comments.live.test.ts src/stores/server/systemPrograms.live.test.ts src/stores/server/queries/docmeta.test.ts src/testing/happyDOMAbort.guard.test.ts src/testing/rtlCleanup.guard.test.tsx` -> `pass`
+- `S09` `verify:` `just lint frontend` -> `pass`
+- `S09` `verify:` `pass`
+- `S11` `M` `frontend/src/stores/server/systemPrograms.live.test.ts`
+- `S11` `verify:` `npx prettier --check src/stores/server/systemPrograms.live.test.ts` -> `pass`
+- `S11` `verify:` `npx vitest run src/stores/server/systemPrograms.live.test.ts -t "carries that port and process id through the tolerant adapter"` -> `pass`
+- `S11` `verify:` `npx vitest run src/stores/server/systemPrograms.live.test.ts` -> `pass`
+- `S11` `verify:` `npm run typecheck` -> `pass`
+- `S11` `verify:` `just lint frontend` -> `pass`
+- `S11` `verify:` `pass`
+- `S12` `D` `frontend/src/testing/happyDOMAbort.ts`
+- `S12` `D` `frontend/src/testing/happyDOMAbort.guard.test.ts`
+- `S12` `M` `frontend/src/testing/liveSetup.ts`
+- `S12` `M` `frontend/src/testing/rtlCleanup.ts`
+- `S12` `M` `frontend/vite.config.ts`
+- `S12` `verify:` `npm --prefix frontend test -- src/testing/rtlCleanup.guard.test.tsx` -> `pass`
+- `S12` `verify:` `npm --prefix frontend run typecheck` -> `pass`
+- `S12` `verify:` `just lint frontend` -> `pass`
+- `S12` `verify:` `pass`
+- `S13` `A` `frontend/src/testing/perTestWindowLifecycle.guard.test.ts`
+- `S13` `verify:` `fail`
+- `S13` `verify:` `npm --prefix frontend test -- src/testing/perTestWindowLifecycle.guard.test.ts src/testing/rtlCleanup.guard.test.tsx` -> `pass`
+- `S13` `verify:` `npm --prefix frontend run typecheck` -> `pass`
+- `S13` `verify:` `just lint frontend` -> `pass`
+- `S13` `verify:` `pass`
+- `S14` `T`
+- `S14` `verify:` `fail`
+- `S14` `verify:` `pass`
+- `S16` `M` `frontend/src/stores/server/queries/sse.ts`
+- `S16` `M` `frontend/src/stores/server/queries/streams.ts`
+- `S16` `M` `frontend/src/stores/server/queries/streams.test.ts`
+- `S16` `M` `frontend/src/stores/server/agent/a2aTeam.ts`
+- `S16` `M` `frontend/src/stores/server/authoring/index.ts`
+- `S16` `M` `frontend/src/stores/server/authoring.test.ts`
+- `S16` `verify:` `npm --prefix frontend test -- src/stores/server/queries/streams.test.ts src/stores/server/authoring.test.ts` -> `pass`
+- `S16` `verify:` `npm --prefix frontend exec -- tsc --noEmit -p frontend/tsconfig.json` -> `pass`
+- `S16` `verify:` `just lint frontend` -> `pass`
+- `S16` `verify:` `independent Sol review` -> `pass`
+- `S17` `A` `frontend/src/testing/queryTeardown.ts`
+- `S17` `A` `frontend/src/testing/queryTeardown.test.ts`
+- `S17` `M` `frontend/src/app/agent/AgentPanel.render.test.tsx`
+- `S17` `M` `frontend/src/app/agent/Composer.render.test.tsx`
+- `S17` `M` `frontend/src/stores/server/authoring/index.ts`
+- `S17` `M` `frontend/src/stores/server/authoring.test.ts`
+- `S17` `verify:` `npm --prefix frontend test -- src/testing/queryTeardown.test.ts src/stores/server/authoring.test.ts` -> `pass`
+- `S17` `verify:` `npm --prefix frontend test -- src/testing/queryTeardown.test.ts src/stores/server/authoring.test.ts src/app/agent/AgentPanel.render.test.tsx src/app/agent/Composer.render.test.tsx` -> `pass`
+- `S17` `verify:` `npm --prefix frontend test -- src/testing/queryTeardown.test.ts` -> `pass`
+- `S17` `verify:` `npm --prefix frontend run typecheck` -> `pass`
+- `S17` `verify:` `just lint frontend` -> `pass`
+- `S17` `verify:` `independent Sol review` -> `pass`
+- `S18` `A` `frontend/src/testing/nodeHttpTransport.ts`
+- `S18` `A` `frontend/src/testing/nodeHttpTransport.test.ts`
+- `S18` `M` `frontend/src/testing/liveClient.ts`
+- `S18` `verify:` `npm --prefix frontend test -- src/testing/nodeHttpTransport.test.ts -t "aborts a held null-body"` -> `pass`
+- `S18` `verify:` `npm --prefix frontend test -- src/testing/nodeHttpTransport.test.ts` -> `pass`
+- `S18` `verify:` `npm --prefix frontend test -- src/testing/engineConformance.test.ts` -> `pass`
+- `S18` `verify:` `npm --prefix frontend run typecheck` -> `pass`
+- `S18` `verify:` `just lint frontend` -> `pass`
+- `S18` `verify:` `independent Sol review` -> `pass`
+
+## Notes
+
+- `S03` One suite failed out of 500: `frontend/src/stores/server/comments.live.test.ts`,
+- `S03` the ledgered plan-step tick, on a 15000ms test timeout. It renders no component,
+- `S03` so the barrier is not on its failure path. Triage is `S04`.
+- `S04` No suite was found to depend on the leak, so no source change was needed. The
+- `S04` single failure carried in from `S03` passes in isolation and did not recur in
+- `S04` any of the three subsequent full runs. Its failure path is a chain of
+- `S04` `vaultspec-core` subprocess writes plus a file-watcher re-ingest wait against a
+- `S04` 15000ms test timeout, with no component mounted anywhere in it, so it is
+- `S04` recorded as the known live-engine latency flake class rather than an isolation
+- `S04` defect the barrier surfaced. Nothing was weakened, retried, stubbed, or exempted
+- `S04` from the barrier.
+- `S05` Six full runs were taken, not three, because half of them returned no verdict.
+- `S05` Runs two and three are the clean verdicts: `just test all` at exit 0 covering
+- `S05` every Rust crate plus 500 frontend files and 4115 tests, then \`just test
+- `S05` frontend\` at exit 0 with 500 files and 4114 tests.
+- `S05` Runs four and five are NOT verdicts. The shared engine died partway through
+- `S05` each, and their failures are an `ECONNREFUSED` or `fetch failed` cascade against
+- `S05` a dead port, spread across surfaces this change never touched (60 files in run
+- `S05` five). Run six is likewise not a verdict, though for a different reason and with
+- `S05` a much better shape: ZERO tests failed and 4113 passed, but one worker fork
+- `S05` exited unexpectedly, which is what took the exit code to 1. In all three the
+- `S05` machine measured 90 to 100 percent CPU with sibling work running, which is the
+- `S05` load class `vite.config.ts` already documents as killing the shared engine
+- `S05` mid-run.
+- `S05` Run one carried the one honest test failure, triaged in `S04`.
+- `S05` One assertion failure inside run four is worth naming rather than folding into
+- `S05` the cascade: `useReducedMotion` failed again with its historical signature
+- `S05` (correct DOM attribute, stale hook value). It touches no engine, so the dead
+- `S05` engine does not explain it directly, and it is a suite that already unmounts
+- `S05` itself, so the barrier neither fixes nor affects it. It did not recur in the
+- `S05` other five runs. Recorded as still open rather than claimed fixed: the leaked
+- `S05` subscription this barrier removes was a real contributor to that flake, and this
+- `S05` run is evidence it was not the only one.
+- `S14` The test assertions passed, but the zero-diagnostic barrier failed and remains
+- `S14` owned by open Step `S15`. Preserved output:
+- `S14` `C:\Users\hello\AppData\Local\Temp\vaultspec-s14-eight-file-prefix.log`.

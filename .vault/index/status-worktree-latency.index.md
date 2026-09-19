@@ -4,8 +4,8 @@ tags:
   - '#index'
   - '#status-worktree-latency'
 date: '2026-08-01'
-modified: '2026-08-01'
-body_schema: 'body-v1'
+modified: '2026-09-19'
+body_schema: 'body-v2'
 body_hash: 'sha256:d920e192af234ce93ad9c154759c940936463c692836efa9a9e74d14fbac17f4'
 related:
   - '[[2026-06-16-status-worktree-latency-adr]]'

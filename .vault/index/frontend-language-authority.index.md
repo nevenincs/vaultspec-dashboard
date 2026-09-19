@@ -4,8 +4,8 @@ tags:
   - '#index'
   - '#frontend-language-authority'
 date: '2026-08-01'
-modified: '2026-08-01'
-body_schema: 'body-v1'
+modified: '2026-09-19'
+body_schema: 'body-v2'
 body_hash: 'sha256:9d3e8b9d64cd5aae26a584c7b161103951cce84472682b592e3998318648771a'
 related:
   - '[[2026-07-14-frontend-language-authority-adr]]'

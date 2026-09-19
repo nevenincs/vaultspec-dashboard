@@ -4,8 +4,8 @@ tags:
   - '#index'
   - '#codebase-graphing-review'
 date: '2026-08-01'
-modified: '2026-08-01'
-body_schema: 'body-v1'
+modified: '2026-09-19'
+body_schema: 'body-v2'
 body_hash: 'sha256:88ae01d91f992bfceee33c2c53385ac487cedd7c3b0b9b0d7393d1414ff7494c'
 related:
   - '[[2026-07-02-codebase-graphing-review-audit]]'

@@ -4,8 +4,8 @@ tags:
   - '#index'
   - '#filter-controls'
 date: '2026-08-01'
-modified: '2026-08-01'
-body_schema: 'body-v1'
+modified: '2026-09-19'
+body_schema: 'body-v2'
 body_hash: 'sha256:a20ebfded3cbc4a1afdbf92200a42ceab222bcc55b5f54599e20883ce7597d32'
 related:
   - '[[2026-06-19-filter-controls-adr]]'

@@ -4,12 +4,13 @@ tags:
   - '#index'
   - '#dashboard-live-state'
 date: '2026-08-01'
-modified: '2026-09-03'
-body_schema: 'body-v1'
-body_hash: 'sha256:121dcd9426f57155c8da02184bb566b7d1c91166f71b0f841f59a5c8d280fd91'
+modified: '2026-09-19'
+body_schema: 'body-v2'
+body_hash: 'sha256:26e1b7685fa69fb7da9231999cf995fdf391abadeceb1c8e83b4f44b8fcb14b3'
 related:
   - '[[2026-06-13-dashboard-live-state-adr]]'
   - '[[2026-06-13-dashboard-live-state-audit]]'
+  - '[[2026-06-13-dashboard-live-state-ledger]]'
   - '[[2026-06-13-dashboard-live-state-plan]]'
   - '[[2026-06-13-dashboard-live-state-research]]'
 ---
@@ -30,15 +31,7 @@ Auto-generated index of all documents tagged with `#dashboard-live-state`.
 
 ### exec
 
-- `2026-06-13-dashboard-live-state-P01-S01` - Add the scope-keyed live-connection slice holding streamConnected, lastSeq, and brokenLinkCount
-- `2026-06-13-dashboard-live-state-P01-S02` - Throw StreamLostError on an abnormal stream close or non-ok response in the SSE consumer
-- `2026-06-13-dashboard-live-state-P02-S03` - Implement the graph-sync hook: subscribe the live graph channel, invalidate the constellation, track connection and lastSeq
-- `2026-06-13-dashboard-live-state-P02-S04` - Extend deriveInputs to read injected live signals for streamLost and brokenLinkCount, keeping it pure
-- `2026-06-13-dashboard-live-state-P02-S05` - Compose the live-connection slice into the surface-states hook
-- `2026-06-13-dashboard-live-state-P02-S06` - Bind setDegradationHandler in app bootstrap so a stream-lost classification flips streamConnected false
-- `2026-06-13-dashboard-live-state-P02-S07` - Mount the graph-sync hook and push the held slice broken-link count from the Stage
-- `2026-06-13-dashboard-live-state-P03-S08` - Add the live e2e for the stream-lost degraded surface and live reactivity
-- `2026-06-13-dashboard-live-state-P03-S09` - Run typecheck, lint, test, build, and vault check green and record the verification
+- `2026-06-13-dashboard-live-state-ledger` - `dashboard-live-state` ledger
 
 ### plan
 

@@ -4,8 +4,8 @@ tags:
   - '#index'
   - '#a2a-distribution-trust'
 date: '2026-08-01'
-modified: '2026-08-01'
-body_schema: 'body-v1'
+modified: '2026-09-19'
+body_schema: 'body-v2'
 body_hash: 'sha256:265c9439a57e2bbbb6fd4e8c1ca4c066c715595e318890c56749c05477216d3d'
 related:
   - '[[2026-07-20-a2a-distribution-trust-adr]]'

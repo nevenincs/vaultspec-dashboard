@@ -1,0 +1,227 @@
+---
+tags:
+  - '#exec'
+  - '#design-system-consolidation'
+date: '2026-09-05'
+modified: '2026-09-19'
+body_schema: 'body-v2'
+body_hash: 'sha256:0a51fcb817494879bce539faac42fd540fcceee3d8257f9bba4bedec62432683'
+related:
+  - "[[2026-09-05-design-system-consolidation-plan]]"
+---
+
+# `design-system-consolidation` ledger
+
+## Changes
+
+- `S01` `A` `frontend/dev/design-system/consolidation-ledger.ts`
+- `S01` `verify:` `npm exec -- prettier --check dev/design-system/consolidation-ledger.ts` -> `pass`
+- `S01` `verify:` `npm exec -- eslint dev/design-system/consolidation-ledger.ts` -> `pass`
+- `S01` `verify:` `npm run typecheck` -> `pass`
+- `S01` `verify:` `just lint frontend` -> `pass`
+- `S04` `M` `frontend/dev/design-system/consolidation-ledger.ts`
+- `S04` `M` `frontend/dev/design-system/consolidation-ledger.test.ts`
+- `S04` `verify:` `npm exec vitest run dev/design-system/consolidation-ledger.test.ts` -> `pass`
+- `S04` `verify:` `npm run typecheck` -> `pass`
+- `S04` `verify:` `just lint frontend` -> `pass`
+- `S04` `verify:` `pass`
+- `S05` `M` `frontend/dev/design-system/consolidation-ledger.ts`
+- `S05` `M` `frontend/dev/design-system/consolidation-ledger.test.ts`
+- `S05` `verify:` `npm exec vitest run dev/design-system/consolidation-ledger.test.ts` -> `pass`
+- `S05` `verify:` `npm run typecheck` -> `pass`
+- `S05` `verify:` `just lint frontend` -> `pass`
+- `S05` `verify:` `pass`
+- `S06` `A` `frontend/dev/tooling/scan-design-system.mjs`
+- `S06` `verify:` `node --check dev/tooling/scan-design-system.mjs` -> `pass`
+- `S06` `verify:` `node dev/tooling/scan-design-system.mjs --json` -> `pass`
+- `S06` `verify:` `pass`
+- `S06` `verify:` `npm run typecheck` -> `pass`
+- `S06` `verify:` `just lint frontend` -> `pass`
+- `S06` `verify:` `pass`
+- `S07` `M` `frontend/dev/tooling/scan-design-system.mjs`
+- `S07` `A` `frontend/dev/tooling/scan-design-system.d.mts`
+- `S07` `A` `frontend/dev/tooling/fixtures/design-system/manifest.ts`
+- `S07` `A` `frontend/dev/tooling/fixtures/design-system/run-fixtures.mjs`
+- `S07` `A` `frontend/dev/tooling/fixtures/design-system/run-fixtures.d.mts`
+- `S07` `A` `frontend/dev/tooling/fixtures/design-system/valid/classified-seams.tsx`
+- `S07` `A` `frontend/dev/tooling/fixtures/design-system/valid/comment-and-unitless-exclusions.tsx`
+- `S07` `A` `frontend/dev/tooling/fixtures/design-system/valid/behavior-bearing-wrapper.tsx`
+- `S07` `A` `frontend/dev/tooling/fixtures/design-system/invalid/missing-native-entry.tsx`
+- `S07` `A` `frontend/dev/tooling/fixtures/design-system/invalid/missing-relative-entry.tsx`
+- `S07` `A` `frontend/dev/tooling/fixtures/design-system/invalid/stale-native-entry.tsx`
+- `S07` `A` `frontend/dev/tooling/fixtures/design-system/invalid/malformed-source.tsx`
+- `S07` `A` `frontend/dev/tooling/fixtures/design-system/invalid/deep-kit-import.ts`
+- `S07` `A` `frontend/dev/tooling/fixtures/design-system/invalid/duplicate-deep-import-ratchet.ts`
+- `S07` `A` `frontend/dev/tooling/fixtures/design-system/invalid/store-to-kit-import.ts`
+- `S07` `A` `frontend/dev/tooling/fixtures/design-system/invalid/platform-to-kit-import.ts`
+- `S07` `A` `frontend/dev/tooling/fixtures/design-system/invalid/direct-reexport-facade.ts`
+- `S07` `A` `frontend/dev/tooling/fixtures/design-system/invalid/local-reexport-facade.ts`
+- `S07` `A` `frontend/dev/tooling/fixtures/design-system/invalid/export-assignment-facade.ts`
+- `S07` `A` `frontend/dev/tooling/fixtures/design-system/invalid/forwarding-wrapper-facade.tsx`
+- `S07` `verify:` `node dev/tooling/fixtures/design-system/run-fixtures.mjs` -> `pass`
+- `S07` `verify:` `node dev/tooling/scan-design-system.mjs --json` -> `pass`
+- `S07` `verify:` `npm run typecheck` -> `pass`
+- `S07` `verify:` `just lint frontend` -> `pass`
+- `S07` `verify:` `pass`
+- `S08` `M` `frontend/dev/tooling/scan-design-system.mjs`
+- `S08` `M` `frontend/dev/tooling/scan-design-system.d.mts`
+- `S08` `A` `frontend/dev/tooling/scan-design-system.test.ts`
+- `S08` `verify:` `node dev/tooling/scan-design-system.mjs --json` -> `pass`
+- `S08` `verify:` `node dev/tooling/fixtures/design-system/run-fixtures.mjs` -> `pass`
+- `S08` `verify:` `npx vitest run dev/tooling/scan-design-system.test.ts --config vite.config.ts` -> `pass`
+- `S08` `verify:` `npm run typecheck` -> `pass`
+- `S08` `verify:` `just lint frontend` -> `pass`
+- `S08` `verify:` `pass`
+- `S09` `M` `frontend/package.json`
+- `S09` `verify:` `npm run lint:design-system` -> `pass`
+- `S09` `verify:` `node dev/tooling/fixtures/design-system/run-fixtures.mjs` -> `pass`
+- `S09` `verify:` `npx vitest run dev/tooling/scan-design-system.test.ts --config vite.config.ts` -> `pass`
+- `S09` `verify:` `npm run typecheck` -> `pass`
+- `S09` `verify:` `just lint frontend` -> `pass`
+- `S09` `verify:` `pass`
+- `S10` `M` `dev/toolchain.py`
+- `S10` `verify:` `python -m py_compile dev/toolchain.py` -> `pass`
+- `S10` `verify:` `uv run --no-sync pytest dev/guards -q` -> `pass`
+- `S10` `verify:` `node frontend/dev/tooling/fixtures/design-system/run-fixtures.mjs` -> `pass`
+- `S10` `verify:` `npx vitest run dev/tooling/scan-design-system.test.ts --config vite.config.ts` -> `pass`
+- `S10` `verify:` `just lint frontend` -> `pass`
+- `S10` `verify:` `pass`
+- `S11` `A` `dev/guards/test_design_system_consolidation.py`
+- `S11` `verify:` `python -m py_compile dev/guards/test_design_system_consolidation.py` -> `pass`
+- `S11` `verify:` `uv run --no-sync pytest dev/guards/test_design_system_consolidation.py -q` -> `pass`
+- `S11` `verify:` `uv run --no-sync pytest dev/guards -q` -> `pass`
+- `S11` `verify:` `node dev/tooling/fixtures/design-system/run-fixtures.mjs` -> `pass`
+- `S11` `verify:` `npx vitest run dev/tooling/scan-design-system.test.ts --config vite.config.ts` -> `pass`
+- `S11` `verify:` `just lint frontend` -> `pass`
+- `S11` `verify:` `pass`
+- `S12` `A` `frontend/src/app/kit/TextField.tsx`
+- `S12` `M` `frontend/dev/design-system/consolidation-ledger.ts`
+- `S12` `M` `frontend/dev/design-system/consolidation-ledger.test.ts`
+- `S12` `M` `frontend/dev/tooling/scan-design-system.mjs`
+- `S12` `M` `frontend/dev/tooling/scan-design-system.test.ts`
+- `S12` `verify:` `npm --prefix frontend run lint:design-system` -> `pass`
+- `S12` `verify:` `npx vitest run dev/design-system/consolidation-ledger.test.ts dev/tooling/scan-design-system.test.ts` -> `pass`
+- `S12` `verify:` `npm --prefix frontend run typecheck` -> `pass`
+- `S12` `verify:` `just lint frontend` -> `pass`
+- `S12` `verify:` `pass`
+- `S13` `A` `frontend/src/app/kit/TextField.render.test.tsx`
+- `S13` `verify:` `npx vitest run src/app/kit/TextField.render.test.tsx` -> `pass`
+- `S13` `verify:` `npx vitest run src/app/kit/TextField.render.test.tsx dev/design-system/consolidation-ledger.test.ts dev/tooling/scan-design-system.test.ts` -> `pass`
+- `S13` `verify:` `npm --prefix frontend run typecheck` -> `pass`
+- `S13` `verify:` `just lint frontend` -> `pass`
+- `S13` `verify:` `pass`
+- `S14` `A` `frontend/src/app/kit/TextArea.tsx`
+- `S14` `M` `frontend/dev/design-system/consolidation-ledger.ts`
+- `S14` `M` `frontend/dev/design-system/consolidation-ledger.test.ts`
+- `S14` `M` `frontend/dev/tooling/scan-design-system.test.ts`
+- `S14` `verify:` `npm --prefix frontend run lint:design-system` -> `pass`
+- `S14` `verify:` `npx vitest run src/app/kit/TextField.render.test.tsx dev/design-system/consolidation-ledger.test.ts dev/tooling/scan-design-system.test.ts` -> `pass`
+- `S14` `verify:` `npm --prefix frontend run typecheck` -> `pass`
+- `S14` `verify:` `just lint frontend` -> `pass`
+- `S14` `verify:` `pass`
+- `S15` `A` `frontend/src/app/kit/TextArea.render.test.tsx`
+- `S15` `verify:` `npx vitest run src/app/kit/TextArea.render.test.tsx` -> `pass`
+- `S15` `verify:` `npx vitest run src/app/kit/TextField.render.test.tsx src/app/kit/TextArea.render.test.tsx dev/design-system/consolidation-ledger.test.ts dev/tooling/scan-design-system.test.ts --testTimeout 120000` -> `pass`
+- `S15` `verify:` `npm --prefix frontend run typecheck` -> `pass`
+- `S15` `verify:` `just lint frontend` -> `pass`
+- `S15` `verify:` `pass`
+- `S20` `A` `frontend/src/app/kit/ActivityIndicator.render.test.tsx`
+- `S20` `verify:` `npx vitest run src/app/kit/ActivityIndicator.render.test.tsx` -> `pass`
+- `S20` `verify:` `npx vitest run src/app/kit/ActivityIndicator.render.test.tsx dev/design-system/consolidation-ledger.test.ts dev/tooling/scan-design-system.test.ts --testTimeout 120000` -> `pass`
+- `S20` `verify:` `npm --prefix frontend run typecheck` -> `pass`
+- `S20` `verify:` `just lint frontend` -> `pass`
+- `S20` `verify:` `pass`
+- `S164` `M` `frontend/dev/design-system/consolidation-ledger.ts`
+- `S164` `M` `.vault/research/2026-09-05-design-system-consolidation-horizontal-polish-research.md`
+- `S164` `M` `.vault/reference/2026-09-05-design-system-consolidation-shipped-frontend-blueprint-reference.md`
+- `S164` `verify:` `pass` -> `125` -> `16` -> `16`
+- `S164` `verify:` `gpt-5.6-sol` -> `pass`
+- `S164` `verify:` `just lint frontend` -> `pass`
+- `S165` `M` `frontend/dev/design-system/consolidation-ledger.ts`
+- `S165` `verify:` `pass`
+- `S165` `verify:` `npm --prefix frontend exec -- eslint frontend/dev/design-system/consolidation-ledger.ts` -> `pass`
+- `S165` `verify:` `npm --prefix frontend run typecheck` -> `pass`
+- `S165` `verify:` `just lint frontend` -> `pass`
+- `S165` `verify:` `gpt-5.6-sol` -> `pass`
+- `S166` `M` `frontend/dev/design-system/consolidation-ledger.ts`
+- `S166` `verify:` `pass`
+- `S166` `verify:` `just lint frontend` -> `pass`
+- `S166` `verify:` `gpt-5.6-sol` -> `pass`
+- `S167` `M` `frontend/dev/design-system/consolidation-ledger.ts`
+- `S167` `verify:` `pass`
+- `S167` `verify:` `npm --prefix frontend run typecheck` -> `pass`
+- `S167` `verify:` `just lint frontend` -> `pass`
+- `S167` `verify:` `gpt-5.6-sol` -> `pass`
+- `S168` `M` `frontend/dev/design-system/consolidation-ledger.ts`
+- `S168` `verify:` `pass`
+- `S168` `verify:` `npm --prefix frontend run typecheck` -> `pass`
+- `S168` `verify:` `just lint frontend` -> `pass`
+- `S168` `verify:` `gpt-5.6-sol` -> `pass`
+- `S169` `M` `frontend/dev/design-system/consolidation-ledger.ts`
+- `S169` `verify:` `pass`
+- `S169` `verify:` `npm --prefix frontend run typecheck` -> `pass`
+- `S169` `verify:` `just lint frontend` -> `pass`
+- `S169` `verify:` `gpt-5.6-sol` -> `pass`
+- `S170` `M` `frontend/dev/design-system/consolidation-ledger.ts`
+- `S170` `verify:` `pass`
+- `S170` `verify:` `npm --prefix frontend run typecheck` -> `pass`
+- `S170` `verify:` `just lint frontend` -> `pass`
+- `S170` `verify:` `gpt-5.6-sol` -> `pass`
+- `S171` `A` `frontend/dev/design-system/consolidation-ledger.test.ts`
+- `S171` `verify:` `npm --prefix frontend run test -- dev/design-system/consolidation-ledger.test.ts` -> `pass`
+- `S171` `verify:` `npm --prefix frontend run typecheck` -> `pass`
+- `S171` `verify:` `just lint frontend` -> `pass`
+- `S171` `verify:` `pass`
+- `S172` `M` `frontend/dev/design-system/consolidation-ledger.ts`
+- `S172` `verify:` `npm exec -- tsx -e <S172 exhaustiveness probe>` -> `pass`
+- `S172` `verify:` `npm run test -- dev/design-system/consolidation-ledger.test.ts` -> `pass`
+- `S172` `verify:` `npm run typecheck` -> `pass`
+- `S172` `verify:` `just lint frontend` -> `pass`
+- `S172` `verify:` `pass`
+- `S173` `M` `frontend/dev/design-system/consolidation-ledger.ts`
+- `S173` `verify:` `node --input-type=module --experimental-strip-types <S173 multiset probe>` -> `pass`
+- `S173` `verify:` `npm run test -- dev/design-system/consolidation-ledger.test.ts` -> `pass`
+- `S173` `verify:` `npm run typecheck` -> `pass`
+- `S173` `verify:` `just lint frontend` -> `pass`
+- `S173` `verify:` `pass`
+- `S174` `M` `frontend/dev/design-system/consolidation-ledger.ts`
+- `S174` `verify:` `node --input-type=module --experimental-strip-types <S174 multiset probe>` -> `pass`
+- `S174` `verify:` `npm run test -- dev/design-system/consolidation-ledger.test.ts` -> `pass`
+- `S174` `verify:` `npm run typecheck` -> `pass`
+- `S174` `verify:` `just lint frontend` -> `pass`
+- `S174` `verify:` `pass`
+- `S175` `M` `frontend/dev/design-system/consolidation-ledger.ts`
+- `S175` `verify:` `node --input-type=module --experimental-strip-types <S175 multiset probe>` -> `pass`
+- `S175` `verify:` `npm run test -- dev/design-system/consolidation-ledger.test.ts` -> `pass`
+- `S175` `verify:` `npm run typecheck` -> `pass`
+- `S175` `verify:` `just lint frontend` -> `pass`
+- `S175` `verify:` `pass`
+- `S176` `M` `frontend/dev/design-system/consolidation-ledger.ts`
+- `S176` `verify:` `node --experimental-strip-types --input-type=module <S176 multiset probe>` -> `pass`
+- `S176` `verify:` `npm run test -- dev/design-system/consolidation-ledger.test.ts` -> `pass`
+- `S176` `verify:` `npm run typecheck` -> `pass`
+- `S176` `verify:` `just lint frontend` -> `pass`
+- `S176` `verify:` `pass`
+- `S177` `M` `frontend/dev/design-system/consolidation-ledger.ts`
+- `S177` `verify:` `node --experimental-strip-types --input-type=module <S177 residual multiset probe>` -> `pass`
+- `S177` `verify:` `npm run test -- dev/design-system/consolidation-ledger.test.ts` -> `pass`
+- `S177` `verify:` `npm run typecheck` -> `pass`
+- `S177` `verify:` `just lint frontend` -> `pass`
+- `S177` `verify:` `pass`
+- `S178` `M` `frontend/dev/design-system/consolidation-ledger.test.ts`
+- `S178` `verify:` `npm exec vitest run dev/design-system/consolidation-ledger.test.ts` -> `pass`
+- `S178` `verify:` `npm run typecheck` -> `pass`
+- `S178` `verify:` `npx prettier --check dev/design-system/consolidation-ledger.test.ts` -> `pass`
+- `S178` `verify:` `just lint frontend` -> `pass`
+- `S178` `verify:` `pass`
+- `S179` `A` `frontend/dev/design-system/scene-freeze-baseline.json`
+- `S179` `verify:` `pass`
+- `S179` `verify:` `just lint frontend` -> `pass`
+- `S179` `verify:` `pass`
+- `S180` `M` `frontend/dev/design-system/consolidation-ledger.ts`
+- `S180` `verify:` `npx vitest run dev/design-system/consolidation-ledger.test.ts` -> `pass`
+- `S180` `verify:` `npx vitest run dev/tooling/scan-design-system.test.ts -t "fails every remaining baseline, staleness, and scene-preimage rule"` -> `pass`
+- `S180` `verify:` `npm run lint:design-system` -> `pass`
+- `S180` `verify:` `npm run typecheck` -> `pass`
+- `S180` `verify:` `just lint frontend` -> `pass`
+- `S180` `verify:` `pass`

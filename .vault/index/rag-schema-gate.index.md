@@ -4,12 +4,13 @@ tags:
   - '#index'
   - '#rag-schema-gate'
 date: '2026-08-01'
-modified: '2026-09-03'
-body_schema: 'body-v1'
-body_hash: 'sha256:154952658f4df3c13ee6b146bee1fe7653bfacf88709ddcc1484eb302fdb599a'
+modified: '2026-09-19'
+body_schema: 'body-v2'
+body_hash: 'sha256:faa7cda8de8b2c8cccc10981857a883c270c54da9236d8e5037ff0ca0f6eb0ce'
 related:
   - '[[2026-06-27-rag-schema-gate-adr]]'
   - '[[2026-06-27-rag-schema-gate-audit]]'
+  - '[[2026-06-27-rag-schema-gate-ledger]]'
   - '[[2026-06-27-rag-schema-gate-plan]]'
   - '[[2026-06-27-rag-schema-gate-research]]'
 ---
@@ -30,14 +31,7 @@ Auto-generated index of all documents tagged with `#rag-schema-gate`.
 
 ### exec
 
-- `2026-06-27-rag-schema-gate-P01-S01` - Add the schema_version Option u64 field to HealthInfo and parse it from the /health body
-- `2026-06-27-rag-schema-gate-P01-S02` - Pin KNOWN_STORAGE_SCHEMA_VERSION and EXPECTED_DENSE_DIM as the engine's declared-compatibility constants
-- `2026-06-27-rag-schema-gate-P01-S03` - Implement a tolerant extractor pulling version, dense vector name, and effective dim from the /readiness descriptor value
-- `2026-06-27-rag-schema-gate-P01-S04` - Implement the pure storage_schema_supported gate applying the newer-version, dense-name, and dimension rules with a typed reason
-- `2026-06-27-rag-schema-gate-P01-S05` - Unit-test the extractor and the gate across compatible, newer-version, dim-mismatch, missing-dense-name, and malformed-descriptor cases
-- `2026-06-27-rag-schema-gate-P02-S06` - Apply the cheap /health schema_version gate after the Qdrant capability gate, degrading on a newer version before the /readiness round-trip
-- `2026-06-27-rag-schema-gate-P02-S07` - Read the /readiness descriptor and apply the dense-name and dimension gate before the scroll, degrading through the existing closure
-- `2026-06-27-rag-schema-gate-P02-S08` - Add a route-level test asserting a newer schema_version and a dimension mismatch each degrade the embedding tier with the reason stated
+- `2026-06-27-rag-schema-gate-ledger` - `rag-schema-gate` ledger
 
 ### plan
 

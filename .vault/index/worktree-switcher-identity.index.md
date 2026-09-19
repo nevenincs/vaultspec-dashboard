@@ -4,12 +4,13 @@ tags:
   - '#index'
   - '#worktree-switcher-identity'
 date: '2026-08-01'
-modified: '2026-09-03'
-body_schema: 'body-v1'
-body_hash: 'sha256:b634d70a25119de3e9d280fad51a91a9d5044e0694e939b1e989cc7d9fc3d713'
+modified: '2026-09-19'
+body_schema: 'body-v2'
+body_hash: 'sha256:b91ff620e39f9e25c1a77f42e36dd12cfdcbbc1ef448008a1638a056900d2269'
 related:
   - '[[2026-07-03-worktree-switcher-identity-adr]]'
   - '[[2026-07-03-worktree-switcher-identity-audit]]'
+  - '[[2026-07-03-worktree-switcher-identity-ledger]]'
   - '[[2026-07-03-worktree-switcher-identity-plan]]'
 ---
 
@@ -29,13 +30,7 @@ Auto-generated index of all documents tagged with `#worktree-switcher-identity`.
 
 ### exec
 
-- `2026-07-03-worktree-switcher-identity-S01` - Thread the active-project label, pending-aware headline worktree, and per-row branch label through the picker presentation view, and rewrite user-facing strings in plain sentence case (drop scope, workspace, vault-bearing, bare)
-- `2026-07-03-worktree-switcher-identity-S02` - Rebuild the trigger as the one identity block (project line, hugging chevron, pending-aware git line, path line), align dropdown rows on one leading glyph column, lead cross-project recents with the project, show branch on worktree rows, drop the false listbox promise
-- `2026-07-03-worktree-switcher-identity-S03` - Rewrite the switch-failure messages in plain sentence case and expose the active-project label from the picker view seam
-- `2026-07-03-worktree-switcher-identity-S04` - Lead cross-project recent rows with the project in the navigator popup via the shared row label
-- `2026-07-03-worktree-switcher-identity-S05` - Delete the LocationStrip and the location-anchor selector family with no bridge
-- `2026-07-03-worktree-switcher-identity-S06` - Move the live-wire test assertions to the new labels and delete the location-anchor tests
-- `2026-07-03-worktree-switcher-identity-S07` - Run the full frontend lint gate and the touched vitest suites, then live-verify the switcher with fresh captures
+- `2026-07-03-worktree-switcher-identity-ledger` - `worktree-switcher-identity` ledger
 
 ### plan
 

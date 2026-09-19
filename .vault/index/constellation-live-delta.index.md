@@ -4,11 +4,12 @@ tags:
   - '#index'
   - '#constellation-live-delta'
 date: '2026-08-01'
-modified: '2026-09-03'
-body_schema: 'body-v1'
-body_hash: 'sha256:354a853730b30d2760659ef9d0f875cb972ed58824a58b1db10a86bc34920f3d'
+modified: '2026-09-19'
+body_schema: 'body-v2'
+body_hash: 'sha256:0343c058bb9bd16ae792a579d10d4e99dd923bbdfeab06fc5aa1f08cba596293'
 related:
   - '[[2026-06-13-constellation-live-delta-adr]]'
+  - '[[2026-06-13-constellation-live-delta-ledger]]'
   - '[[2026-06-13-constellation-live-delta-plan]]'
   - '[[2026-06-13-constellation-live-delta-research]]'
 ---
@@ -25,10 +26,7 @@ Auto-generated index of all documents tagged with `#constellation-live-delta`.
 
 ### exec
 
-- `2026-06-13-constellation-live-delta-S01` - Add a granularity tag to the diff entry so document deltas declare their species
-- `2026-06-13-constellation-live-delta-S02` - Project the rebuild diff to feature-granularity meta-edge and feature-node deltas on the shared seq clock
-- `2026-06-13-constellation-live-delta-S03` - Emit both delta species on the single clock, carry last_seq on the live keyframe, and honor diff granularity
-- `2026-06-13-constellation-live-delta-S04` - Assert the keyframe seq anchor, feature-granularity diff, and granularity-tagged stream in conformance and certify end to end
+- `2026-06-13-constellation-live-delta-ledger` - `constellation-live-delta` ledger
 
 ### plan
 

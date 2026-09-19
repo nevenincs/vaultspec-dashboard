@@ -4,8 +4,8 @@ tags:
   - '#index'
   - '#command-palette-planes'
 date: '2026-08-01'
-modified: '2026-08-01'
-body_schema: 'body-v1'
+modified: '2026-09-19'
+body_schema: 'body-v2'
 body_hash: 'sha256:4053221c29bf05b2dbc3b1a91c382f5a1f19ec05347b17320acb3021fe665854'
 related:
   - '[[2026-06-21-command-palette-planes-adr]]'

@@ -4,11 +4,12 @@ tags:
   - '#index'
   - '#on-demand-cold-start'
 date: '2026-08-01'
-modified: '2026-09-03'
-body_schema: 'body-v1'
-body_hash: 'sha256:abd1a736e4b72ba599680f11d60c0a169a5a70c7f2da27dc650997a614388f59'
+modified: '2026-09-19'
+body_schema: 'body-v2'
+body_hash: 'sha256:0b38177ef788a825282ea9cd30256f9007e29335a12b05ae3bf17b50ea47a61d'
 related:
   - '[[2026-07-12-on-demand-cold-start-adr]]'
+  - '[[2026-07-12-on-demand-cold-start-ledger]]'
   - '[[2026-07-12-on-demand-cold-start-plan]]'
   - '[[2026-07-12-on-demand-cold-start-reference]]'
 ---
@@ -25,14 +26,7 @@ Auto-generated index of all documents tagged with `#on-demand-cold-start`.
 
 ### exec
 
-- `2026-07-12-on-demand-cold-start-S01` - Build useProgressiveGraphSlice: wrap useGraphSlice so a live, cold, document-granularity request serves the same-identity feature-LOD slice as held data (isPending masked) until the document slice lands
-- `2026-07-12-on-demand-cold-start-S02` - Consume the progressive hook in Stage in place of the raw slice hook, unchanged scene contract
-- `2026-07-12-on-demand-cold-start-S03` - Yield briefly between vault-tree continuation pages so the background drain never contends with first paint or first interaction
-- `2026-07-12-on-demand-cold-start-S04` - Test the progressive slice (cold fill, passthrough on data, asOf bypass, refreshing availability during fill) and the paced drain
-- `2026-07-12-on-demand-cold-start-S05` - Run the full gate, live-verify cold-start payloads and first paint, review the diff, commit
-- `2026-07-12-on-demand-cold-start-S06` - Benchmark the actual mobile cold load (bundle census + network + paint timings): production build chunk sizes and a Playwright mobile-viewport census of scripts, API, fonts, and first-paint
-- `2026-07-12-on-demand-cold-start-S07` - Add the instant pre-hydration boot shell: an inline-styled static skeleton in index.html painting before any bundle downloads, retired on AppShell's first commit with a main.tsx backstop
-- `2026-07-12-on-demand-cold-start-S08` - Stop pinning lazily-imported registries into the eager vendor chunk: exempt the shiki grammar/theme modules so they emit as natural async chunks, and isolate the three.js scene stack as its own cacheable vendor-scene chunk
+- `2026-07-12-on-demand-cold-start-ledger` - `on-demand-cold-start` ledger
 
 ### plan
 

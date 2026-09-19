@@ -4,14 +4,15 @@ tags:
   - '#index'
   - '#mobile-unified-rail'
 date: '2026-08-01'
-modified: '2026-09-03'
-body_schema: 'body-v1'
-body_hash: 'sha256:b0b14336e5af2160983aa53912bc504a6f05b230c490c40b4265e153d1dbc079'
+modified: '2026-09-19'
+body_schema: 'body-v2'
+body_hash: 'sha256:d4de102a01cae6f7e63c35ea309587086c700dba2f7b2cf8aa3f24130e9300d8'
 related:
   - '[[2026-07-12-mobile-unified-rail-P01-summary]]'
   - '[[2026-07-12-mobile-unified-rail-P02-summary]]'
   - '[[2026-07-12-mobile-unified-rail-P03-summary]]'
   - '[[2026-07-12-mobile-unified-rail-adr]]'
+  - '[[2026-07-12-mobile-unified-rail-ledger]]'
   - '[[2026-07-12-mobile-unified-rail-plan]]'
   - '[[2026-07-12-mobile-unified-rail-research]]'
 ---
@@ -28,17 +29,10 @@ Auto-generated index of all documents tagged with `#mobile-unified-rail`.
 
 ### exec
 
-- `2026-07-12-mobile-unified-rail-P01-S01` - Cut the compact surface union to Home and Timeline plus the momentary Search, renaming the browse pane to home and updating the default, reset, and pane helpers
-- `2026-07-12-mobile-unified-rail-P01-S02` - Add a view-local fold store for the unified rail's STATUS and BROWSE top-level sections, both expanded by default, Status first
 - `2026-07-12-mobile-unified-rail-P01-summary` - `mobile-unified-rail` `P01` summary
-- `2026-07-12-mobile-unified-rail-P02-S03` - Author the unified rail composing the Status overview then the Browse tree as natural-height sticky collapsible sections under one outer scroll
-- `2026-07-12-mobile-unified-rail-P02-S04` - Render the unified rail for the Home pane in the compact shell, keep the Timeline pane, and route the search, advanced-filter, and workspace-switcher triggers to the Home top bar
-- `2026-07-12-mobile-unified-rail-P02-S05` - Reduce the bottom tab bar to Home, Timeline, and Search and update its glyphs and labels
 - `2026-07-12-mobile-unified-rail-P02-summary` - `mobile-unified-rail` `P02` summary
-- `2026-07-12-mobile-unified-rail-P03-S06` - Update the compact surface store tests for the Home and Timeline surface set
-- `2026-07-12-mobile-unified-rail-P03-S07` - Add pure unit and render tests for the compact rail-sections fold store and the reduced bottom tab bar
-- `2026-07-12-mobile-unified-rail-P03-S08` - Run the full frontend lint gate and vitest suite and drive to green
 - `2026-07-12-mobile-unified-rail-P03-summary` - `mobile-unified-rail` `P03` summary
+- `2026-07-12-mobile-unified-rail-ledger` - `mobile-unified-rail` ledger
 
 ### plan
 

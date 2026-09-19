@@ -4,8 +4,8 @@ tags:
   - '#index'
   - '#code-graph-heat'
 date: '2026-08-01'
-modified: '2026-08-01'
-body_schema: 'body-v1'
+modified: '2026-09-19'
+body_schema: 'body-v2'
 body_hash: 'sha256:6f208fa0a1fc75ea55fb2f562008d0e94833155c24b353952235b2c687f12cb8'
 related:
   - '[[2026-07-02-code-graph-heat-adr]]'

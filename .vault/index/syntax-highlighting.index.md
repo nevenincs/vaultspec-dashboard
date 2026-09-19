@@ -4,12 +4,13 @@ tags:
   - '#index'
   - '#syntax-highlighting'
 date: '2026-08-01'
-modified: '2026-09-03'
-body_schema: 'body-v1'
-body_hash: 'sha256:5acfc793c95ec9feac07022ef6fd6bc89a5afbf398b229d3e68afc1ea5f65d9d'
+modified: '2026-09-19'
+body_schema: 'body-v2'
+body_hash: 'sha256:ce8f40a11b1d8543d1b42dc5c11356afc458ad91f363d9d0c7896135e458d9c5'
 related:
   - '[[2026-07-06-syntax-highlighting-adr]]'
   - '[[2026-07-06-syntax-highlighting-audit]]'
+  - '[[2026-07-06-syntax-highlighting-ledger]]'
   - '[[2026-07-06-syntax-highlighting-plan]]'
   - '[[2026-07-06-syntax-highlighting-research]]'
 ---
@@ -30,11 +31,7 @@ Auto-generated index of all documents tagged with `#syntax-highlighting`.
 
 ### exec
 
-- `2026-07-06-syntax-highlighting-S01` - Extract reusable highlighted code rendering
-- `2026-07-06-syntax-highlighting-S02` - Mount highlighting in the document editor
-- `2026-07-06-syntax-highlighting-S03` - Highlight review snippet diffs
-- `2026-07-06-syntax-highlighting-S04` - Cover highlighter editor and snippet behavior
-- `2026-07-06-syntax-highlighting-S05` - Broaden language coverage
+- `2026-07-06-syntax-highlighting-ledger` - `syntax-highlighting` ledger
 
 ### plan
 

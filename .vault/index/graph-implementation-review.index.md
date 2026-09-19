@@ -4,8 +4,8 @@ tags:
   - '#index'
   - '#graph-implementation-review'
 date: '2026-08-01'
-modified: '2026-08-01'
-body_schema: 'body-v1'
+modified: '2026-09-19'
+body_schema: 'body-v2'
 body_hash: 'sha256:fe9e995c5a29d8a90f9ebb06a5951cace76894e4db4bd21c338b1db6379a722d'
 related:
   - '[[2026-07-02-graph-implementation-review-adr]]'

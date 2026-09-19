@@ -4,11 +4,12 @@ tags:
   - '#index'
   - '#figma-frontend-rewrite'
 date: '2026-08-01'
-modified: '2026-09-03'
-body_schema: 'body-v1'
-body_hash: 'sha256:684317e7c21fd6c4fbb0ef56eea7418b84069a237f9246f7fd5682046587b84d'
+modified: '2026-09-19'
+body_schema: 'body-v2'
+body_hash: 'sha256:b917393fea6f0e68eb38d94cea091c2cd3f08ceeb2389472506cedfc488f592d'
 related:
   - '[[2026-06-16-figma-frontend-rewrite-adr]]'
+  - '[[2026-06-16-figma-frontend-rewrite-ledger]]'
   - '[[2026-06-16-figma-frontend-rewrite-plan]]'
   - '[[2026-06-16-figma-frontend-rewrite-reference]]'
 ---
@@ -25,7 +26,7 @@ Auto-generated index of all documents tagged with `#figma-frontend-rewrite`.
 
 ### exec
 
-- `2026-06-16-figma-frontend-rewrite-W05-P13-S19` - Compare each assembled surface against its Figma board screenshot and fix every residual divergence until identical
+- `2026-06-16-figma-frontend-rewrite-ledger` - `figma-frontend-rewrite` ledger
 
 ### plan
 

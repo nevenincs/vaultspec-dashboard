@@ -4,11 +4,12 @@ tags:
   - '#index'
   - '#rag-console-review'
 date: '2026-08-01'
-modified: '2026-09-03'
-body_schema: 'body-v1'
-body_hash: 'sha256:bed2d0b13bca4da4fa2d75cc38d05e33156a6997f0b3bfe91174aba9d1ce4d1f'
+modified: '2026-09-19'
+body_schema: 'body-v2'
+body_hash: 'sha256:822a42e1b32fe653ddb44e6fc53f74ee6be8c45d82c8f7e44e083eda745f2754'
 related:
   - '[[2026-07-02-rag-console-review-audit]]'
+  - '[[2026-07-02-rag-console-review-ledger]]'
   - '[[2026-07-02-rag-console-review-plan]]'
   - '[[2026-07-03-rag-console-review-adr]]'
 ---
@@ -29,7 +30,7 @@ Auto-generated index of all documents tagged with `#rag-console-review`.
 
 ### exec
 
-- `2026-07-02-rag-console-review-P02-S05` - RCR-002 (Tier-3): file the rag coordination ask for machine-wide aggregate storage totals on /storage/survey
+- `2026-07-02-rag-console-review-ledger` - `rag-console-review` ledger
 
 ### plan
 

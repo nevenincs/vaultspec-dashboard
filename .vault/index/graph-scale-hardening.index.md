@@ -4,11 +4,12 @@ tags:
   - '#index'
   - '#graph-scale-hardening'
 date: '2026-08-01'
-modified: '2026-09-03'
-body_schema: 'body-v1'
-body_hash: 'sha256:3bcdfea309fc49110b107f12d56a8ac09fded5d82a4592c396ed466fb8195fdf'
+modified: '2026-09-19'
+body_schema: 'body-v2'
+body_hash: 'sha256:00acf1a40d40bed9907b01fdfae23a5ecfa3145b80dad3fe86072dcc5d1bb85f'
 related:
   - '[[2026-06-13-graph-scale-hardening-adr]]'
+  - '[[2026-06-13-graph-scale-hardening-ledger]]'
   - '[[2026-06-13-graph-scale-hardening-plan]]'
   - '[[2026-06-13-graph-scale-hardening-research]]'
 ---
@@ -25,17 +26,7 @@ Auto-generated index of all documents tagged with `#graph-scale-hardening`.
 
 ### exec
 
-- `2026-06-13-graph-scale-hardening-P01-S01` - Thread a once-built worktree inventory into resolution
-- `2026-06-13-graph-scale-hardening-P01-S02` - Build inverted indices once and resolve each mention by lookup
-- `2026-06-13-graph-scale-hardening-P01-S03` - Re-run scale_bench and record the cold-index before and after, keeping resolver tests green
-- `2026-06-13-graph-scale-hardening-P02-S04` - Memoize the derived projections and serialized slice on the graph generation, invalidated at commit
-- `2026-06-13-graph-scale-hardening-P02-S05` - Re-run the scale_bench concurrent pass and record before/after
-- `2026-06-13-graph-scale-hardening-P03-S06` - Default to LOD, finish cursor pagination, and enforce a hard node ceiling on document granularity
-- `2026-06-13-graph-scale-hardening-P03-S07` - Add a viewport/region filter parameter to the document query
-- `2026-06-13-graph-scale-hardening-P03-S08` - Amend the contract reference and add conformance assertions for the bounded-query semantics
-- `2026-06-13-graph-scale-hardening-P04-S09` - Default the GUI graph query to the constellation LOD and descend to bounded slices on zoom-in
-- `2026-06-13-graph-scale-hardening-P04-S10` - Re-run the frontend gates green (typecheck, lint, test, build)
-- `2026-06-13-graph-scale-hardening-P05-S11` - Codify the GPU-boundary and bounded-query rules as project rules
+- `2026-06-13-graph-scale-hardening-ledger` - `graph-scale-hardening` ledger
 
 ### plan
 

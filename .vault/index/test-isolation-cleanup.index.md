@@ -4,27 +4,12 @@ tags:
   - '#index'
   - '#test-isolation-cleanup'
 date: '2026-09-04'
-modified: '2026-09-06'
+modified: '2026-09-19'
 body_schema: 'body-v2'
-body_hash: 'sha256:e63daa53dfa076c84e3220d8cc80842c9baf2dcbd088691edcf8e91d77c99216'
+body_hash: 'sha256:2a4189934af9ead70f222ea7e9596220cca662d50a3c83748159e64a55470df4'
 related:
-  - '[[2026-09-04-test-isolation-cleanup-S01]]'
-  - '[[2026-09-04-test-isolation-cleanup-S02]]'
-  - '[[2026-09-04-test-isolation-cleanup-S03]]'
-  - '[[2026-09-04-test-isolation-cleanup-S04]]'
-  - '[[2026-09-04-test-isolation-cleanup-S05]]'
-  - '[[2026-09-04-test-isolation-cleanup-S06]]'
-  - '[[2026-09-04-test-isolation-cleanup-S07]]'
-  - '[[2026-09-04-test-isolation-cleanup-S08]]'
-  - '[[2026-09-04-test-isolation-cleanup-S09]]'
-  - '[[2026-09-04-test-isolation-cleanup-S11]]'
-  - '[[2026-09-04-test-isolation-cleanup-S12]]'
-  - '[[2026-09-04-test-isolation-cleanup-S13]]'
-  - '[[2026-09-04-test-isolation-cleanup-S14]]'
-  - '[[2026-09-04-test-isolation-cleanup-S16]]'
-  - '[[2026-09-04-test-isolation-cleanup-S17]]'
-  - '[[2026-09-04-test-isolation-cleanup-S18]]'
   - '[[2026-09-04-test-isolation-cleanup-adr]]'
+  - '[[2026-09-04-test-isolation-cleanup-ledger]]'
   - '[[2026-09-04-test-isolation-cleanup-plan]]'
   - '[[2026-09-04-test-isolation-cleanup-research]]'
   - '[[2026-09-06-test-isolation-cleanup-s06-awaited-happydom-abort-review-audit]]'
@@ -66,22 +51,7 @@ Auto-generated index of all documents tagged with `#test-isolation-cleanup`.
 
 ### exec
 
-- `2026-09-04-test-isolation-cleanup-S01` - Add the global unmount barrier setup file and register it after the live-engine setup file
-- `2026-09-04-test-isolation-cleanup-S02` - Add a guard suite that mounts in one case and asserts absence in the next, and validate it fails with the barrier removed
-- `2026-09-04-test-isolation-cleanup-S03` - Run the full frontend suite with the barrier active and enumerate every newly failing suite
-- `2026-09-04-test-isolation-cleanup-S04` - Triage each newly failing suite as a surfaced pre-existing defect: fix on merits or record with evidence
-- `2026-09-04-test-isolation-cleanup-S05` - Re-run the full gate three times to confirm the barrier holds against the flake class it closes
-- `2026-09-04-test-isolation-cleanup-S06` - Await native happy-dom abort directly, remove the fixed drain, and make serial worker configuration truthful
-- `2026-09-04-test-isolation-cleanup-S07` - Add an awaited-abort and no-timer guard, and prove it fails both when awaiting is removed and when a fixed drain returns
-- `2026-09-04-test-isolation-cleanup-S08` - Add bounded unexpected-engine-exit diagnostics without retries or behavior changes
-- `2026-09-04-test-isolation-cleanup-S09` - Run frontend/src/app/left/AddProjectDialog.localization.test.tsx, frontend/src/app/left/CreateDocDialog.render.test.tsx, frontend/src/stores/server/comments.live.test.ts, frontend/src/stores/server/systemPrograms.live.test.ts, frontend/src/stores/server/queries/docmeta.test.ts, both barrier guards, and full frontend lint
-- `2026-09-04-test-isolation-cleanup-S11` - Correct the live system-program adapter test for running, crashed, and absent identity states
-- `2026-09-04-test-isolation-cleanup-S12` - Remove the destructive per-test happy-dom abort path and its obsolete helper and guard while preserving RTL unmount and Vitest-owned file teardown
-- `2026-09-04-test-isolation-cleanup-S13` - Add a cross-test lifecycle guard proving the harness never calls happy-dom abort between cases and demonstrate it red with the removed hook restored
-- `2026-09-04-test-isolation-cleanup-S14` - Record the first exact eight-file prefix as a completed diagnostic enumeration even though the zero-diagnostic barrier is red, preserve its log, and route the attributed AgentPanel cluster plus smaller unassigned reset cluster to S15 without an unchanged rerun
-- `2026-09-04-test-isolation-cleanup-S16` - Implement and mutation-prove a shared two-phase SSE cancellation contract that aborts only pending response acquisition, then gracefully cancels the response reader, and route engine, A2A, and authoring lifecycle streams through it
-- `2026-09-04-test-isolation-cleanup-S17` - Install and mutation-prove an owner-enrolled live-render teardown that awaits finite queries before RTL unmount, then awaits S16 stream cancellation and a separately exposed authoring stop-settlement promise before clearing clients, and apply it to AgentPanel and Composer
-- `2026-09-04-test-isolation-cleanup-S18` - Implement and mutation-prove a bounded Node HTTP/HTTPS transport for live-engine tests, route the shared live client through it, and preserve direct raw-fetch conformance
+- `2026-09-04-test-isolation-cleanup-ledger` - `test-isolation-cleanup` ledger
 
 ### plan
 

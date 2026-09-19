@@ -4,8 +4,8 @@ tags:
   - '#index'
   - '#dashboard-backend-completion'
 date: '2026-08-01'
-modified: '2026-08-01'
-body_schema: 'body-v1'
+modified: '2026-09-19'
+body_schema: 'body-v2'
 body_hash: 'sha256:bf6cdad0d1316f955f269fbb8f96f825b9f026c244211440aa5efb4a79ad0529'
 related:
   - '[[2026-06-16-dashboard-backend-completion-research]]'

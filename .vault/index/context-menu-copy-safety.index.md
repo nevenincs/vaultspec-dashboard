@@ -4,8 +4,8 @@ tags:
   - '#index'
   - '#context-menu-copy-safety'
 date: '2026-08-01'
-modified: '2026-08-01'
-body_schema: 'body-v1'
+modified: '2026-09-19'
+body_schema: 'body-v2'
 body_hash: 'sha256:010571abe5177e7bff7480821603b0cb106daa3b50495f26b48e000677cfb2f2'
 related:
   - '[[2026-07-15-context-menu-copy-safety-adr]]'

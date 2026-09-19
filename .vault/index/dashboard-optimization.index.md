@@ -4,12 +4,13 @@ tags:
   - '#index'
   - '#dashboard-optimization'
 date: '2026-08-01'
-modified: '2026-09-03'
-body_schema: 'body-v1'
-body_hash: 'sha256:ab3d68647151e234c02be3c3c57280c5f0db48c0ed20c72acbdea4d016a71b38'
+modified: '2026-09-19'
+body_schema: 'body-v2'
+body_hash: 'sha256:58e44a782a1b862e059766075255a0da3be829c443d211f665b8ac23e1bf70cd'
 related:
   - '[[2026-06-13-dashboard-optimization-adr]]'
   - '[[2026-06-13-dashboard-optimization-audit]]'
+  - '[[2026-06-13-dashboard-optimization-ledger]]'
   - '[[2026-06-13-dashboard-optimization-plan]]'
   - '[[2026-06-13-dashboard-optimization-research]]'
 ---
@@ -30,10 +31,7 @@ Auto-generated index of all documents tagged with `#dashboard-optimization`.
 
 ### exec
 
-- `2026-06-13-dashboard-optimization-W01-P01-S01` - Add the fake-timer delta-storm harness and the bounded-growth assertion helper
-- `2026-06-13-dashboard-optimization-W02-P02-S03` - Bound the streamed-query accumulator to a summary so it cannot grow session-unbounded
-- `2026-06-13-dashboard-optimization-W02-P02-S04` - Add a shared trailing-edge debounce and coalesce the graph and status invalidation storms
-- `2026-06-13-dashboard-optimization-W04-P05-S10` - Run the campaign verification gates and record the audit
+- `2026-06-13-dashboard-optimization-ledger` - `dashboard-optimization` ledger
 
 ### plan
 

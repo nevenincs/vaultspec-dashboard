@@ -4,8 +4,8 @@ tags:
   - '#index'
   - '#global-state-review'
 date: '2026-08-01'
-modified: '2026-08-01'
-body_schema: 'body-v1'
+modified: '2026-09-19'
+body_schema: 'body-v2'
 body_hash: 'sha256:24fe5db6d901b55188b16099cc7f5d6383d1888fffb90a85fdb68a55d13dcbbe'
 related:
   - '[[2026-07-02-global-state-review-audit]]'

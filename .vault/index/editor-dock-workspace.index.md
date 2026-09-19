@@ -4,8 +4,8 @@ tags:
   - '#index'
   - '#editor-dock-workspace'
 date: '2026-08-01'
-modified: '2026-08-01'
-body_schema: 'body-v1'
+modified: '2026-09-19'
+body_schema: 'body-v2'
 body_hash: 'sha256:8a5f9ba1998aeb8ca3be2449a84b52669f00a54b83e740c5302b41e7fc1a68b7'
 related:
   - '[[2026-06-18-editor-dock-workspace-adr]]'

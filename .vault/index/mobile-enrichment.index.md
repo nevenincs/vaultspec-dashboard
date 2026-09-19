@@ -4,11 +4,12 @@ tags:
   - '#index'
   - '#mobile-enrichment'
 date: '2026-08-01'
-modified: '2026-09-03'
-body_schema: 'body-v1'
-body_hash: 'sha256:95060f80db3592faa5f9cf1c7eea9f1405a126e977f304cd06c4d35417571aea'
+modified: '2026-09-19'
+body_schema: 'body-v2'
+body_hash: 'sha256:1303aba57b6b52ae50b08c439c4d48a878b1a7168d7d6f68b42e5bc51d66201f'
 related:
   - '[[2026-07-08-mobile-enrichment-adr]]'
+  - '[[2026-07-08-mobile-enrichment-ledger]]'
   - '[[2026-07-08-mobile-enrichment-plan]]'
   - '[[2026-07-09-mobile-enrichment-audit]]'
 ---
@@ -29,15 +30,7 @@ Auto-generated index of all documents tagged with `#mobile-enrichment`.
 
 ### exec
 
-- `2026-07-08-mobile-enrichment-S01` - D2: surface document review metadata inline on compact (date + plain-language ADR acceptance / plan progress) as a second meta line
-- `2026-07-08-mobile-enrichment-S02` - D1: compact workspace switcher — MobileTopBar title trigger opens a BottomSheet re-presenting useWorktreePickerView with the shared activate/swap intents and unsaved-edit guard
-- `2026-07-08-mobile-enrichment-S03` - D3: hoist the canonical Vault/doc-type/title trail into a shared helper consumed by DocPanel and CompactDocReader, retiring the bare 2-item breadcrumb
-- `2026-07-08-mobile-enrichment-S04` - D4: edge-swipe back gesture in the compact reader (widget-intrinsic) routing the same doc-scoped unsaved-draft guard as tap-back
-- `2026-07-08-mobile-enrichment-S05` - Add a live-engine compact guard test asserting the ADR-status word and date render inline (the tooltip-only regression is otherwise silent)
-- `2026-07-08-mobile-enrichment-S06` - Verify: full frontend lint gate green, live @390px visual parity against the binding Figma frames, and code review closeout
-- `2026-07-08-mobile-enrichment-S07` - D6: compact reader breadcrumb legibility — drop the Vault root on compact and keep ancestor crumbs whole so only the title truncates (no more Va… / Decisi… / title…)
-- `2026-07-08-mobile-enrichment-S08` - D7: edge-swipe hardening decided — pointer-capture rejected, touch-action pan-y shipped
-- `2026-07-08-mobile-enrichment-S09` - D8: desktop LeftRail tree-level indent guide added to the Figma design (SectionBody), matching the shipped code and the mobile Browse frame — Figma-only, no code change
+- `2026-07-08-mobile-enrichment-ledger` - `mobile-enrichment` ledger
 
 ### plan
 

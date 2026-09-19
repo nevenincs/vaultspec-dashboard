@@ -4,8 +4,8 @@ tags:
   - '#index'
   - '#ambient-scope-coherence'
 date: '2026-08-01'
-modified: '2026-08-01'
-body_schema: 'body-v1'
+modified: '2026-09-19'
+body_schema: 'body-v2'
 body_hash: 'sha256:6043dfb2fa90e0ab529bf011f725a79c35adc4e62ed9474555e5f7f432759dcc'
 related:
   - '[[2026-07-13-ambient-scope-coherence-audit]]'

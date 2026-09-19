@@ -4,8 +4,8 @@ tags:
   - '#index'
   - '#graph-query-scope-memo'
 date: '2026-08-01'
-modified: '2026-08-01'
-body_schema: 'body-v1'
+modified: '2026-09-19'
+body_schema: 'body-v2'
 body_hash: 'sha256:2787da911c193f0a0b90d9f8500dcd395de8b46fefdcdb61ea3a288ef6c599b9'
 related:
   - '[[2026-06-16-graph-query-scope-memo-audit]]'

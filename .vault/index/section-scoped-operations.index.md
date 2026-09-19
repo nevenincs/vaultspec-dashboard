@@ -4,8 +4,8 @@ tags:
   - '#index'
   - '#section-scoped-operations'
 date: '2026-08-01'
-modified: '2026-08-01'
-body_schema: 'body-v1'
+modified: '2026-09-19'
+body_schema: 'body-v2'
 body_hash: 'sha256:551cb0ff49df893b3eb91bc2eaff99f67e6276b8cf5f878feee615e954ec45f0'
 related:
   - '[[2026-07-11-section-scoped-operations-adr]]'

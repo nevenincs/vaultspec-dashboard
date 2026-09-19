@@ -3,12 +3,11 @@ tags:
   - '#audit'
   - '#design-system-consolidation'
 date: '2026-09-05'
-modified: '2026-09-06'
+modified: '2026-09-19'
 body_schema: 'body-v2'
 body_hash: 'sha256:e685b366b0546b7348a953fe6700e80677e86a10cddfd44d874007c94f82eaa3'
 related:
   - "[[2026-09-05-design-system-consolidation-plan]]"
-  - "[[2026-09-05-design-system-consolidation-W01-P01-S01]]"
 ---
 
 # `design-system-consolidation` audit: `S01 ledger schema review`

@@ -4,8 +4,8 @@ tags:
   - '#index'
   - '#plan-structure-tolerance'
 date: '2026-08-01'
-modified: '2026-08-01'
-body_schema: 'body-v1'
+modified: '2026-09-19'
+body_schema: 'body-v2'
 body_hash: 'sha256:51a504f5e3fee52ea586d40cbdf27e08d9611c70130550289f3e06821bdd462a'
 related:
   - '[[2026-06-15-plan-structure-tolerance-adr]]'

@@ -4,12 +4,13 @@ tags:
   - '#index'
   - '#release-automation'
 date: '2026-08-01'
-modified: '2026-09-03'
-body_schema: 'body-v1'
-body_hash: 'sha256:8e73c06d720c091550e527772ec80da18bec135cb04ce1e0bd9323cad93e0f27'
+modified: '2026-09-19'
+body_schema: 'body-v2'
+body_hash: 'sha256:78a8e1fd08620a13f6fcd999c4959110852ad2dc89b29533410add7f7f76c1ca'
 related:
   - '[[2026-07-07-release-automation-adr]]'
   - '[[2026-07-07-release-automation-audit]]'
+  - '[[2026-07-07-release-automation-ledger]]'
   - '[[2026-07-07-release-automation-plan]]'
 ---
 
@@ -29,13 +30,7 @@ Auto-generated index of all documents tagged with `#release-automation`.
 
 ### exec
 
-- `2026-07-07-release-automation-S01` - author the rust-typed release-please config: path engine, include-component-in-tag false so tags stay v-plain for the dist trigger, pre-1.0 bump rules, changelog sections, and a toml jsonpath extra-file bumping the workspace.package.version in the virtual engine manifest
-- `2026-07-07-release-automation-S02` - seed the manifest at the current workspace version for the engine path
-- `2026-07-07-release-automation-S03` - add the release-please workflow on pushes to main, running the v4 action with a release token seam (PAT or App token) so the minted tag actually fires the downstream release workflow
-- `2026-07-07-release-automation-S04` - restore the block-manual-changelog pre-commit guard now that a generated CHANGELOG.md returns
-- `2026-07-07-release-automation-S05` - append the D7 supersession note pointing at the release-automation adr
-- `2026-07-07-release-automation-S06` - reword the maintainers release process to the merge-the-release-PR ritual and name the first-release watch list
-- `2026-07-07-release-automation-S07` - validate the config pair against the published release-please JSON schemas and pass the repo lint gates
+- `2026-07-07-release-automation-ledger` - `release-automation` ledger
 
 ### plan
 

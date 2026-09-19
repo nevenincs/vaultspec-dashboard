@@ -4,8 +4,8 @@ tags:
   - '#index'
   - '#plan-document-rendering'
 date: '2026-08-01'
-modified: '2026-08-01'
-body_schema: 'body-v1'
+modified: '2026-09-19'
+body_schema: 'body-v2'
 body_hash: 'sha256:a0efbf2c53d59af12ce9a6f03757125f468dae38b036c1c20f7c9ee48a236592'
 related:
   - '[[2026-06-29-plan-document-rendering-adr]]'

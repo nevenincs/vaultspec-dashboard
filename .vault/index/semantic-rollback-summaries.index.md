@@ -4,8 +4,8 @@ tags:
   - '#index'
   - '#semantic-rollback-summaries'
 date: '2026-08-01'
-modified: '2026-08-01'
-body_schema: 'body-v1'
+modified: '2026-09-19'
+body_schema: 'body-v2'
 body_hash: 'sha256:06d321801201a9077938ac3e75299d031f0cd272ceef7eeb5378bd70b101a8f1'
 related:
   - '[[2026-07-15-semantic-rollback-summaries-adr]]'
