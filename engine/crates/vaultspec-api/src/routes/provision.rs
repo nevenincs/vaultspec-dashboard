@@ -1045,7 +1045,9 @@ use setup::{
     setup_receipt, validate_install_output,
 };
 
-#[cfg(all(test, windows))]
+// Gated to Windows only because the receipt proof that uses it was; that proof
+// now runs on every platform, and so must its import.
+#[cfg(test)]
 use setup::digest;
 
 // --- POST /provision/run ------------------------------------------------------

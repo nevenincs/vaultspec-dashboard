@@ -320,9 +320,18 @@ def test_nothing_is_visible_before_every_gate_passes(repo_root: Path) -> None:
     """Draft -> prerelease after the gates -> latest after acquisition."""
     jobs = _load(repo_root, ORCHESTRATOR)["jobs"]
     for builder in ("archives", "build-product-tree"):
-        assert {"merge-gate", "preflight"} <= _needs(jobs[builder]), (
-            f"{builder} must wait for the merge gate and the runner preflight"
+        assert "merge-gate" in _needs(jobs[builder]), (
+            f"{builder} must wait for the merge gate"
         )
+    # A job sent to a selector with no online runner queues rather than fails,
+    # and `timeout-minutes` does not bound the wait. The watchdog reads this
+    # run's own jobs - never the fleet's inventory - and cancels the run.
+    watchdog = jobs["queue-watchdog"]
+    assert watchdog["permissions"] == {"actions": "write"}, watchdog["permissions"]
+    script = "".join(str(step.get("run", "")) for step in watchdog["steps"])
+    assert "actions/runs/${RUN_ID}/jobs" in script, script
+    assert "gh run cancel" in script, script
+    assert "actions/runners" not in script, "the watchdog must not read fleet inventory"
     assert jobs["merge-gate"]["uses"].endswith(GATE_WORKFLOW)
     assert jobs["archives"]["uses"].endswith(ARCHIVES)
     assert {"archives", "attach-to-release", "channel-feasibility"} <= _needs(
