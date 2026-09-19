@@ -3,10 +3,11 @@ import json
 import struct
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 APPROVED_ICO_SHA256 = "7291c0067ac4da1d3e7a31b6a0183b23eafed5611a687ab6a8f490e647504705"
-APPROVED_README_SHA256 = "4f74b14c65308c84c6a24289c1999a64fbe61fef954101ff4945d1c807708f57"
+APPROVED_README_SHA256 = (
+    "4f74b14c65308c84c6a24289c1999a64fbe61fef954101ff4945d1c807708f57"
+)
 BINARY_PACKAGES = (
     "vaultspec-cli",
     "vaultspec-updater",
@@ -42,12 +43,12 @@ def test_governed_assets_are_exact_and_complete() -> None:
 def test_browser_and_in_app_surfaces_use_the_approved_mark() -> None:
     html = (ROOT / "frontend/index.html").read_text(encoding="utf-8")
     for asset in ("favicon.ico", "icon.svg", "favicon-32.png", "apple-touch-icon.png"):
-        assert f'/{asset}' in html
+        assert f"/{asset}" in html
     assert "data:image/svg+xml" not in html
 
     svg = (ROOT / "frontend/public/icon.svg").read_text(encoding="utf-8")
-    assert "<title id=\"vaultspec-logo-title\">Vaultspec logo</title>" in svg
-    assert "<desc id=\"vaultspec-logo-description\">" in svg
+    assert '<title id="vaultspec-logo-title">Vaultspec logo</title>' in svg
+    assert '<desc id="vaultspec-logo-description">' in svg
     assert 'aria-labelledby="vaultspec-logo-title vaultspec-logo-description"' in svg
 
     mark = (ROOT / "frontend/src/app/kit/BrandMark.tsx").read_text(encoding="utf-8")
@@ -87,7 +88,9 @@ def test_release_manifest_binds_resource_bearing_executables_by_digest() -> None
     assert '"dashboard": {"source":' in assembly
     assert '"updater": {"source":' in assembly
 
-    product = (ROOT / "engine/crates/vaultspec-product/src/product_build.rs").read_text()
+    product = (
+        ROOT / "engine/crates/vaultspec-product/src/product_build.rs"
+    ).read_text()
     assert "file_digests" in product
     assert "sources.dashboard" in product
     assert "sources.updater" in product
