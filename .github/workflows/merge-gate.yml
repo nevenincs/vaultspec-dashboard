@@ -197,7 +197,7 @@ jobs:
           set +e
           df -h . 2>/dev/null | tail -1
           pkill -f 'vaultspec .*serve' 2>/dev/null || true
-          pkill -f '/debug/vaultspec' 2>/dev/null || true
+          pkill -f '/release/vaultspec' 2>/dev/null || true
           rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
           if [ "${{ job.status }}" = "failure" ]; then
             rm -rf engine/target frontend/node_modules 2>/dev/null || true
@@ -287,10 +287,11 @@ jobs:
           cat "${RUNNER_TEMP}/frontend-suite.log"
           exit $status
         env:
-          # Pin the exact binary the live suite spawns. Its own fallback probes
+          # Pin the exact binary the live suite spawns: `just build-rust` builds
+          # the workspace in RELEASE, and the suite's own fallback probes
           # `engine/target/{release,debug}`, which does not exist when the build
           # landed in the shared directory.
-          VAULTSPEC_TEST_ENGINE_BIN: ${{ env.ENGINE_TARGET_DIR }}/debug/vaultspec
+          VAULTSPEC_TEST_ENGINE_BIN: ${{ env.ENGINE_TARGET_DIR }}/release/vaultspec
       # A red here means one of two unrelated things: an assertion failed, or
       # the runner died. vitest prints its summary only after running to
       # completion, so its ABSENCE is what separates them.
@@ -307,7 +308,7 @@ jobs:
           set +e
           df -h . 2>/dev/null | tail -1
           pkill -f 'vaultspec .*serve' 2>/dev/null || true
-          pkill -f '/debug/vaultspec' 2>/dev/null || true
+          pkill -f '/release/vaultspec' 2>/dev/null || true
           rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
           if [ "${{ job.status }}" = "failure" ]; then
             rm -rf engine/target frontend/node_modules 2>/dev/null || true
@@ -360,6 +361,12 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      # `npx vitest` below loads frontend/vite.config.ts, which imports the SPA's
+      # own dev dependencies, so the lockfile has to be restored first: without
+      # it the run dies at startup on "Cannot find package '@tailwindcss/vite'"
+      # rather than on anything the wire did.
+      - name: Provision the dev toolchain
+        run: just init
       - name: Install vaultspec-core (live-engine declared-tier dependency)
         # The engine startup gate probes vaultspec-core on PATH; without it
         # `vaultspec serve` fails and the conformance test errors with
@@ -396,8 +403,9 @@ jobs:
           GIT_AUTHOR_DATE="$T2_DATE" GIT_COMMITTER_DATE="$T2_DATE" git commit -m "T2: update"
 
           # Start serve on an OS-assigned port; service.json carries the real
-          # port + token.
-          "$ENGINE_TARGET_DIR/debug/vaultspec" serve --port 0 &
+          # port + token. `just build-rust` is a release build, so this is the
+          # binary it produced.
+          "$ENGINE_TARGET_DIR/release/vaultspec" serve --port 0 &
           SERVE_PID=$!
           echo "SERVE_PID=$SERVE_PID" >> "$GITHUB_ENV"
 
@@ -429,7 +437,7 @@ jobs:
           set +e
           df -h . 2>/dev/null | tail -1
           pkill -f 'vaultspec .*serve' 2>/dev/null || true
-          pkill -f '/debug/vaultspec' 2>/dev/null || true
+          pkill -f '/release/vaultspec' 2>/dev/null || true
           rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
           if [ "${{ job.status }}" = "failure" ]; then
             rm -rf engine/target frontend/node_modules 2>/dev/null || true
@@ -487,7 +495,7 @@ jobs:
           set +e
           df -h . 2>/dev/null | tail -1
           pkill -f 'vaultspec .*serve' 2>/dev/null || true
-          pkill -f '/debug/vaultspec' 2>/dev/null || true
+          pkill -f '/release/vaultspec' 2>/dev/null || true
           rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
           if [ "${{ job.status }}" = "failure" ]; then
             rm -rf engine/target frontend/node_modules 2>/dev/null || true
@@ -547,9 +555,10 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      # A fork's code never reaches a self-hosted runner: every measuring job
-      # is conditioned off for it, and this refusal turns that absence into a
-      # red verdict instead of a vacuous one.
+      # Fork pull requests are always refused. Every measuring job is
+      # conditioned off for a fork, and this step - the first, before any
+      # checkout - turns that absence into a red verdict, so a fork can merge
+      # only after a maintainer re-opens it from a branch of this repository.
       - name: Refuse fork pull requests
         if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         shell: bash

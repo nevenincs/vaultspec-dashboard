@@ -207,6 +207,65 @@ def test_the_gate_is_never_skipped_and_sees_every_job(repo_root: Path) -> None:
         )
 
 
+FORK_CLAUSE = "github.event.pull_request.head.repo.full_name == github.repository"
+FORK_REFUSAL = "github.event.pull_request.head.repo.full_name != github.repository"
+
+
+def _fork_offenders(workflow: str, document: dict) -> list[str]:
+    """Where a fork's pull request could reach a runner, or pass the verdict.
+
+    Every job a `pull_request` can start must refuse forks in its own `if:`,
+    except the verdict, which must run for a fork and fail it in its first step.
+    A runner switch to a hosted image is not refusal: it still runs fork code.
+    """
+    if "pull_request" not in _triggers(document):
+        return []
+    offenders = []
+    for job, spec in document["jobs"].items():
+        runs_on = str(spec.get("runs-on", ""))
+        if "fromJSON" in runs_on and "head.repo" in runs_on:
+            offenders.append(f"{workflow}:{job} switches runners for forks")
+        if str(spec.get("name", "")) == GATE_NAME:
+            steps = spec.get("steps") or [{}]
+            first = steps[0]
+            if FORK_REFUSAL not in str(first.get("if", "")) or "uses" in first:
+                offenders.append(f"{workflow}:{job} does not fail forks first")
+            continue
+        if FORK_CLAUSE not in str(spec.get("if", "")):
+            offenders.append(f"{workflow}:{job} can run for a fork")
+    return offenders
+
+
+def test_fork_pull_requests_are_always_refused(repo_root: Path) -> None:
+    """No fork's pull request gets a runner, and none can pass the verdict."""
+    offenders = [
+        finding
+        for workflow in _all_workflows(repo_root)
+        for finding in _fork_offenders(workflow, _load(repo_root, workflow))
+    ]
+    assert not offenders, offenders
+
+
+@pytest.mark.parametrize(
+    ("workflow", "job"),
+    [(CHEAP_LANE, "static"), (GATE_WORKFLOW, "engine"), (GATE_WORKFLOW, GATE_JOB)],
+)
+def test_the_fork_guard_notices_a_removed_clause(
+    repo_root: Path, workflow: str, job: str
+) -> None:
+    """Guard the guard: stripping the refusal must be reported."""
+    document = _load(repo_root, workflow)
+    assert not _fork_offenders(workflow, document)
+    spec = document["jobs"][job]
+    if job == GATE_JOB:
+        spec["steps"][0]["if"] = "${{ false }}"
+    else:
+        spec["if"] = str(spec.get("if", "")).replace(FORK_CLAUSE, "true")
+    assert _fork_offenders(workflow, document), (
+        f"removing the fork refusal from {workflow}:{job} went unnoticed"
+    )
+
+
 def test_just_ci_is_exactly_the_merge_gate(
     repo_root: Path, recipe_bodies: dict[str, list[str]]
 ) -> None:
@@ -261,9 +320,18 @@ def test_nothing_is_visible_before_every_gate_passes(repo_root: Path) -> None:
     """Draft -> prerelease after the gates -> latest after acquisition."""
     jobs = _load(repo_root, ORCHESTRATOR)["jobs"]
     for builder in ("archives", "build-product-tree"):
-        assert {"merge-gate", "preflight"} <= _needs(jobs[builder]), (
-            f"{builder} must wait for the merge gate and the runner preflight"
+        assert "merge-gate" in _needs(jobs[builder]), (
+            f"{builder} must wait for the merge gate"
         )
+    # A job sent to a selector with no online runner queues rather than fails,
+    # and `timeout-minutes` does not bound the wait. The watchdog reads this
+    # run's own jobs - never the fleet's inventory - and cancels the run.
+    watchdog = jobs["queue-watchdog"]
+    assert watchdog["permissions"] == {"actions": "write"}, watchdog["permissions"]
+    script = "".join(str(step.get("run", "")) for step in watchdog["steps"])
+    assert "actions/runs/${RUN_ID}/jobs" in script, script
+    assert "gh run cancel" in script, script
+    assert "actions/runners" not in script, "the watchdog must not read fleet inventory"
     assert jobs["merge-gate"]["uses"].endswith(GATE_WORKFLOW)
     assert jobs["archives"]["uses"].endswith(ARCHIVES)
     assert {"archives", "attach-to-release", "channel-feasibility"} <= _needs(
