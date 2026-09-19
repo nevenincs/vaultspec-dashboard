@@ -101,4 +101,3 @@ homebrew-bump.yml
 scoop-bump.yml
 winget-publish.yml
 acquisition.yml        # recipe: test-acquisition, shared with core and rag
-ci-runner-probe.yml    # runner-plane in full; belongs in the shared runner tooling

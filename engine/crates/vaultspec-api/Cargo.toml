@@ -37,7 +37,7 @@ yaml_serde = "0.10.7"
 thiserror = "2.0.18"
 tokio = { version = "1.52.3", features = ["rt", "macros", "net", "sync", "time", "process", "io-util", "signal"] }
 tokio-stream = { version = "0.1.18", features = ["sync"] }
-tower-http = { version = "0.6.11", features = [
+tower-http = { version = "0.7.1", features = [
     "catch-panic",
     "compression-gzip",
     "set-header",
@@ -62,4 +62,4 @@ flate2 = "1.0"
 tar = "0.4"
 tempfile = "3.27.0"
 tower = { version = "0.5.3", features = ["util"] }
-zip = { version = "2.2", default-features = false, features = ["deflate"] }
+zip = { version = "8.6", default-features = false, features = ["deflate"] }
