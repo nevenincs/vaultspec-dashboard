@@ -1,4 +1,4 @@
-//! The agent-tier projection: the ONE machine-global read pass that answers
+//! The agent-tier projection: the ONE process-wide read pass that answers
 //! "can the orchestration plane be reached?" and renders the component
 //! handshake beside that answer.
 //!
@@ -96,9 +96,13 @@ pub(super) fn compose_availability(
 }
 
 /// Read the pass-through's resident-sibling predicate once. Filesystem-only, so
-/// it costs a stat and a small read behind the snapshot memo.
+/// it costs a stat and a small read behind the snapshot memo. This memoized
+/// snapshot has no per-request state to thread a workspace root through, so it
+/// reads the engine's own served workspace root (`super::engine_workspace_root`)
+/// rather than taking one as a parameter.
 fn observe_resident_sibling() -> ResidentSibling {
-    match crate::routes::ops::resident_sibling_is_attachable() {
+    let workspace_root = super::engine_workspace_root();
+    match crate::routes::ops::resident_sibling_is_attachable(&workspace_root) {
         Ok(()) => ResidentSibling::Attachable,
         Err(_) => ResidentSibling::Absent,
     }
@@ -218,8 +222,9 @@ pub(super) fn handshake_value(
 
 /// The honest agent-orchestration availability derived from product state under
 /// an app home, WITHOUT reading any credential secret. One receipt + one
-/// discovery read, then the pure classifier. Scope-independent (a2a is one
-/// machine-global resident). Used by the seated plane's own reads.
+/// discovery read, then the pure classifier. The resident-sibling fallback this
+/// composes with is project-bound, not machine-global — it reads the engine's
+/// own served workspace root. Used by the seated plane's own reads.
 pub(crate) fn agent_availability_at(
     paths: &ProductPaths,
     owner_id: &str,
@@ -255,7 +260,7 @@ pub(crate) fn agent_handshake_at(paths: &ProductPaths, owner_id: &str) -> Value 
     )
 }
 
-/// One machine-global read pass of A2A product state (review MEDIUM): the agent
+/// One process-wide read pass of A2A product state (review MEDIUM): the agent
 /// tier AND the component handshake are BOTH derived from a single receipt +
 /// discovery read. Memoized on a short TTL so the per-response `tiers_value` hot
 /// path — which needs both — does not re-`derive` paths and re-read+parse the
@@ -281,7 +286,7 @@ fn agent_snapshot_cache() -> &'static RwLock<Option<CachedSnapshot>> {
     CACHE.get_or_init(|| RwLock::new(None))
 }
 
-/// Resolve the machine-global A2A snapshot, memoized for [`AGENT_SNAPSHOT_TTL`].
+/// Resolve the process-wide A2A snapshot, memoized for [`AGENT_SNAPSHOT_TTL`].
 /// A fresh cached snapshot is returned without touching the filesystem; a stale
 /// or absent one triggers exactly one read pass. Honesty is preserved: the memo
 /// holds the real classification for at most the TTL, never an optimistic verdict.
@@ -349,7 +354,7 @@ fn compute_agent_snapshot() -> AgentSnapshot {
     }
 }
 
-/// Resolve the agent-orchestration tier MACHINE-GLOBALLY for the shared tiers
+/// Resolve the agent-orchestration tier PROCESS-WIDE for the shared tiers
 /// builder: every served response overlays this honest classification onto
 /// the degraded-by-default seed, so absence can never masquerade as availability.
 /// Reads through the memoized snapshot so it shares one filesystem pass with the
@@ -359,7 +364,7 @@ pub(crate) fn resolve_agent_tier() -> (bool, Option<String>) {
     (snap.available, snap.reason.clone())
 }
 
-/// Resolve the A2A component handshake MACHINE-GLOBALLY for the tiers decoration,
+/// Resolve the A2A component handshake PROCESS-WIDE for the tiers decoration,
 /// sharing the memoized read pass with [`resolve_agent_tier`].
 pub(crate) fn resolve_agent_handshake() -> Value {
     resolve_agent_snapshot().handshake.clone()

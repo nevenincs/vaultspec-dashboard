@@ -30,29 +30,30 @@ use crate::protocol::{LifecycleOp, Readiness, Refusal, WorkerState};
 use crate::provisioning::{ActiveReleaseState, observe_active_release};
 
 /// The a2a gateway's app-home env var (`vaultspec_a2a.control.config` field
-/// `desktop_app_home`, alias `VAULTSPEC_DESKTOP_APP_HOME`). The gateway derives
-/// its state layout from this — notably `credentials_dir = <app_home>/credentials`
+/// `desktop_app_home`, alias `VAULTSPEC_A2A_DESKTOP_APP_HOME`). The gateway
+/// derives its state layout from this — notably
+/// `credentials_dir = <app_home>/credentials`
 /// (`vaultspec_a2a.desktop.profile.derive_state_paths`), which is exactly
 /// [`ProductPaths::app_home`]`/credentials`, where the dashboard's
 /// [`DashboardCredentialStore`] wrote `attach.cred` and `ownership.cap`.
 /// The Python gateway creates `worker-ipc.cred` for its worker boundary.
-const A2A_APP_HOME_ENV: &str = "VAULTSPEC_DESKTOP_APP_HOME";
+const A2A_APP_HOME_ENV: &str = "VAULTSPEC_A2A_DESKTOP_APP_HOME";
 
 /// The a2a gateway's settlement-callback env var
 /// (`vaultspec_a2a.desktop.settlement.SETTLEMENT_URL_ENV`). The gateway reads it
 /// fail-soft: a blank or non-HTTP value disables settlement rather than failing,
 /// so an unpublished URL is simply omitted here.
-const A2A_SETTLEMENT_URL_ENV: &str = "VAULTSPEC_DESKTOP_SETTLEMENT_URL";
+const A2A_SETTLEMENT_URL_ENV: &str = "VAULTSPEC_A2A_DESKTOP_SETTLEMENT_URL";
 
 /// Assemble the environment a spawned owned gateway needs to (a) authenticate
 /// against the shared credentials directory and (b) call the dashboard's
 /// settlement route.
 ///
-/// `VAULTSPEC_DESKTOP_APP_HOME` is always set to the product app home so the
+/// `VAULTSPEC_A2A_DESKTOP_APP_HOME` is always set to the product app home so the
 /// gateway resolves the same `credentials/` directory the dashboard bootstrapped.
-/// `VAULTSPEC_DESKTOP_SETTLEMENT_URL` is set ONLY when a non-empty settlement URL
-/// is supplied — when it is `None`/blank the gateway skips settlement fail-soft
-/// (never a hard failure), so an unpublished route degrades gracefully.
+/// `VAULTSPEC_A2A_DESKTOP_SETTLEMENT_URL` is set ONLY when a non-empty settlement
+/// URL is supplied — when it is `None`/blank the gateway skips settlement
+/// fail-soft (never a hard failure), so an unpublished route degrades gracefully.
 #[must_use]
 pub fn gateway_spawn_env(
     paths: &ProductPaths,
@@ -1140,7 +1141,7 @@ mod tests {
         // gateway skips settlement fail-soft.
         let env = gateway_spawn_env(&paths, None);
         assert_eq!(env.len(), 1);
-        assert_eq!(env[0].0, "VAULTSPEC_DESKTOP_APP_HOME");
+        assert_eq!(env[0].0, "VAULTSPEC_A2A_DESKTOP_APP_HOME");
         assert_eq!(env[0].1, paths.app_home().to_string_lossy());
         // A blank/whitespace URL is treated as unpublished — still omitted.
         assert_eq!(gateway_spawn_env(&paths, Some("   ")).len(), 1);
@@ -1148,7 +1149,7 @@ mod tests {
         let url = "http://127.0.0.1:8767/internal/a2a/run-terminal";
         let env = gateway_spawn_env(&paths, Some(url));
         assert_eq!(env.len(), 2);
-        assert_eq!(env[1].0, "VAULTSPEC_DESKTOP_SETTLEMENT_URL");
+        assert_eq!(env[1].0, "VAULTSPEC_A2A_DESKTOP_SETTLEMENT_URL");
         assert_eq!(env[1].1, url);
     }
 

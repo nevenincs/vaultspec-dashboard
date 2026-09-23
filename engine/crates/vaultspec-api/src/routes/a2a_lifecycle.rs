@@ -68,6 +68,33 @@ const JOB_TTL: Duration = Duration::from_secs(2 * 60 * 60);
 /// Freshness window for a gateway discovery heartbeat.
 const DISCOVERY_FRESHNESS: Duration = Duration::from_secs(30);
 
+/// The engine's served workspace root, set exactly once at boot
+/// (`app::build_state_full`). a2a's resident discovery is project-bound
+/// (`2026-09-23-project-bound-state-adr`, a2a repo): most call sites thread
+/// `AppState::workspace_root` explicitly, but the agent-tier's memoized,
+/// per-response snapshot (`agent_tier::observe_resident_sibling`) has no
+/// per-request state to thread one through — it reads this instead. Safe
+/// because the engine serves exactly one workspace for its process lifetime;
+/// a test process that builds more than one `AppState` keeps whichever
+/// workspace root was set first, which is immaterial here since no test
+/// exercises a live resident sibling through this memoized path.
+static ENGINE_WORKSPACE_ROOT: OnceLock<std::path::PathBuf> = OnceLock::new();
+
+/// Record the engine's served workspace root for [`engine_workspace_root`].
+/// Idempotent: only the first call in a process wins.
+pub(crate) fn set_engine_workspace_root(root: &std::path::Path) {
+    let _ = ENGINE_WORKSPACE_ROOT.set(root.to_path_buf());
+}
+
+/// The engine's served workspace root, for callers with no per-request state to
+/// thread one through. Falls back to the current directory if boot never set it
+/// (never observed outside a misconfigured test harness).
+pub(crate) fn engine_workspace_root() -> std::path::PathBuf {
+    ENGINE_WORKSPACE_ROOT.get().cloned().unwrap_or_else(|| {
+        std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+    })
+}
+
 /// The frozen runtime's foreground service verb. The dashboard owns the process
 /// tree it starts and terminates it on seated shutdown, so it runs the runtime
 /// in the foreground rather than asking it to daemonize and detach.
