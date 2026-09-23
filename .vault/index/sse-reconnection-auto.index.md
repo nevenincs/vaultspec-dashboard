@@ -4,8 +4,8 @@ tags:
   - '#index'
   - '#sse-reconnection-auto'
 date: '2026-08-01'
-modified: '2026-08-01'
-body_schema: 'body-v1'
+modified: '2026-09-23'
+body_schema: 'body-v2'
 body_hash: 'sha256:3e2bd67776a35b11c70c178804759cfa603724307ed39f2dc571797dcf5c3cea'
 related:
   - '[[2026-07-16-sse-reconnection-auto-adr]]'

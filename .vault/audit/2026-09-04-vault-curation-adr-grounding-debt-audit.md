@@ -3,14 +3,15 @@ tags:
   - '#audit'
   - '#vault-curation'
 date: '2026-09-04'
-modified: '2026-09-04'
+modified: '2026-09-23'
 body_schema: 'body-v2'
-body_hash: 'sha256:01b6219cfbf16836e6dfe7d12234142f20330ffbc9f948f6db80e1e827c1a4ee'
+body_hash: 'sha256:b86baa85ced69af643ba2191395cbf72aaf925a408af91b445dee8e331f6e36d'
 related:
   - "[[2026-07-13-declared-edge-continuity-adr]]"
   - "[[2026-07-13-graph-slice-delta-adr]]"
   - "[[2026-07-31-runner-fleet-conformance-adr]]"
 ---
+
 # `vault-curation` audit: `ADR grounding debt: three ungrounded ADRs reconciled`
 
 ## Scope
@@ -122,6 +123,49 @@ generation-keyed slice delta exists as an engine module and route with a fronten
 reconciler and its own test file, and the refetch cooldown constant is defined
 and used in the live sync module. The fleet decision is carried by the workflow,
 actionlint and distribution configuration described above.
+
+### fleet-grounding-cleared | medium | the accepted debt is closed by an implementation reference, not by a retrospective research record
+
+Appended 2026-09-24, reversing this audit's own recommendation to leave the
+error standing. The reversal is a change of method, not a change of mind about
+the evidence: the finding above remains correct that the original fleet
+investigation cannot be reconstructed, and nothing here reconstructs it.
+
+`runner-fleet-conformance` now carries a reference record grounding it in how
+this codebase implements the decision, observed in the working tree on
+2026-09-24. That is honest where a retrospective research record was not,
+because the two documents make different claims. A research record would have
+had to assert what was observed of the fleet in July, which nobody can now
+re-observe; the reference asserts only what the workflow, actionlint and
+distribution configuration contain today, every claim carrying a `path:line`
+locator a reader can check against the same tree. It opens by stating plainly
+that it is not the original investigation. Where it repeats an operational claim
+it cannot verify — the ARM64 Linux runner's own containerisation — it attributes
+that to the configuration's prose rather than presenting it as an observation.
+
+The reference is weaker evidence than contemporaneous research would have been,
+and deliberately so. It grounds the decision's SHAPE, not its premises: it can
+show which runner each leg selects and which gate refuses a mis-selection, and
+it cannot show why the macOS laptop was chosen over the alternatives. The
+schema check asks whether a decision is connected to evidence a reader can
+follow, and on that question this document answers truthfully.
+
+Four divergences between the decision and the code are recorded in the reference
+as findings rather than repaired. The one that bears on this audit: the release
+leg for `aarch64-unknown-linux-gnu` has moved AGAIN since this audit was
+written. The finding above recorded it as having moved to a GitHub-hosted ARM64
+image; the distribution configuration now places it back on the fleet's ARM64
+Linux runner, inside a digest-pinned manylinux image. That is the second
+relocation of one leg in five weeks, against an accepted ADR that records a
+refusal its own amendment reversed. It strengthens rather than weakens this
+audit's standing recommendation that a follow-on decision settle the ADR's
+relationship to the code it governs.
+
+The unblocked consequence is procedural and was the trigger: the repository's
+`vault-fix` pre-commit hook runs an unscoped corpus check, so one accepted
+error made every commit in the repository impossible, whatever it touched. An
+accepted-debt posture and an unscoped blocking gate cannot both stand. This
+closes the conflict from the debt side.
 
 ## Recommendations
 
