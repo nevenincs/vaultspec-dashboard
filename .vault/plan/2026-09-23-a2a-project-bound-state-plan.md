@@ -9,7 +9,7 @@ related:
   - '[[2026-09-23-a2a-project-bound-state-adr]]'
 modified: '2026-09-23'
 body_schema: body-v2
-body_hash: 'sha256:04c70664cbaaf7d4eff8aee9e3976f26310c85a3446d0f92eeb161ab799fb5f8'
+body_hash: 'sha256:76f8c8470197162f6202454ffe1310ddef7fd613c18798ba776fa6fc1245251e'
 ---
 
 <!-- RETIRED: S02 -->
@@ -46,7 +46,7 @@ out of scope and unaffected.
 ## Steps
 
 - [x] `S01` - Rename a2a-owned env var constants, relocate the default resident home from the per-user profile to the project-relative default, and rewire the engine's resident-a2a discovery candidates onto the served workspace root with tests proving the new candidate order (the constant rename and its sole consumer must land together to keep the workspace compiling); `engine/crates/vaultspec-product/src/a2a_contract.rs, engine/crates/vaultspec-product/src/lifecycle.rs, engine/crates/vaultspec-product/src/bin/product_certify/release_cases.rs, engine/crates/vaultspec-api/src/routes/ops/a2a/discovery.rs, engine/crates/vaultspec-api/src/routes/ops/a2a.rs, engine/crates/vaultspec-api/src/routes/ops/a2a_stream.rs, engine/crates/vaultspec-api/src/routes/a2a_lifecycle.rs, engine/crates/vaultspec-api/src/routes/a2a_lifecycle/agent_tier.rs, engine/crates/vaultspec-api/src/app.rs, engine/crates/vaultspec-api/src/routes/ops/a2a_tests/lifecycle.rs`.
-- [ ] `S03` - Rename every a2a-owned environment variable the frontend e2e harness sets or deletes when spawning a source a2a checkout, and fix its header comments; `frontend/e2e/agent/harness.ts`.
+- [x] `S03` - Rename every a2a-owned environment variable the frontend e2e harness sets or deletes when spawning a source a2a checkout, and fix its header comments; `frontend/e2e/agent/harness.ts`.
 
 ## Parallelization
 

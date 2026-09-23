@@ -2,7 +2,7 @@
 // real a2a gateway as two independently owned processes. The engine ATTACHES to
 // a2a through the resident service record under `VAULTSPEC_A2A_HOME`; a2a gets
 // the engine's own freshly-published workspace service record through
-// `VAULTSPEC_ENGINE_SERVICE_JSON`. Nothing here fabricates either record or
+// `VAULTSPEC_A2A_ENGINE_SERVICE_JSON`. Nothing here fabricates either record or
 // replaces either transport.
 //
 // The source checkout is explicit because this is a staged, environment-gated
@@ -232,33 +232,33 @@ async function spawnA2a(
   // A regular source `serve` is intentionally not desktop-armed. An inherited
   // desktop profile would redirect the gateway's state away from this scratch
   // home and invalidate the discovery proof.
-  delete environment["VAULTSPEC_DESKTOP_APP_HOME"];
-  delete environment["VAULTSPEC_CAPSULE_ASSETS"];
+  delete environment["VAULTSPEC_A2A_DESKTOP_APP_HOME"];
+  delete environment["VAULTSPEC_A2A_CAPSULE_ASSETS"];
   Object.assign(environment, {
     VAULTSPEC_A2A_HOME: appHome,
     // The source gateway has no desktop-minted IPC credential. Its explicit
     // scratch-only development profile makes the internal-auth configuration
     // deliberate rather than silently accepting an undeclared environment.
-    VAULTSPEC_ENVIRONMENT: "development",
+    VAULTSPEC_A2A_ENVIRONMENT: "development",
     // Keep the real internal bearer boundary exercised even in this source
     // development profile. The gateway passes this fresh secret only to its
     // worker child; it never enters diagnostics or a service record.
-    VAULTSPEC_INTERNAL_TOKEN: randomBytes(32).toString("hex"),
-    VAULTSPEC_ENGINE_SERVICE_JSON: engineServiceJson,
-    VAULTSPEC_HOST: "127.0.0.1",
-    VAULTSPEC_PORT: String(gatewayPort),
-    VAULTSPEC_WORKER_HOST: "127.0.0.1",
-    VAULTSPEC_WORKER_PORT: String(workerPort),
-    VAULTSPEC_WORKER_READY_TIMEOUT_SECONDS: String(WORKER_READY_TIMEOUT_SECONDS),
-    VAULTSPEC_MCP_HOST: "127.0.0.1",
-    VAULTSPEC_MCP_PORT: String(mcpPort),
-    VAULTSPEC_DATABASE_BACKEND: "sqlite",
-    VAULTSPEC_CHECKPOINT_BACKEND: "sqlite",
-    VAULTSPEC_DATABASE_URL: sqliteUrl(join(appHome, "gateway.sqlite3")),
-    VAULTSPEC_CHECKPOINT_DATABASE_URL: sqliteUrl(join(appHome, "checkpoints.sqlite3")),
+    VAULTSPEC_A2A_INTERNAL_TOKEN: randomBytes(32).toString("hex"),
+    VAULTSPEC_A2A_ENGINE_SERVICE_JSON: engineServiceJson,
+    VAULTSPEC_A2A_HOST: "127.0.0.1",
+    VAULTSPEC_A2A_PORT: String(gatewayPort),
+    VAULTSPEC_A2A_WORKER_HOST: "127.0.0.1",
+    VAULTSPEC_A2A_WORKER_PORT: String(workerPort),
+    VAULTSPEC_A2A_WORKER_READY_TIMEOUT_SECONDS: String(WORKER_READY_TIMEOUT_SECONDS),
+    VAULTSPEC_A2A_MCP_HOST: "127.0.0.1",
+    VAULTSPEC_A2A_MCP_PORT: String(mcpPort),
+    VAULTSPEC_A2A_DATABASE_BACKEND: "sqlite",
+    VAULTSPEC_A2A_CHECKPOINT_BACKEND: "sqlite",
+    VAULTSPEC_A2A_DATABASE_URL: sqliteUrl(join(appHome, "gateway.sqlite3")),
+    VAULTSPEC_A2A_CHECKPOINT_DATABASE_URL: sqliteUrl(join(appHome, "checkpoints.sqlite3")),
     // This certification lane must use the non-billable deterministic provider.
     // In-process lanes are otherwise deliberately hidden in normal serving.
-    VAULTSPEC_SERVE_IN_PROCESS_LANES: "true",
+    VAULTSPEC_A2A_SERVE_IN_PROCESS_LANES: "true",
   });
 
   const proc = spawn(
