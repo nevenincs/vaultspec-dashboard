@@ -38,7 +38,7 @@
     "@tanstack/react-router": "^1.170.15",
     "culori": "^4.0.2",
     "d3-force": "^3.0.0",
-    "dockview": "^6.6.1",
+    "dockview": "^8.3.1",
     "i18next": "26.3.6",
     "lucide-react": "^1.18.0",
     "material-icon-theme": "5.37.0",
