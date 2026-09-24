@@ -42,7 +42,7 @@ tower-http = { version = "0.7.1", features = [
     "compression-gzip",
     "set-header",
 ] }
-fs4 = { version = "0.13", features = ["sync"] }
+fs4 = { version = "1.1", features = ["sync"] }
 
 [features]
 # Compile `frontend/dist` into the binary via rust-embed for release
