@@ -20,7 +20,7 @@ futures-core = "0.3.32"
 # `tokio_stream::StreamExt` combinators the stream routes already use.
 futures-util = { version = "0.3.32", default-features = false, features = ["std"] }
 getrandom = "0.4.2"
-gix = "0.84.0"
+gix = "0.87.1"
 ingest-core = { version = "0.1.0", path = "../ingest-core" }
 ingest-code = { version = "0.1.0", path = "../ingest-code" }
 ingest-git = { version = "0.1.0", path = "../ingest-git" }
