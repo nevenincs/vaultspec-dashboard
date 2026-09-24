@@ -22,7 +22,7 @@ winresource = "=0.1.31"
 [dev-dependencies]
 # The real-executable gateway helper holds a genuine runtime singleton for its
 # lifetime, the same advisory-lock primitive the product uses.
-fs4 = { version = "0.13", default-features = false, features = ["sync"] }
+fs4 = { version = "1.1", default-features = false, features = ["sync"] }
 rusqlite = { version = "0.40.1", features = ["bundled"] }
 tempfile = "3.27.0"
 
