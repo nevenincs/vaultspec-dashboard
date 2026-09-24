@@ -20,7 +20,7 @@ unsealed-verify = []
 
 [dependencies]
 base64 = "0.23.1"
-cap-std = "3.4.4"
+cap-std = "4.0.3"
 futures-util = { version = "0.3.31", default-features = false, features = ["std"] }
 fs4 = { version = "0.13", default-features = false, features = ["sync"] }
 jiff = "0.2.15"
