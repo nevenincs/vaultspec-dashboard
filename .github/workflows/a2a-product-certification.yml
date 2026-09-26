@@ -81,7 +81,7 @@ jobs:
   # Per-target certification of the published archive on a native runner.
   # ---------------------------------------------------------------------------
   certify-target:
-    timeout-minutes: 90
+    timeout-minutes: 210
     name: "Test: Published artifact (${{ matrix.platform }})"
     strategy:
       fail-fast: false
@@ -97,6 +97,8 @@ jobs:
     # certifies a real per-target artifact, so a wrong-architecture landing
     # would certify the wrong thing.
     runs-on: [self-hosted, "${{ matrix.os }}", "${{ matrix.arch }}"]
+    env:
+      CI_EXEC_BUDGET_MINUTES: 90
     # The two ARM legs are two runners on ONE physical machine — the macOS runner
     # and a colima Linux VM on the same Apple Silicon laptop — so the matrix would
     # otherwise stage and EXECUTE two artifacts on it simultaneously, against
@@ -129,6 +131,7 @@ jobs:
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        id: checkout
         with:
           persist-credentials: false
       - name: Read pinned toolchain
@@ -276,7 +279,7 @@ jobs:
           echo "network restored and verified"
 
       - name: Retain diagnostics
-        if: always()
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: certification-${{ matrix.target }}
@@ -309,10 +312,12 @@ jobs:
   # One logical release set across every target and supported channel.
   # ---------------------------------------------------------------------------
   compare-inventories:
-    timeout-minutes: 30
+    timeout-minutes: 150
     name: "Check: Release set inventory (Linux)"
     needs: [certify-target, certify-scoop-winget]
     runs-on: [self-hosted, Linux, X64]
+    env:
+      CI_EXEC_BUDGET_MINUTES: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:

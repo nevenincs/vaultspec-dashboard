@@ -88,7 +88,9 @@ jobs:
     # running on, so landing on the wrong machine would produce an artifact
     # whose contents contradict its name.
     runs-on: [self-hosted, "${{ matrix.os }}", "${{ matrix.arch }}"]
-    timeout-minutes: 60
+    timeout-minutes: 180
+    env:
+      CI_EXEC_BUDGET_MINUTES: 60
     steps:
       - name: Checkout dashboard
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -114,6 +116,7 @@ jobs:
           fi
 
       - name: Checkout A2A producer
+        id: producer-checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: nevenincs/vaultspec-a2a
@@ -179,7 +182,7 @@ jobs:
             --dist dist/binary
 
       - name: Write built onedir inventory
-        if: always()
+        if: ${{ !cancelled() && steps.producer-checkout.outcome == 'success' }}
         shell: bash
         working-directory: producer
         run: |
@@ -191,7 +194,7 @@ jobs:
           fi
 
       - name: Upload inventory artifact
-        if: always()
+        if: ${{ !cancelled() && steps.producer-checkout.outcome == 'success' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: a2a-onedir-inventory-${{ matrix.target }}

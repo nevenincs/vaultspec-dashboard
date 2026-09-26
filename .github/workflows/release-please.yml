@@ -31,8 +31,10 @@ concurrency:
 jobs:
   release-please:
     name: "Build: Release proposal (Linux)"
-    timeout-minutes: 30
+    timeout-minutes: 150
     runs-on: [self-hosted, Linux, X64]
+    env:
+      CI_EXEC_BUDGET_MINUTES: 30
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
@@ -54,12 +56,14 @@ jobs:
   # causes the drift also repairs it.
   sync-lock:
     name: "Build: Release lock (Linux)"
-    timeout-minutes: 30
+    timeout-minutes: 150
     needs: release-please
     # Gate on the branch NAME, not on `prs_created`: the standing release PR is
     # usually updated rather than opened, and the drift arrives on both paths.
     if: ${{ needs.release-please.outputs.release_branch != '' }}
     runs-on: [self-hosted, Linux, X64]
+    env:
+      CI_EXEC_BUDGET_MINUTES: 30
     steps:
       # Before checkout, because checkout is the step the EACCES lands on.
       - name: Reclaim the workspace from a job that may not have finished
@@ -89,10 +93,12 @@ jobs:
 
   dispatch-release:
     name: "Build: Release dispatch (Linux)"
-    timeout-minutes: 10
+    timeout-minutes: 130
     needs: release-please
     if: ${{ needs.release-please.outputs.release_created == 'true' }}
     runs-on: [self-hosted, Linux, X64]
+    env:
+      CI_EXEC_BUDGET_MINUTES: 10
     permissions:
       actions: write
     steps:

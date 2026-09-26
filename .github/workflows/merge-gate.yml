@@ -46,7 +46,9 @@ jobs:
     name: "Check: Full lint (Linux)"
     if: ${{ github.event_name != 'pull_request' || (github.event.label.name == 'ci:full' && github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: [self-hosted, Linux, X64]
-    timeout-minutes: 45
+    timeout-minutes: 165
+    env:
+      CI_EXEC_BUDGET_MINUTES: 45
     steps:
       # Before checkout, because checkout is the step the EACCES lands on.
       # `|| true` so a workspace that has never been checked out - where the
@@ -102,7 +104,7 @@ jobs:
   engine:
     name: "Test: Engine suite (${{ matrix.os }})"
     if: ${{ github.event_name != 'pull_request' || (github.event.label.name == 'ci:full' && github.event.pull_request.head.repo.full_name == github.repository) }}
-    timeout-minutes: 60
+    timeout-minutes: 180
     # WINDOWS GATES HERE, and this is the only place in the repository where a
     # `just` recipe runs on Windows at all. The justfile declares
     # `set windows-shell` and every recipe body is a single command with no
@@ -110,6 +112,8 @@ jobs:
     # tested; this leg is what makes the platform-agnostic property true
     # rather than asserted.
     runs-on: [self-hosted, "${{ matrix.os }}", "${{ matrix.arch }}"]
+    env:
+      CI_EXEC_BUDGET_MINUTES: 60
     strategy:
       fail-fast: false
       matrix:
@@ -219,7 +223,9 @@ jobs:
     name: "Test: Frontend suite (Linux)"
     if: ${{ github.event_name != 'pull_request' || (github.event.label.name == 'ci:full' && github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: [self-hosted, Linux, X64]
-    timeout-minutes: 60
+    timeout-minutes: 180
+    env:
+      CI_EXEC_BUDGET_MINUTES: 60
     steps:
       - name: Reclaim the workspace from a job that may not have finished
         shell: bash
@@ -323,7 +329,9 @@ jobs:
     name: "Test: Engine conformance (Linux)"
     if: ${{ github.event_name != 'pull_request' || (github.event.label.name == 'ci:full' && github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: [self-hosted, Linux, X64]
-    timeout-minutes: 90
+    timeout-minutes: 210
+    env:
+      CI_EXEC_BUDGET_MINUTES: 90
     steps:
       - name: Reclaim the workspace from a job that may not have finished
         shell: bash
@@ -453,7 +461,9 @@ jobs:
     name: "Check: Release inputs (Linux)"
     if: ${{ github.event_name != 'pull_request' || (github.event.label.name == 'ci:full' && github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: [self-hosted, Linux, X64]
-    timeout-minutes: 30
+    timeout-minutes: 150
+    env:
+      CI_EXEC_BUDGET_MINUTES: 30
     steps:
       - name: Reclaim the workspace from a job that may not have finished
         shell: bash
@@ -506,7 +516,9 @@ jobs:
     name: "Check: Dependency advisories (Linux)"
     if: ${{ github.event_name != 'pull_request' || (github.event.label.name == 'ci:full' && github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: [self-hosted, Linux, X64]
-    timeout-minutes: 45
+    timeout-minutes: 165
+    env:
+      CI_EXEC_BUDGET_MINUTES: 45
     steps:
       - name: Reclaim the workspace from a job that may not have finished
         shell: bash
@@ -550,6 +562,8 @@ jobs:
     if: ${{ always() }}
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 10
+    env:
+      CI_RESOURCE_CLASS: verdict
     permissions:
       checks: read
       contents: read

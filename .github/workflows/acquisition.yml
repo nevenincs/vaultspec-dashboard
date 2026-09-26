@@ -72,7 +72,7 @@ concurrency:
 jobs:
   acquire:
     name: "Test: Acquisition on ${{ matrix.image }} (Linux ${{ matrix.arch }})"
-    timeout-minutes: 30
+    timeout-minutes: 150
     strategy:
       fail-fast: false
       matrix:
@@ -121,6 +121,8 @@ jobs:
     # runner's home from the identical path in the VM, which needs the runner
     # re-enrolled.
     runs-on: ${{ matrix.runner }}
+    env:
+      CI_EXEC_BUDGET_MINUTES: 30
     container: ${{ matrix.image }}
     steps:
       - name: Install what acquisition itself needs
