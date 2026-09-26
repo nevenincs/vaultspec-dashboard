@@ -429,6 +429,26 @@ impl CoreAdapterError {
     }
 }
 
+/// Assemble the full argument list [`CoreAdapter::invoke`] passes to the
+/// resolved program: the invocation's leading args, an explicit
+/// `--target <cwd>` PRECEDING the capability's verb argv, the argv itself,
+/// and the trailing `--json` flag.
+///
+/// The explicit `--target` is deliberate, not redundant with the sibling
+/// `current_dir(cwd)`: once the core CLI honors an inherited target-directory
+/// variable as a fallback, that variable would otherwise silently outrank the
+/// child's working directory and redirect the write to a different
+/// workspace. Passing `--target` pins the choice to this call, never to
+/// whatever the caller's environment happens to export.
+fn build_invoke_args(invocation: &[String], cwd: &Path, argv: &[String]) -> Vec<String> {
+    let mut full: Vec<String> = invocation[1..].to_vec();
+    full.push("--target".to_string());
+    full.push(cwd.to_string_lossy().into_owned());
+    full.extend_from_slice(argv);
+    full.push("--json".to_string());
+    full
+}
+
 /// The internal core adapter. Holds the project-pinned invocation plus the
 /// call-site output cap and wall-clock timeout that bound every invocation.
 #[derive(Debug, Clone)]
@@ -480,9 +500,7 @@ impl CoreAdapter {
         invocation: &CoreInvocation,
     ) -> Result<CoreEnvelope, CoreAdapterError> {
         let mut cmd = Command::new(&self.invocation[0]);
-        cmd.args(&self.invocation[1..])
-            .args(&invocation.argv)
-            .arg("--json")
+        cmd.args(build_invoke_args(&self.invocation, cwd, &invocation.argv))
             .current_dir(cwd)
             // Force the core's Python into UTF-8 so it reads the streamed body and
             // writes its envelope as UTF-8, not the host locale (cp1252 on
@@ -817,6 +835,58 @@ mod tests {
     }
 
     // --- argument builders + validation -------------------------
+
+    #[test]
+    fn invoke_args_place_target_ahead_of_the_capability_argv() {
+        // An inherited target-directory variable must never outrank the
+        // invocation: `--target` has to precede the capability's verb argv so
+        // it always wins over the process environment.
+        let invocation = vec!["vaultspec-core".to_string()];
+        let cwd = Path::new("some").join("worktree");
+        let argv = vec![
+            "vault".to_string(),
+            "set-body".to_string(),
+            "adr/2026-06-29-x".to_string(),
+        ];
+        let assembled = build_invoke_args(&invocation, &cwd, &argv);
+        assert_eq!(
+            assembled,
+            vec![
+                "--target".to_string(),
+                cwd.to_string_lossy().into_owned(),
+                "vault".to_string(),
+                "set-body".to_string(),
+                "adr/2026-06-29-x".to_string(),
+                "--json".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn invoke_args_keep_the_uv_launcher_prefix_ahead_of_target() {
+        // The uv-run invocation carries its own leading args; `--target` must
+        // land after those (they select the launcher, not the core) and still
+        // ahead of the capability's verb argv.
+        let invocation = ["uv", "run", "--no-sync", "vaultspec-core"]
+            .map(String::from)
+            .to_vec();
+        let cwd = Path::new("some").join("worktree");
+        let argv = vec!["vault".to_string(), "plan".to_string()];
+        let assembled = build_invoke_args(&invocation, &cwd, &argv);
+        assert_eq!(
+            assembled,
+            vec![
+                "run".to_string(),
+                "--no-sync".to_string(),
+                "vaultspec-core".to_string(),
+                "--target".to_string(),
+                cwd.to_string_lossy().into_owned(),
+                "vault".to_string(),
+                "plan".to_string(),
+                "--json".to_string(),
+            ]
+        );
+    }
 
     #[test]
     fn create_document_builds_value_only_argv() {
