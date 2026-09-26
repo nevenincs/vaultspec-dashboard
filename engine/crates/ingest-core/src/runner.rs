@@ -5,6 +5,7 @@
 //! --json` inside the scope's checkout, and every payload passes schema
 //! pinning before parsing: unknown schema versions fail loud, never guess.
 
+use std::ffi::OsString;
 use std::io::Read;
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
@@ -168,12 +169,23 @@ impl Envelope {
 /// child's working directory and redirect the read to a different workspace.
 /// Passing `--target` pins the choice to this call, never to whatever the
 /// caller's environment happens to export.
-fn build_run_json_args(invocation: &[String], cwd: &Path, args: &[&str]) -> Vec<String> {
-    let mut full: Vec<String> = invocation[1..].to_vec();
-    full.push("--target".to_string());
-    full.push(cwd.to_string_lossy().into_owned());
-    full.extend(args.iter().map(|s| s.to_string()));
-    full.push("--json".to_string());
+fn build_run_json_args(invocation: &[String], cwd: &Path, args: &[&str]) -> Vec<OsString> {
+    debug_assert!(cwd.is_absolute(), "cwd must be an absolute path");
+
+    let Some((_, leading)) = invocation.split_first() else {
+        // Invocation must have at least a program name; return early rather than panic.
+        return vec![OsString::from("--target"), cwd.as_os_str().to_os_string()]
+            .into_iter()
+            .chain(args.iter().map(|s| OsString::from(*s)))
+            .chain(std::iter::once(OsString::from("--json")))
+            .collect();
+    };
+
+    let mut full: Vec<OsString> = leading.iter().map(OsString::from).collect();
+    full.push(OsString::from("--target"));
+    full.push(cwd.as_os_str().to_os_string());
+    full.extend(args.iter().map(|s| OsString::from(*s)));
+    full.push(OsString::from("--json"));
     full
 }
 
@@ -600,16 +612,16 @@ mod tests {
         // invocation: `--target` has to precede the subcommand so it always
         // wins over the process environment.
         let invocation = vec!["vaultspec-core".to_string()];
-        let cwd = Path::new("some").join("workspace");
+        let cwd = std::env::temp_dir().join("workspace");
         let assembled = build_run_json_args(&invocation, &cwd, &["vault", "graph"]);
         assert_eq!(
             assembled,
             vec![
-                "--target".to_string(),
-                cwd.to_string_lossy().into_owned(),
-                "vault".to_string(),
-                "graph".to_string(),
-                "--json".to_string(),
+                OsString::from("--target"),
+                cwd.as_os_str().to_os_string(),
+                OsString::from("vault"),
+                OsString::from("graph"),
+                OsString::from("--json"),
             ]
         );
     }
@@ -622,19 +634,19 @@ mod tests {
         let invocation = ["uv", "run", "--no-sync", "vaultspec-core"]
             .map(String::from)
             .to_vec();
-        let cwd = Path::new("some").join("workspace");
+        let cwd = std::env::temp_dir().join("workspace");
         let assembled = build_run_json_args(&invocation, &cwd, &["vault", "stats"]);
         assert_eq!(
             assembled,
             vec![
-                "run".to_string(),
-                "--no-sync".to_string(),
-                "vaultspec-core".to_string(),
-                "--target".to_string(),
-                cwd.to_string_lossy().into_owned(),
-                "vault".to_string(),
-                "stats".to_string(),
-                "--json".to_string(),
+                OsString::from("run"),
+                OsString::from("--no-sync"),
+                OsString::from("vaultspec-core"),
+                OsString::from("--target"),
+                cwd.as_os_str().to_os_string(),
+                OsString::from("vault"),
+                OsString::from("stats"),
+                OsString::from("--json"),
             ]
         );
     }

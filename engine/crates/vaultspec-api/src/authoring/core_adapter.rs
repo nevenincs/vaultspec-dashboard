@@ -46,6 +46,7 @@
 //! allow drops once that route wiring lands.
 #![allow(dead_code)]
 
+use std::ffi::OsString;
 use std::io::{Read, Write};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
@@ -440,12 +441,23 @@ impl CoreAdapterError {
 /// child's working directory and redirect the write to a different
 /// workspace. Passing `--target` pins the choice to this call, never to
 /// whatever the caller's environment happens to export.
-fn build_invoke_args(invocation: &[String], cwd: &Path, argv: &[String]) -> Vec<String> {
-    let mut full: Vec<String> = invocation[1..].to_vec();
-    full.push("--target".to_string());
-    full.push(cwd.to_string_lossy().into_owned());
-    full.extend_from_slice(argv);
-    full.push("--json".to_string());
+fn build_invoke_args(invocation: &[String], cwd: &Path, argv: &[String]) -> Vec<OsString> {
+    debug_assert!(cwd.is_absolute(), "cwd must be an absolute path");
+
+    let Some((_, leading)) = invocation.split_first() else {
+        // Invocation must have at least a program name; return early rather than panic.
+        return vec![OsString::from("--target"), cwd.as_os_str().to_os_string()]
+            .into_iter()
+            .chain(argv.iter().map(OsString::from))
+            .chain(std::iter::once(OsString::from("--json")))
+            .collect();
+    };
+
+    let mut full: Vec<OsString> = leading.iter().map(OsString::from).collect();
+    full.push(OsString::from("--target"));
+    full.push(cwd.as_os_str().to_os_string());
+    full.extend(argv.iter().map(OsString::from));
+    full.push(OsString::from("--json"));
     full
 }
 
@@ -842,7 +854,7 @@ mod tests {
         // invocation: `--target` has to precede the capability's verb argv so
         // it always wins over the process environment.
         let invocation = vec!["vaultspec-core".to_string()];
-        let cwd = Path::new("some").join("worktree");
+        let cwd = std::env::temp_dir().join("worktree");
         let argv = vec![
             "vault".to_string(),
             "set-body".to_string(),
@@ -852,12 +864,12 @@ mod tests {
         assert_eq!(
             assembled,
             vec![
-                "--target".to_string(),
-                cwd.to_string_lossy().into_owned(),
-                "vault".to_string(),
-                "set-body".to_string(),
-                "adr/2026-06-29-x".to_string(),
-                "--json".to_string(),
+                OsString::from("--target"),
+                cwd.as_os_str().to_os_string(),
+                OsString::from("vault"),
+                OsString::from("set-body"),
+                OsString::from("adr/2026-06-29-x"),
+                OsString::from("--json"),
             ]
         );
     }
@@ -870,20 +882,20 @@ mod tests {
         let invocation = ["uv", "run", "--no-sync", "vaultspec-core"]
             .map(String::from)
             .to_vec();
-        let cwd = Path::new("some").join("worktree");
+        let cwd = std::env::temp_dir().join("worktree");
         let argv = vec!["vault".to_string(), "plan".to_string()];
         let assembled = build_invoke_args(&invocation, &cwd, &argv);
         assert_eq!(
             assembled,
             vec![
-                "run".to_string(),
-                "--no-sync".to_string(),
-                "vaultspec-core".to_string(),
-                "--target".to_string(),
-                cwd.to_string_lossy().into_owned(),
-                "vault".to_string(),
-                "plan".to_string(),
-                "--json".to_string(),
+                OsString::from("run"),
+                OsString::from("--no-sync"),
+                OsString::from("vaultspec-core"),
+                OsString::from("--target"),
+                cwd.as_os_str().to_os_string(),
+                OsString::from("vault"),
+                OsString::from("plan"),
+                OsString::from("--json"),
             ]
         );
     }
