@@ -145,9 +145,11 @@ jobs:
 
   bump:
     name: "Build: Homebrew formula (Linux)"
-    timeout-minutes: 30
+    timeout-minutes: 150
     needs: gate
     runs-on: [self-hosted, Linux, X64]
+    env:
+      CI_EXEC_BUDGET_MINUTES: 30
     steps:
       # The channel root is an ORGANISATION resource, not a per-repo one. A
       # package manager resolves ONE tap for all of nevenincs, so a formula
