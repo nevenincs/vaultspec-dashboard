@@ -44,7 +44,7 @@ concurrency:
 jobs:
   lint:
     name: "Check: Full lint (Linux)"
-    if: ${{ github.event_name != 'pull_request' || (github.event.label.name == 'ci:full' && github.event.pull_request.head.repo.full_name == github.repository) }}
+    if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && (github.event_name != 'pull_request' || (github.event.label.name == 'ci:full' && github.event.pull_request.head.repo.full_name == github.repository)) }}
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 165
     env:
@@ -103,7 +103,7 @@ jobs:
 
   engine:
     name: "Test: Engine suite (${{ matrix.os }})"
-    if: ${{ github.event_name != 'pull_request' || (github.event.label.name == 'ci:full' && github.event.pull_request.head.repo.full_name == github.repository) }}
+    if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && (github.event_name != 'pull_request' || (github.event.label.name == 'ci:full' && github.event.pull_request.head.repo.full_name == github.repository)) }}
     timeout-minutes: 180
     # WINDOWS GATES HERE, and this is the only place in the repository where a
     # `just` recipe runs on Windows at all. The justfile declares
@@ -221,7 +221,7 @@ jobs:
 
   frontend:
     name: "Test: Frontend suite (Linux)"
-    if: ${{ github.event_name != 'pull_request' || (github.event.label.name == 'ci:full' && github.event.pull_request.head.repo.full_name == github.repository) }}
+    if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && (github.event_name != 'pull_request' || (github.event.label.name == 'ci:full' && github.event.pull_request.head.repo.full_name == github.repository)) }}
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 180
     env:
@@ -327,7 +327,7 @@ jobs:
     # TypeScript-type drift fails the gate. This closes the seam the Rust
     # conformance suite cannot reach.
     name: "Test: Engine conformance (Linux)"
-    if: ${{ github.event_name != 'pull_request' || (github.event.label.name == 'ci:full' && github.event.pull_request.head.repo.full_name == github.repository) }}
+    if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && (github.event_name != 'pull_request' || (github.event.label.name == 'ci:full' && github.event.pull_request.head.repo.full_name == github.repository)) }}
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 210
     env:
@@ -459,7 +459,7 @@ jobs:
     # against the committed lock, so a drift between the pins, the schema and
     # the builder fails here rather than at release.
     name: "Check: Release inputs (Linux)"
-    if: ${{ github.event_name != 'pull_request' || (github.event.label.name == 'ci:full' && github.event.pull_request.head.repo.full_name == github.repository) }}
+    if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && (github.event_name != 'pull_request' || (github.event.label.name == 'ci:full' && github.event.pull_request.head.repo.full_name == github.repository)) }}
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 150
     env:
@@ -514,7 +514,7 @@ jobs:
 
   dependencies:
     name: "Check: Dependency advisories (Linux)"
-    if: ${{ github.event_name != 'pull_request' || (github.event.label.name == 'ci:full' && github.event.pull_request.head.repo.full_name == github.repository) }}
+    if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && (github.event_name != 'pull_request' || (github.event.label.name == 'ci:full' && github.event.pull_request.head.repo.full_name == github.repository)) }}
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 165
     env:
@@ -559,7 +559,7 @@ jobs:
   gate:
     name: "Check: Merge gate (Linux)"
     needs: [lint, engine, frontend, conformance, release-inputs, dependencies]
-    if: ${{ always() }}
+    if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && (always()) }}
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 10
     env:

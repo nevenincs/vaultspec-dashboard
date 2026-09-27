@@ -145,7 +145,7 @@ jobs:
     # here into its standard label set. An unmapped key becomes a label no
     # runner carries, and a leg scheduled onto one queues instead of failing;
     # the orchestrator's queue watchdog is what bounds that.
-    runs-on: ${{ fromJSON(matrix.runner == 'linux-x64' && '["self-hosted","Linux","X64"]' || matrix.runner == 'linux-arm64' && '["self-hosted","Linux","ARM64"]' || matrix.runner == 'macOS' && '["self-hosted","macOS","ARM64"]' || matrix.runner == 'Windows' && '["self-hosted","Windows","X64"]' || format('["unmapped-dist-runner-{0}"]', matrix.runner)) }}
+    runs-on: ${{ fromJSON(matrix.runner == 'linux-x64' && '["self-hosted","Linux","X64"]' || matrix.runner == 'linux-arm64' && '["self-hosted","Linux","ARM64"]' || matrix.runner == 'macOS' && '["self-hosted","macOS","ARM64"]' || matrix.runner == 'Windows' && '["self-hosted","Windows","X64"]' || format('["self-hosted","unmapped-dist-runner-{0}"]', matrix.runner)) }}
     # The images are pinned by digest in dist-workspace.toml; dist plans them
     # into the matrix, so the pin is not visible here.
     container: ${{ matrix.container && matrix.container.image || null }} # zizmor: ignore[unpinned-images]
@@ -183,9 +183,6 @@ jobs:
       - name: "Ensure WiX Toolset is on PATH (MSI build, Windows only)"
         if: "runner.os == 'Windows'"
         run: |
-          # WiX v3 is pre-installed on windows-2022 hosted runners and typically on
-          # developer workstations. Ensure candle.exe is reachable before dist runs;
-          # self-hosted runners may have WiX installed but not on PATH.
           if (-not (Get-Command candle.exe -ErrorAction SilentlyContinue)) {
             $candidates = @(
               'C:\Program Files (x86)\WiX Toolset v3.14\bin',
