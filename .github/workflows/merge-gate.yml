@@ -188,8 +188,27 @@ jobs:
           uv tool dir --bin >> "$GITHUB_PATH"
       - name: Build (just build-rust)
         run: just build-rust
+      # Cargo prints ``error: test failed`` both for assertions and when its
+      # test binary loses RUNNER_TEMP. Keep the log in the workspace because
+      # that temporary root is the failure under investigation.
       - name: Unit, integration, e2e and bench (just test-rust)
-        run: just test-rust
+        shell: bash
+        run: |
+          set +e
+          log="$GITHUB_WORKSPACE/.ci-engine-suite.log"
+          just test-rust > "$log" 2>&1
+          status=$?
+          cat "$log"
+          if [ "$status" -ne 0 ]; then
+            # A vanished RUNNER_TEMP can prevent GitHub from launching a later
+            # step, so classify while this shell is still running.
+            classification=$(uv run --no-sync python -m dev.classify_failure "$log" --suite cargo --runner-temp "$RUNNER_TEMP")
+            printf '%s\n' "$classification"
+            if [ -n "${GITHUB_STEP_SUMMARY:-}" ] && [ -d "$(dirname "$GITHUB_STEP_SUMMARY")" ]; then
+              printf '%s\n' "$classification" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          fi
+          exit "$status"
       - name: Reclaim runner disk (always · unix)
         if: always() && runner.os != 'Windows'
         shell: bash
