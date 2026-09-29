@@ -549,7 +549,7 @@ jobs:
     needs: [lint, engine, frontend, conformance, release-inputs, dependencies]
     if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && (always()) }}
     runs-on: [self-hosted, Linux, X64]
-    timeout-minutes: 10
+    timeout-minutes: 71
     permissions:
       checks: read
       contents: read

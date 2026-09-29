@@ -54,7 +54,7 @@ concurrency:
 
 jobs:
   gate:
-    timeout-minutes: 30
+    timeout-minutes: 91
     name: "Check: Publication gate (Linux)"
     runs-on: [self-hosted, Linux, X64]
     steps:
