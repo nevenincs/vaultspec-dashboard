@@ -48,7 +48,7 @@ concurrency:
 jobs:
   plan:
     name: "Build: Release plan (Linux)"
-    timeout-minutes: 30
+    timeout-minutes: 150
     # Hand-set for the self-hosted fleet; re-apply if `dist generate-ci` regenerates this file.
     runs-on: [self-hosted, Linux, X64]
     outputs:
@@ -57,6 +57,7 @@ jobs:
       tag-flag: ${{ format('--tag={0}', inputs.tag) }}
       publishing: "true"
     env:
+      CI_EXEC_BUDGET_MINUTES: 30
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -371,13 +372,14 @@ jobs:
   # Build and package all the platform-agnostic(ish) things
   build-global-artifacts:
     name: "Build: Global artifacts (Linux)"
-    timeout-minutes: 120
+    timeout-minutes: 240
     needs:
       - plan
       - build-local-artifacts
     # Hand-set for the self-hosted fleet; re-apply if `dist generate-ci` regenerates this file.
     runs-on: [self-hosted, Linux, X64]
     env:
+      CI_EXEC_BUDGET_MINUTES: 120
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       BUILD_MANIFEST_NAME: target/distrib/global-dist-manifest.json
     steps:
@@ -423,7 +425,7 @@ jobs:
   # Determines if we should publish/announce
   host:
     name: "Build: Release upload (Linux)"
-    timeout-minutes: 120
+    timeout-minutes: 240
     # The only job that writes to the release: it uploads to the draft.
     permissions:
       contents: write
@@ -434,6 +436,7 @@ jobs:
     # Only run if we're "publishing", and only if plan, local and global didn't fail (skipped is fine)
     if: ${{ always() && needs.plan.result == 'success' && needs.plan.outputs.publishing == 'true' && (needs.build-global-artifacts.result == 'skipped' || needs.build-global-artifacts.result == 'success') && (needs.build-local-artifacts.result == 'skipped' || needs.build-local-artifacts.result == 'success') }}
     env:
+      CI_EXEC_BUDGET_MINUTES: 120
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     # Hand-set for the self-hosted fleet; re-apply if `dist generate-ci` regenerates this file.
     runs-on: [self-hosted, Linux, X64]
@@ -506,7 +509,7 @@ jobs:
   # that state is the empty `latest` v0.1.4 served for six weeks. This refuses
   # the run, so the orchestrator never publishes the draft.
   verify-release-assets:
-    timeout-minutes: 30
+    timeout-minutes: 150
     name: "Check: Release archives attached (Linux)"
     needs:
       - plan
@@ -516,6 +519,7 @@ jobs:
     permissions:
       contents: write
     env:
+      CI_EXEC_BUDGET_MINUTES: 30
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       TAG: ${{ needs.plan.outputs.tag }}
       HOST_RESULT: ${{ needs.host.result }}
