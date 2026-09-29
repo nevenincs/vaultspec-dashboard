@@ -482,8 +482,14 @@ fn get_or_create_relay(run_id: &str) -> Option<Arc<RunRelay>> {
 /// Start at most one producer for a resident relay. A compare-exchange makes
 /// concurrent browser reconnects converge on one reader thread. The seated
 /// `LifecyclePlane` is carried so the reader dual-resolves its upstream endpoint
-/// through the product controller with the service.json fallback.
-fn ensure_relay_reader(run_id: &str, relay: &Arc<RunRelay>, plane: Arc<LifecyclePlane>) {
+/// through the product controller with the service.json fallback; `workspace_root`
+/// roots that fallback's project-bound discovery candidates.
+fn ensure_relay_reader(
+    run_id: &str,
+    relay: &Arc<RunRelay>,
+    plane: Arc<LifecyclePlane>,
+    workspace_root: std::path::PathBuf,
+) {
     if !relay.claim_producer() {
         return;
     }
@@ -493,10 +499,16 @@ fn ensure_relay_reader(run_id: &str, relay: &Arc<RunRelay>, plane: Arc<Lifecycle
     // terminates, the upstream ends, or no client is subscribed.
     let run_id_owned = run_id.to_string();
     let relay_for_thread = relay.clone();
+    let workspace_root_for_thread = workspace_root.clone();
     std::thread::spawn(move || {
         // Always restore lifecycle state, even if an unexpected parser bug panics.
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            run_relay_thread(&run_id_owned, &relay_for_thread, &plane)
+            run_relay_thread(
+                &run_id_owned,
+                &relay_for_thread,
+                &plane,
+                &workspace_root_for_thread,
+            )
         }));
         let restart_if_subscribed = matches!(outcome, Ok(true));
         finish_relay_reader(
@@ -504,6 +516,7 @@ fn ensure_relay_reader(run_id: &str, relay: &Arc<RunRelay>, plane: Arc<Lifecycle
             &relay_for_thread,
             restart_if_subscribed,
             plane,
+            workspace_root,
         );
     });
 }
@@ -516,13 +529,14 @@ fn finish_relay_reader(
     relay: &Arc<RunRelay>,
     restart_if_subscribed: bool,
     plane: Arc<LifecyclePlane>,
+    workspace_root: std::path::PathBuf,
 ) {
     let restart = {
         let mut registry = relays().lock().unwrap_or_else(|e| e.into_inner());
         registry.reader_finished(run_id, relay, restart_if_subscribed)
     };
     if restart {
-        ensure_relay_reader(run_id, relay, plane);
+        ensure_relay_reader(run_id, relay, plane, workspace_root);
     }
 }
 
@@ -531,9 +545,14 @@ fn finish_relay_reader(
 /// on any connection fault emit one degraded signal. The browser owns authoritative
 /// status polling. Bounded by `RELAY_MAX_LIFETIME` overall and
 /// `UPSTREAM_IDLE_TIMEOUT` per read.
-fn run_relay_thread(run_id: &str, relay: &RunRelay, plane: &LifecyclePlane) -> bool {
+fn run_relay_thread(
+    run_id: &str,
+    relay: &RunRelay,
+    plane: &LifecyclePlane,
+    workspace_root: &std::path::Path,
+) -> bool {
     let deadline = Instant::now() + RELAY_MAX_LIFETIME;
-    let (port, bearer) = match super::a2a::a2a_endpoint(plane) {
+    let (port, bearer) = match super::a2a::a2a_endpoint(plane, workspace_root) {
         Ok(endpoint) => endpoint,
         Err(reason) => {
             // The browser owns authoritative degraded polling. Emit one signal and
@@ -1058,7 +1077,12 @@ pub async fn a2a_run_stream(
     // a frame landing between the two is then present in the live receiver's queue
     // rather than lost; the dedup threshold removes the snapshot/queue overlap.
     let receiver = relay.tx.subscribe();
-    ensure_relay_reader(&run_id, &relay, state.a2a_lifecycle.clone());
+    ensure_relay_reader(
+        &run_id,
+        &relay,
+        state.a2a_lifecycle.clone(),
+        state.workspace_root.clone(),
+    );
     let (frames, gap) = relay.snapshot_since(params.since);
 
     let emitted_up_to = frames

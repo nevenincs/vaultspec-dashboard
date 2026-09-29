@@ -1,4 +1,4 @@
-//! Machine-global a2a discovery and endpoint resolution: how the pass-through
+//! Project-bound a2a discovery and endpoint resolution: how the pass-through
 //! FINDS the resident gateway, and nothing about what it then forwards.
 //!
 //! This is the attach-never-own half of the edge. It answers one question —
@@ -10,24 +10,29 @@
 //! secret-free; the only credential read here is the owner-restricted handoff
 //! file the record REFERENCES, and it never reaches a log line.
 //!
+//! a2a's resident state is project-bound, not machine-global
+//! (`2026-09-23-project-bound-state-adr`, a2a repo): the candidates below are
+//! rooted at the engine's served workspace, the same workspace a2a itself
+//! resolves its home against. There is no per-user or machine-wide fallback.
+//!
 //! Held apart from the control verbs because it is a self-contained predicate
 //! with its own trust rules, consumed by three callers that share nothing else:
 //! the pass-through transport, the run-stream relay, and the agent tier.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use rag_client::client::{LoopbackTransport, RagTransport};
 use serde_json::Value;
 use vaultspec_product::a2a_contract::{
-    A2A_HOME_DIR, A2A_HOME_ENV, HANDOFF_CREDENTIAL_FILE, RESIDENT_DISCOVERY_FILE,
+    A2A_DEFAULT_HOME_DIR, A2A_HOME_ENV, HANDOFF_CREDENTIAL_FILE, RESIDENT_DISCOVERY_FILE,
 };
 
 use super::{A2A_HEALTH_TIMEOUT, A2A_HEARTBEAT_STALE_MS};
 use crate::app::now_ms;
 
-/// The a2a discovery record shape (`~/.vaultspec-a2a/service.json`): the R8
-/// `ServiceInfo` contract the resident gateway publishes. Discovery itself is
-/// secret-free; `handoff_reference` names the sibling bearer file.
+/// The a2a discovery record shape (`<workspace>/.vault/data/agents/service.json`):
+/// the R8 `ServiceInfo` contract the resident gateway publishes. Discovery itself
+/// is secret-free; `handoff_reference` names the sibling bearer file.
 #[derive(Clone, serde::Deserialize)]
 pub(super) struct A2aServiceInfo {
     pub(super) port: u16,
@@ -71,23 +76,45 @@ pub(super) enum A2aDiscovery {
     },
 }
 
-/// The machine-global a2a discovery file candidates: the `VAULTSPEC_A2A_HOME`
-/// env override FIRST (mirrors the sibling's own `a2a_home` resolution), then
-/// the default `~/.vaultspec-a2a/service.json`. a2a is one resident service per
-/// machine, so there is no per-scope candidate.
-pub(super) fn a2a_service_json_candidates() -> Vec<PathBuf> {
+/// The project-bound a2a discovery file candidates, rooted at `workspace_root`
+/// (the engine's served workspace — a2a's own project root in the common case
+/// where the dashboard and a2a share a working tree): the `VAULTSPEC_A2A_HOME`
+/// env override FIRST (mirrors the sibling's own `a2a_home` resolution — a
+/// relative value joins onto `workspace_root`, an absolute value is used as
+/// given), then the default `<workspace_root>/.vault/data/agents/service.json`.
+/// There is no per-user or machine-wide fallback: a2a's state home no longer
+/// lives in the user profile. Thin wrapper over
+/// [`a2a_service_json_candidates_for`], which takes the override explicitly so
+/// tests never need to mutate the process environment.
+pub(super) fn a2a_service_json_candidates(workspace_root: &Path) -> Vec<PathBuf> {
+    a2a_service_json_candidates_for(
+        workspace_root,
+        std::env::var_os(A2A_HOME_ENV).map(PathBuf::from),
+    )
+}
+
+/// The pure candidate-list builder behind [`a2a_service_json_candidates`],
+/// taking the `VAULTSPEC_A2A_HOME` override as an explicit argument rather
+/// than reading it — hermetic for tests (no process-env mutation, no
+/// unsafe `set_var`/`remove_var`, parallel-test-safe).
+pub(super) fn a2a_service_json_candidates_for(
+    workspace_root: &Path,
+    home_override: Option<PathBuf>,
+) -> Vec<PathBuf> {
     let mut candidates = Vec::new();
-    if let Some(home) = std::env::var_os(A2A_HOME_ENV) {
-        candidates.push(PathBuf::from(home).join(RESIDENT_DISCOVERY_FILE));
+    if let Some(home) = home_override {
+        let resolved = if home.is_absolute() {
+            home
+        } else {
+            workspace_root.join(home)
+        };
+        candidates.push(resolved.join(RESIDENT_DISCOVERY_FILE));
     }
-    let user_home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME"));
-    if let Some(user_home) = user_home {
-        candidates.push(
-            PathBuf::from(user_home)
-                .join(A2A_HOME_DIR)
-                .join(RESIDENT_DISCOVERY_FILE),
-        );
-    }
+    candidates.push(
+        workspace_root
+            .join(A2A_DEFAULT_HOME_DIR)
+            .join(RESIDENT_DISCOVERY_FILE),
+    );
     candidates
 }
 
@@ -202,13 +229,15 @@ pub(super) fn a2a_endpoint_dual(
     a2a_endpoint_from(candidates)
 }
 
-/// [`a2a_endpoint_dual`] over the machine-global `service.json` candidates — the
-/// production fallback list. Used by the run-stream relay (`a2a_stream`), which
-/// holds the seated `LifecyclePlane` but not an explicit candidate list.
+/// [`a2a_endpoint_dual`] over the project-bound `service.json` candidates,
+/// rooted at `workspace_root` — the production fallback list. Used by the
+/// run-stream relay (`a2a_stream`), which holds the seated `LifecyclePlane` but
+/// not an explicit candidate list.
 pub(crate) fn a2a_endpoint(
     plane: &crate::routes::a2a_lifecycle::LifecyclePlane,
+    workspace_root: &Path,
 ) -> Result<(u16, Option<String>), String> {
-    a2a_endpoint_dual(plane, &a2a_service_json_candidates())
+    a2a_endpoint_dual(plane, &a2a_service_json_candidates(workspace_root))
 }
 
 /// [`a2a_endpoint`] over an explicit candidate list — hermetic for a real-socket
@@ -254,8 +283,13 @@ pub(super) fn a2a_endpoint_from(candidates: &[PathBuf]) -> Result<(u16, Option<S
 /// sibling still degrades honestly — the pass-through performs the confirm at
 /// call time and returns its own explicit `agent` degradation, which is
 /// authoritative and overrides this baseline.
-pub(crate) fn resident_sibling_is_attachable() -> Result<(), String> {
-    match discover_a2a_at(&a2a_service_json_candidates()) {
+///
+/// `workspace_root` roots the project-bound candidate list (see
+/// [`a2a_service_json_candidates`]); the memoized agent-tier snapshot, which has
+/// no per-request state to thread one through, supplies the engine's own served
+/// workspace root via [`crate::routes::a2a_lifecycle::engine_workspace_root`].
+pub(crate) fn resident_sibling_is_attachable(workspace_root: &Path) -> Result<(), String> {
+    match discover_a2a_at(&a2a_service_json_candidates(workspace_root)) {
         A2aDiscovery::Fresh(_) => Ok(()),
         A2aDiscovery::Down { reason } => Err(reason),
     }

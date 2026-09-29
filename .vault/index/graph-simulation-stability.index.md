@@ -4,9 +4,9 @@ tags:
   - '#index'
   - '#graph-simulation-stability'
 date: '2026-08-01'
-modified: '2026-09-05'
+modified: '2026-09-23'
 body_schema: 'body-v2'
-body_hash: 'sha256:e905552327c2c159af66b7b21441537ba384cc28b0eb0acca10839de99ce74b4'
+body_hash: 'sha256:7d497d0ae135664f74bd9d7df12f417d09bddb2369e6c599340560ed17489b48'
 related:
   - '[[2026-06-29-graph-simulation-stability-adr]]'
   - '[[2026-06-29-graph-simulation-stability-ledger]]'
@@ -17,8 +17,6 @@ related:
   - '[[2026-07-03-graph-simulation-stability-plan]]'
   - '[[2026-07-03-graph-simulation-stability-reference]]'
   - '[[2026-07-03-graph-simulation-stability-research]]'
-  - '[[2026-09-05-graph-simulation-stability-S01]]'
-  - '[[2026-09-05-graph-simulation-stability-S02]]'
   - '[[2026-09-05-graph-simulation-stability-force-balance-audit]]'
   - '[[2026-09-05-graph-simulation-stability-force-balance-reference]]'
   - '[[2026-09-05-graph-simulation-stability-performance-audit]]'
@@ -50,8 +48,6 @@ Auto-generated index of all documents tagged with `#graph-simulation-stability`.
 ### exec
 
 - `2026-06-29-graph-simulation-stability-ledger` - `graph-simulation-stability` ledger
-- `2026-09-05-graph-simulation-stability-S01` - Correct force inertia, frame cadence and unintended host energy entry; verify regression and existing stability contracts
-- `2026-09-05-graph-simulation-stability-S02` - Engineer and verify correctness-preserving graph simulation performance with pinned-region pruning, update reuse, overload scheduling and reproducible measurements
 
 ### plan
 

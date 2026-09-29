@@ -8,7 +8,7 @@
 //! Two decisions govern the shape, both mirroring the shipped rag broker:
 //!
 //! - **Sibling-down is a degraded 200, not a 5xx** (the rag ops template's
-//!   `degradation-is-read-from-tiers`): when machine-global discovery finds no
+//!   `degradation-is-read-from-tiers`): when project-bound discovery finds no
 //!   fresh, healthy a2a service, every verb returns 200 with the `agent` tier
 //!   degraded and a null envelope. A 502/504 is reserved for a genuine proxy
 //!   fault — the sibling was discovered running but its round-trip crashed
@@ -24,7 +24,7 @@
 //!
 //! Every forwarded call carries BOTH an output byte ceiling (the loopback
 //! transport's `MAX_RAG_BODY` OOM guard) and a wall-clock timeout
-//! (`subprocess-calls-carry-cap-and-timeout`), and machine-global discovery is
+//! (`subprocess-calls-carry-cap-and-timeout`), and project-bound discovery is
 //! attach-never-own: the engine reaches whatever a2a service is resident, never
 //! starts or owns one.
 
@@ -167,7 +167,7 @@ const A2A_PROVIDER_CATALOG_PATH: &str = "/v1/provider-catalog";
 #[path = "a2a/clarification.rs"]
 mod clarification;
 
-/// Machine-global discovery of the resident a2a gateway and the endpoint
+/// Project-bound discovery of the resident a2a gateway and the endpoint
 /// resolution built on it, held apart from the control verbs because it is a
 /// self-contained trust predicate — heartbeat freshness plus an owner-restricted
 /// handoff credential — with three callers that otherwise share nothing: this
@@ -1230,11 +1230,12 @@ pub async fn ops_a2a(
     Path(verb): Path<String>,
     body: Option<Json<A2aVerbBody>>,
 ) -> ApiResult {
+    let candidates = a2a_service_json_candidates(&state.workspace_root);
     ops_a2a_with_candidates(
         state,
         verb,
         body.map(|Json(body)| body).unwrap_or_default(),
-        a2a_service_json_candidates(),
+        candidates,
     )
     .await
 }

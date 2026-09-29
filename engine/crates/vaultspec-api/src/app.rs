@@ -1419,6 +1419,10 @@ pub fn build_state_with_bearer(root: PathBuf, bearer: String) -> Arc<AppState> {
 /// builder both funnel here so the A2A lifecycle plane is constructed once.
 fn build_state_full(root: PathBuf, bearer: String, product_app_home: PathBuf) -> Arc<AppState> {
     let workspace_root = root.clone();
+    // Record the served workspace root once for the agent-tier's process-wide
+    // memoized snapshot, which has no per-request state to thread one through
+    // (a2a's resident discovery is project-bound, not machine-global).
+    crate::routes::a2a_lifecycle::set_engine_workspace_root(&workspace_root);
     let active_token = crate::routes::scope_token(&workspace_root);
     // The single shared user-state handle, opened ONCE per workspace. Like the
     // cache, this is best-effort: a corrupt store is recreated empty
