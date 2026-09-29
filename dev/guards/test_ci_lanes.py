@@ -26,6 +26,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from dev.guards.conftest import devserver_constant
 from dev.runner import VerbRef
 from dev.toolchain import SIMPLE, VERBS
 
@@ -104,10 +105,28 @@ def _needs(spec: dict) -> set[str]:
     return {needs} if isinstance(needs, str) else set(needs)
 
 
+def _shared_workflows(repo_root: Path) -> set[str]:
+    """The machine-wide Dev server workflow, when it is byte-identical to canonical.
+
+    `.github/workflows/devserver.yml` is not this repository's lane. It is
+    rendered from the shared dev-server harness (`dev/devserver.py render
+    workflow`) and identical in every web app on the workstation, so it carries
+    the harness's own name ("Dev server", not "Dashboard ...") and its own push
+    trigger, and `just dev check` fails when it drifts. Exempting it only while
+    it matches the canonical text keeps the exemption from covering a hand-edited
+    copy - or anything else placed at that path.
+    """
+    path = devserver_constant("WORKFLOW_PATH")
+    text = (repo_root / path).read_text("utf-8") if (repo_root / path).is_file() else ""
+    return {Path(path).name} if text == devserver_constant("WORKFLOW") else set()
+
+
 def test_every_workflow_is_named_for_the_product(repo_root: Path) -> None:
     """One prefix, and no two workflows share a display name."""
     names = {
-        w: str(_load(repo_root, w).get("name", "")) for w in _all_workflows(repo_root)
+        w: str(_load(repo_root, w).get("name", ""))
+        for w in _all_workflows(repo_root)
+        if w not in _shared_workflows(repo_root)
     }
     unprefixed = sorted(
         w for w, n in names.items() if not n.startswith(WORKFLOW_PREFIX)
@@ -150,9 +169,16 @@ def test_every_scheduling_job_has_a_literal_timeout(repo_root: Path) -> None:
 
 
 def test_only_release_please_runs_on_a_push(repo_root: Path) -> None:
-    """The merge gate measured the merged tree; a push to main re-measures nothing."""
+    """The merge gate measured the merged tree; a push to main re-measures nothing.
+
+    The shared Dev server workflow is exempt (see `_shared_workflows`): its
+    triggers are fixed machine-wide, not by this repository's lane design.
+    """
     pushed = [
-        w for w in _all_workflows(repo_root) if "push" in _triggers(_load(repo_root, w))
+        w
+        for w in _all_workflows(repo_root)
+        if w not in _shared_workflows(repo_root)
+        and "push" in _triggers(_load(repo_root, w))
     ]
     assert pushed == ["release-please.yml"], (
         f"only release-please may run on a push; found {pushed}. Tag triggers are "
