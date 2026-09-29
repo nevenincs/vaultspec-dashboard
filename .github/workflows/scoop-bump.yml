@@ -63,7 +63,7 @@ jobs:
       # user's Scoop can see. Check out the org distribution repo and commit
       # there. The deploy key authenticates that push; the checkout below is
       # the only writable handle this job has on the channel root.
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # zizmor: ignore[artipacked] pushes the manifest to the channel root with this deploy key
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # zizmor: ignore[artipacked] pushes the manifest to the channel root with this deploy key
         with:
           repository: nevenincs/homebrew-tap
           ref: main

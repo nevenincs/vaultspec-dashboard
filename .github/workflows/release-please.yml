@@ -38,7 +38,7 @@ jobs:
       tag_name: ${{ steps.release.outputs.tag_name }}
       release_branch: ${{ steps.release.outputs.pr && fromJSON(steps.release.outputs.pr).headBranchName }}
     steps:
-      - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
         with:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
@@ -67,7 +67,7 @@ jobs:
         run: bash .github/scripts/reclaim-workspace.sh || true
       # This job pushes the regenerated lock back to the release branch, so the
       # checkout must keep its credentials.
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # zizmor: ignore[artipacked] pushes the lock back with this token
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # zizmor: ignore[artipacked] pushes the lock back with this token
         with:
           ref: ${{ needs.release-please.outputs.release_branch }}
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
