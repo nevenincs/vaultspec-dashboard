@@ -7,7 +7,7 @@ Install the toolchain and dependencies, then start the development servers:
 ```console
 mise install
 just init
-just dev-serve
+just dev
 ```
 
 `just init` provisions everything a fresh worktree needs — the locked Python
@@ -15,6 +15,16 @@ toolchain, the SPA's `node_modules`, the framework enrollment, the git hooks,
 and `.env`. It is safe to run again at any time and costs nothing when there is
 nothing to do. `just init-check` reports whether a worktree is ready without
 changing anything.
+
+`just dev` runs the machine-wide dev-server harness (`dev/devserver.py`, shared by
+every web app on this workstation). It starts the SPA dev server — which builds and
+supervises the engine — or reattaches to the one this checkout already runs, frees its
+ports of any other worktree's servers, and prints the URLs
+(`https://vaultspec-dashboard.localhost` through portless). The ports are declared once,
+in the `devserver` block of [`frontend/package.json`](frontend/package.json). Other
+targets: `just dev status`, `just dev logs`, `just dev restart`, `just dev stop all`,
+and `just dev up review` for the visual review desk. `just dev check` is the static
+conformance gate the Dev server workflow runs.
 
 Run the relevant quality checks before submitting changes:
 
@@ -56,8 +66,8 @@ Regenerate terminal README assets with:
 just docs-readme-assets
 ```
 
-To regenerate application captures, keep `just dev-serve` running in one terminal. Run the
-capture task in another:
+To regenerate application captures, start the dev server with `just dev`, then run the
+capture task:
 
 ```console
 npm --prefix frontend run readme:capture

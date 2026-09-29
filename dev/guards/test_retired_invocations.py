@@ -25,6 +25,13 @@ if TYPE_CHECKING:
 #: Assembled from fragments ON PURPOSE. Written as literals, the retired
 #: strings would appear in this file and the sweep below would flag its own
 #: source - the guard failing on itself is how the first version behaved.
+#:
+#: `just dev <target>` was retired with the verb-plus-argument dispatch and is
+#: live again: it is now the machine-wide dev-server recipe every web app on
+#: the workstation shares (`just dev`, `just dev up review`, `just dev ci`),
+#: which the canonical Dev server workflow runs and the docs cite. The two
+#: entry points it replaced, `dev-serve` and `dev-review`, are retired in turn;
+#: they are whole recipe names, so they carry no trailing space.
 RETIRED_INVOCATIONS: tuple[str, ...] = tuple(
     "just " + verb + " "
     for verb in (
@@ -37,9 +44,8 @@ RETIRED_INVOCATIONS: tuple[str, ...] = tuple(
         "docs",
         "build",
         "precommit",
-        "dev",
     )
-)
+) + tuple("just dev-" + recipe for recipe in ("serve", "review"))
 
 #: The contexts a real citation appears in. Bare prose is deliberately NOT one
 #: of them: "or we can just test that the parser works" is English, not a stale
