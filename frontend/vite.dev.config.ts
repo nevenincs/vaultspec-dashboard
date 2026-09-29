@@ -139,7 +139,7 @@ export default defineConfig({
   // A dep cache OF ITS OWN, and this is load-bearing rather than tidy.
   //
   // Vite's default cacheDir is `node_modules/.vite` for EVERY config in a project, so
-  // this dev-domain server and the production one (`vite.config.ts`, `just dev-serve`)
+  // this dev-domain server and the production one (`vite.config.ts`, `just dev`)
   // otherwise share a single optimized-dep store while scanning different entry graphs.
   // Starting one makes the other's dependencies stale, and Vite clears the directory to
   // re-optimize — so the still-running server keeps serving `?v=<hash>` URLs for files
@@ -218,7 +218,8 @@ export default defineConfig({
     host: process.env.VAULTSPEC_DEV_HOST ?? true,
     allowedHosts: DEV_ALLOWED_HOSTS,
     // Exact, non-default port that FAILS FAST on a conflict rather than drifting to a
-    // neighbour and colliding with another project's server (dev-workflow).
+    // neighbour and colliding with another project's server (dev-workflow). Declared
+    // as the `review` service in package.json; `just dev up review` serves it.
     port: DEV_PORTS.visualReview,
     strictPort: true,
   },

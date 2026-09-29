@@ -19,8 +19,11 @@ from dev.toolchain import SIMPLE, VERBS
 #: Matches the verb name in a dispatching recipe body, e.g. `{{dev}} lint ...`.
 _DISPATCH = re.compile(r"^\{\{dev\}\}\s+(?P<verb>[a-z][a-z0-9-]*)")
 
-#: Recipes that legitimately do not dispatch a verb.
-_NON_DISPATCHING = frozenset({"default"})
+#: Recipes that legitimately do not dispatch a verb. `dev` is the machine-wide
+#: dev-server recipe every web app on the workstation carries verbatim; it runs
+#: the shared `dev/devserver.py` harness rather than a verb in this table, and
+#: `test_recipe_shape` holds it to the canonical text.
+_NON_DISPATCHING = frozenset({"default", "dev"})
 
 
 def _dispatched_verbs(recipe_bodies: dict[str, list[str]]) -> dict[str, str]:
@@ -57,8 +60,9 @@ def test_every_verb_has_a_recipe(recipe_bodies: dict[str, list[str]]) -> None:
 
 #: Recipes whose name deliberately does not begin with the verb they dispatch.
 #: Each is a domain-named entry point rather than an action-named gate, or the
-#: composed pipeline itself, and each is listed by name so a sixth cannot appear
-#: by accident.
+#: composed pipeline itself, and each is listed by name so a fifth cannot appear
+#: by accident. The former `dev-serve` and `dev-review` entry points are gone:
+#: the shared `dev` recipe (`just dev`, `just dev up review`) replaced them.
 #:
 #: `audit-knip` is the one that is not merely domain-named: it dispatches the
 #: `lint` verb but is named and grouped for its CONSEQUENCE, which is advisory.
@@ -68,8 +72,6 @@ def test_every_verb_has_a_recipe(recipe_bodies: dict[str, list[str]]) -> None:
 _RENAMED_ENTRY_POINTS: dict[str, str] = {
     "ci": "ci",
     "fix-tokens": "tokens",
-    "dev-serve": "serve",
-    "dev-review": "review",
     "build-clean": "clean",
     "audit-knip": "lint",
 }
@@ -87,6 +89,8 @@ def test_recipe_name_states_the_verb_it_dispatches(
     in the table - so the check is that the recipe's TARGET segment names the
     target it dispatches, with the verb spellings mapped explicitly.
     """
+    # `dev` names the shared dev-server recipe, which dispatches no verb, so a
+    # `dev-*` recipe that dispatches one is flagged rather than accepted.
     verb_spelling = {"check": "lint", "health": "health", "dev": None}
     mismatched: dict[str, str] = {}
     for recipe, verb in _dispatched_verbs(recipe_bodies).items():

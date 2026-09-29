@@ -6,7 +6,8 @@
 #  `target` argument anywhere: the thing a recipe acts on is part of its name,
 #  so `just --list` is the complete surface and tab completion reaches every
 #  one of them. Run `just` for the annotated recipe list, grouped by
-#  CONSEQUENCE.
+#  CONSEQUENCE. The single exception is the shared `dev` recipe (see the `dev`
+#  group below), whose shape is fixed machine-wide rather than by this file.
 #
 #  THIS FILE IS DEV-ONLY IN ITS ENTIRETY. What this repository SHIPS is the
 #  Rust engine (`engine/`) and the TypeScript SPA (`frontend/src/`); everything
@@ -401,15 +402,29 @@ vault-check:
 vault-fix:
     {{dev}} vault fix
 
-# Start the live development survey: engine plus Vite HMR.
-[group('dev')]
-dev-serve:
-    {{dev}} serve
+# THE DEV SERVERS ARE THE ONE EXCEPTION TO THIS FILE'S RULES. The `dev` recipe
+# below is the machine-wide dev-server standard every web app on this
+# workstation carries VERBATIM: rendered by `dev/devserver.py render recipe`
+# from the shared harness (a byte-identical copy of the private `devservers`
+# repository's; never edit it here), and `just dev check` fails when it drifts.
+# So it takes a `target` argument, and it runs `uv run --script` rather than
+# `{{dev}}`: the harness is a PEP 723 script with its own dependencies, run the
+# same way in every repository. `dev/guards` exempts exactly this text and
+# nothing else.
+#
+# `just dev` starts the SPA dev server (which builds and supervises the engine)
+# or reattaches to the one this checkout already runs, after freeing the
+# declared ports of any other worktree's servers; `just dev up review` serves
+# the visual review desk. The ports live in frontend/package.json's `devserver`
+# block and nowhere else. Targets: up [svc], restart, stop [svc|all], status,
+# logs [svc], check, ci. The SPA's engine handling is VAULTSPEC_DEV_ENGINE=
+# manage (default: build, supervise, rebuild on engine source edits) | adopt |
+# off; `just dev ci` runs with it off, because that CI job has no Rust toolchain.
 
-# Open the visual review desk: every surface x state x theme x viewport.
+[doc('Dev server: start or attach, sanitize, health-check, evict occupiers (up|restart|stop|status|logs|check|ci)')]
 [group('dev')]
-dev-review:
-    {{dev}} review
+dev target="up" *args="":
+    @uv run --script dev/devserver.py {{ target }} {{ args }}
 
 # ===========================================================================
 #  meta
