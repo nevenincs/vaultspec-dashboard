@@ -72,8 +72,10 @@ jobs:
   # spent on a build.
   prove-ref:
     name: "Check: Prove ref commit (Linux)"
-    timeout-minutes: 10
+    timeout-minutes: 130
     runs-on: [self-hosted, Linux, X64]
+    env:
+      CI_EXEC_BUDGET_MINUTES: 10
     permissions:
       contents: write
     outputs:
@@ -142,9 +144,11 @@ jobs:
   # instead of a day of silence.
   queue-watchdog:
     name: "Check: Queue watchdog (Linux)"
-    timeout-minutes: 90
+    timeout-minutes: 210
     needs: prove-ref
     runs-on: [self-hosted, Linux, X64]
+    env:
+      CI_EXEC_BUDGET_MINUTES: 90
     permissions:
       actions: write
     steps:
@@ -188,7 +192,7 @@ jobs:
       contents: write
 
   build-product-tree:
-    timeout-minutes: 120
+    timeout-minutes: 240
     needs: [prove-ref, merge-gate]
     name: "Build: Product tree (${{ matrix.platform }})"
     strategy:
@@ -213,6 +217,8 @@ jobs:
     # just not where it was meant to. Keep the label anyway; scheduling that is
     # reproducible is worth having on its own.
     runs-on: [self-hosted, "${{ matrix.os }}", "${{ matrix.arch }}"]
+    env:
+      CI_EXEC_BUDGET_MINUTES: 120
     # The constrained native ARM capabilities are serialized because concurrent
     # full release builds exceed the available capacity. Other targets use a
     # per-run, per-target group and retain useful parallelism.
@@ -392,10 +398,12 @@ jobs:
           Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used } | Format-Table -AutoSize
 
   cohort-digest:
-    timeout-minutes: 30
+    timeout-minutes: 150
     name: "Build: Cohort digest (Linux)"
     needs: build-product-tree
     runs-on: [self-hosted, Linux, X64]
+    env:
+      CI_EXEC_BUDGET_MINUTES: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -450,10 +458,12 @@ jobs:
           df -h . 2>/dev/null | tail -1
 
   python-compatibility:
-    timeout-minutes: 30
+    timeout-minutes: 150
     name: "Check: Python harness (Linux ${{ matrix.python-version }})"
     needs: prove-ref
     runs-on: [self-hosted, Linux, X64]
+    env:
+      CI_EXEC_BUDGET_MINUTES: 30
     strategy:
       fail-fast: false
       max-parallel: 2
@@ -482,10 +492,12 @@ jobs:
   # One verdict over every artifact check, so the jobs that touch the release
   # need a single name rather than a list that can drift.
   artifact-correctness:
-    timeout-minutes: 15
+    timeout-minutes: 135
     name: "Check: Release artifacts (Linux)"
     needs: [build-product-tree, cohort-digest, python-compatibility]
     runs-on: [self-hosted, Linux, X64]
+    env:
+      CI_EXEC_BUDGET_MINUTES: 15
     steps:
       - name: Confirm every artifact check passed
         run: echo "All four native archives, the cohort digest and both supported Python versions passed."
@@ -496,10 +508,12 @@ jobs:
   # It fails closed (matrix untouched) until real release inputs make a proof
   # possible, and the release is not published until it passes.
   resolve-version:
-    timeout-minutes: 15
+    timeout-minutes: 135
     name: "Check: Release version (Linux)"
     needs: prove-ref
     runs-on: [self-hosted, Linux, X64]
+    env:
+      CI_EXEC_BUDGET_MINUTES: 15
     outputs:
       value: ${{ steps.v.outputs.value }}
       prior: ${{ steps.v.outputs.prior }}
@@ -562,11 +576,13 @@ jobs:
   # needs every natively verified member, the cohort digest and the Python
   # harness, so a partial cohort cannot be attached.
   attach-to-release:
-    timeout-minutes: 45
+    timeout-minutes: 165
     name: "Build: Release attachments (Linux)"
     if: ${{ !inputs.validation_only }}
     needs: [archives, artifact-correctness, resolve-version]
     runs-on: [self-hosted, Linux, X64]
+    env:
+      CI_EXEC_BUDGET_MINUTES: 45
     permissions:
       contents: write
     steps:
@@ -674,10 +690,12 @@ jobs:
   # The draft now becomes a public prerelease so acquisition can download it
   # exactly as a user would; `latest` still answers with the previous release.
   publish-prerelease:
-    timeout-minutes: 15
+    timeout-minutes: 135
     name: "Build: Release candidate (Linux)"
     needs: [archives, attach-to-release, channel-feasibility]
     runs-on: [self-hosted, Linux, X64]
+    env:
+      CI_EXEC_BUDGET_MINUTES: 15
     permissions:
       contents: write
     steps:
@@ -698,10 +716,12 @@ jobs:
   # no longer surface as `latest`. If acquisition fails, the release stays a
   # prerelease: reachable by its tag for diagnosis, never the default install.
   promote-release:
-    timeout-minutes: 15
+    timeout-minutes: 135
     name: "Build: Release promotion (Linux)"
     needs: [publish-prerelease, acquisition]
     runs-on: [self-hosted, Linux, X64]
+    env:
+      CI_EXEC_BUDGET_MINUTES: 15
     permissions:
       contents: write
     steps:

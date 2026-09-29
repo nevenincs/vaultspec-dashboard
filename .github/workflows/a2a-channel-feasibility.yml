@@ -224,11 +224,13 @@ jobs:
             exit 1
           }
   record:
-    timeout-minutes: 20
+    timeout-minutes: 140
     name: "Build: Support matrix record (Linux)"
     needs: [scoop, winget]
     if: always()
     runs-on: [self-hosted, Linux, X64]
+    env:
+      CI_EXEC_BUDGET_MINUTES: 20
     # The only job that writes: it commits the verdicts to the support matrix.
     permissions:
       contents: write
