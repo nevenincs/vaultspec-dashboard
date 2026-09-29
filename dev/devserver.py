@@ -716,6 +716,20 @@ def say(tag: str, text: str, err: bool = False) -> None:
     print(f"{tag:<5}{text}", file=sys.stderr if err else sys.stdout, flush=True)
 
 
+def interactive() -> bool:
+    """A terminal someone is watching. On Windows NUL also claims to be a tty; only a console counts."""
+    if not sys.stdout.isatty():
+        return False
+    if not WINDOWS:
+        return True
+    import ctypes
+    import msvcrt
+
+    mode = ctypes.c_uint32()
+    handle = msvcrt.get_osfhandle(sys.stdout.fileno())
+    return bool(ctypes.windll.kernel32.GetConsoleMode(handle, ctypes.byref(mode)))
+
+
 def tailnet_name() -> str | None:
     exe = shutil.which("tailscale")
     if exe is None:
@@ -734,7 +748,7 @@ def urls(app: App, svc: Service) -> list[str]:
         name = tailnet_name()
         if name:
             found.append(f"http://{name}:{svc.port}/")
-    if shutil.which("portless"):
+    if shutil.which("portless") and (svc.key == "dev" or svc.run):
         found.append(f"https://{svc.route}.localhost/")
     return found
 
@@ -860,6 +874,9 @@ class Harness:
                 verdict = "answers" if healthy else "does not answer its health check"
                 tag = "ok" if healthy else "warn"
                 say(tag, f"{svc.key}: :{svc.port} is held by {who}, which {verdict}; left alone")
+                if healthy:
+                    # Whoever started it, it serves this app's port: the name should reach it.
+                    route(svc, register=True)
                 return EXIT_OK
             say("--", f"{svc.key}: :{svc.port} held by {who} ({reason}); restarting")
             if not self.free(svc, holders, record):
@@ -970,7 +987,8 @@ class Harness:
         held = listening()
         say("", f"{self.app.name}  block {self.app.block[0]}-{self.app.block[1]}  state {self.state.dir}")
         for svc in self.app.services.values():
-            record = self.state.read(svc.key)
+            # A port-only service is run by the dev server (an engine its Vite plugin spawns): judge it by dev's record.
+            record = self.state.read(svc.key if svc.key == "dev" or svc.run else "dev")
             holders = held.get(svc.port, set())
             if not holders:
                 word = "down"
@@ -997,7 +1015,7 @@ class Harness:
         """Print the URLs; on a terminal, follow the log until Ctrl+C, which detaches."""
         if announce:
             say("", "  ".join(urls(self.app, svc)))
-        if not sys.stdout.isatty() or self.ci:
+        if not interactive() or self.ci:
             return EXIT_OK
         log = self.state.log(svc.key)
         say("", f"following {log} - Ctrl+C detaches, `just dev stop` stops")
@@ -1135,6 +1153,10 @@ def run_ci(app: App) -> int:
 
 
 def main(argv: list[str]) -> int:
+    # A log line Vite writes (its arrow, a filename) must never crash a report on a narrow code page.
+    for stream in (sys.stdout, sys.stderr):
+        with contextlib.suppress(AttributeError, ValueError):
+            stream.reconfigure(errors="replace")
     target = argv[0] if argv else "up"
     rest = argv[1] if len(argv) > 1 else None
     if target not in TARGETS or len(argv) > 2:
