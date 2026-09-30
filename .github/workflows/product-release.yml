@@ -120,7 +120,10 @@ jobs:
           fi
           echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
 
-  # The tagged tree passes the same full job set that guards `main`.
+  # The tagged tree passes the same full job set that guards `main`. The ref is
+  # named rather than inherited: a caller that leaves it to the run's own ref
+  # measures whatever that resolves to, which is how a release gets built on the
+  # strength of a gate that ran against something else.
   merge-gate:
     name: "Check: Merge gate (Linux)"
     needs: prove-ref
@@ -129,6 +132,8 @@ jobs:
       checks: read
       contents: read
       pull-requests: write
+    with:
+      ref: ${{ inputs.tag }}
 
   # A job dispatched to a selector with no ONLINE runner does not fail: it
   # QUEUES, and `timeout-minutes` bounds how long a job RUNS, not how long it

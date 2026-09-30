@@ -27,16 +27,62 @@ jobs:
     # A fork's pull request never starts a job: a step-level refusal would still
     # have handed the fork's workflow file a runner. The merge gate's verdict is
     # what turns a fork into a red, unmergeable check.
-    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    #
+    # Nor does any author who is neither the owner nor a collaborator. They push
+    # branches of THIS repository, so the fork clause never stops them and the
+    # approval requirement for outside contributors does not cover them;
+    # Dependabot is the one that arrives daily. This lane has no label door -
+    # it runs on every push by design - so an untrusted author's change reaches
+    # the fleet through the merge gate's `ci:full` label, once a collaborator
+    # has read it, and not before.
+    if: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (github.event.pull_request.author_association == 'OWNER' || github.event.pull_request.author_association == 'COLLABORATOR')) }}
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 20
     steps:
-      # Before checkout, because checkout is the step the EACCES lands on.
-      # `|| true` so a workspace that has never been checked out - where the
-      # script does not exist yet - simply skips it.
-      - name: Reclaim the workspace from a job that may not have finished
+      # INLINE AND SELF-CONTAINED, because nothing under the workspace may
+      # execute before a job's own checkout. A job the runner is shut down
+      # under never reaches its trailing reclaim, so its whole tree is still
+      # there when the next job starts - and a script read out of that tree is
+      # the previous branch's code running with this job's credentials. This
+      # step therefore reads no repository file, and drops `.git/hooks`, which
+      # survives `git clean` and would otherwise run a previous job's hook.
+      - name: Reclaim the workspace before checkout
         shell: bash
-        run: bash .github/scripts/reclaim-workspace.sh || true
+        run: |
+          set -uo pipefail
+          workspace="${GITHUB_WORKSPACE:-}"
+          if [ -z "${workspace}" ] || [ ! -d "${workspace}" ]; then
+            echo "reclaim: no workspace yet - nothing to do"
+            exit 0
+          fi
+          rm -rf "${workspace}/.git/hooks" 2>/dev/null || true
+          # The live suite spawns a real `vaultspec serve` from the built
+          # binary, which a killed job leaves holding files under
+          # engine/target. Matched on the executable path under THIS
+          # workspace: three runners share the machine, and a pattern broad
+          # enough to catch "a vaultspec engine" would kill another
+          # repository's in-flight test.
+          # Unquoted on purpose below: word splitting is how the newline-
+          # separated pid list becomes kill's arguments.
+          left=$(pgrep -f "${workspace}/engine/target/[^ ]*/vaultspec" 2>/dev/null)
+          if [ -n "${left}" ]; then
+            echo "reclaim: stopping engine processes left from a previous job: ${left}"
+            # shellcheck disable=SC2086
+            kill ${left} 2>/dev/null || true
+            sleep 2
+            # shellcheck disable=SC2086
+            kill -9 ${left} 2>/dev/null || true
+          fi
+          # Removing the build directory every time would throw away the
+          # incremental cache, so the test is whether the file the EACCES
+          # actually lands on is writable.
+          probe="${workspace}/engine/target/.rustc_info.json"
+          if [ -e "${probe}" ] && [ ! -w "${probe}" ]; then
+            echo "reclaim: ${probe} is not writable - removing the build directory"
+            rm -rf "${workspace}/engine/target" 2>/dev/null || true
+          fi
+          rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
+          exit 0
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
