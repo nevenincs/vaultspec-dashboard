@@ -55,10 +55,76 @@ definitions. For design work, use:
 Read the [current-main application lifecycle](docs/application-runtime.md) when working on
 unreleased launch, update, or single-instance behavior.
 
-Release automation lives in the
-[Release Please workflow](.github/workflows/release-please.yml) and
-[distribution workflow](.github/workflows/release.yml). Use conventional commits and let
-Release Please update the [engine changelog](engine/CHANGELOG.md).
+## Releasing
+
+Use conventional commit messages such as `feat:`, `fix:`, and `feat!:`.
+[Release Please](.github/workflows/release-please.yml) maintains a release pull request
+with the next version and the [engine changelog](engine/CHANGELOG.md), rebuilt on every
+commit that lands on `main`. Merging it does not release anything.
+
+To release, dispatch `Dashboard Release Please`. The cut finds the release pull request,
+proves its head with the full merge gate, squash-merges it, and seconds later creates the
+tag `v<version>` and an unpublished draft release, then dispatches
+[the release orchestrator](.github/workflows/product-release.yml) for that tag. The
+orchestrator measures the tagged tree, builds and verifies every artifact, attaches them
+to the draft, publishes it as a prerelease, proves acquisition on the oldest supported
+loaders, promotes it to `latest`, and only then bumps the Homebrew and Scoop channels. A
+failure before publication leaves an invisible draft rather than a half-finished release.
+Fix the cause and re-dispatch `Dashboard Release` for the same tag. A release pull request
+merged by hand is released by the next dispatched cut.
+
+The proof comes before the merge because a release tag cannot be deleted: a release commit
+that failed its gate after its tag existed would be a permanent tag of a commit nobody can
+ship. The tag follows the merge with nothing in between for a different reason — see the
+recovery runbook below.
+
+### When the cut cannot create the tag
+
+A cut can stop at `Create the release for the merged proposal` with
+`Resource not accessible by integration`, and its `Name a release this token cannot tag`
+step names the tag. The workflow token never holds the `workflows` permission, and without
+it GitHub refuses any tag or release that targets a commit whose workflow files differ
+from `main` — even once the tag exists. A workflow change that landed between the release
+commit's merge and its tag, as when a pull request merged by hand waits for its cut,
+therefore blocks the release for good: no rerun and no later cut can finish it.
+
+Finish it with your own credentials, as the cut would have, relabelling the release pull
+request first so the next cut does not pick it up again:
+
+```sh
+REPO=nevenincs/vaultspec-dashboard
+PR=<release pull request number>
+VERSION=<version>
+TAG="v$VERSION"
+SHA=$(gh pr view "$PR" --repo "$REPO" --json mergeCommit --jq .mergeCommit.oid)
+
+gh pr edit "$PR" --repo "$REPO" \
+  --remove-label "autorelease: pending" --add-label "autorelease: tagged"
+git fetch origin "$SHA"
+git push origin "$SHA:refs/tags/$TAG"
+git show "$SHA:engine/CHANGELOG.md" \
+  | awk -v h="## [$VERSION]" 'index($0, "## [") == 1 { p = index($0, h) == 1 } p' \
+  > release-notes.md
+gh release create "$TAG" --repo "$REPO" --verify-tag --draft \
+  --title "$TAG" --notes-file release-notes.md
+gh workflow run product-release.yml --repo "$REPO" --ref "$TAG" \
+  -f tag="$TAG" -f validation_only=false
+```
+
+No credential with `workflows` permission may be stored in this repository, which is why
+this is a runbook rather than a workflow. Nothing beyond the workflow token is needed to
+release; the checks on the release pull request are reported by a merge gate the proposal
+job dispatches, because a pull request the workflow token authored starts no runs of its
+own.
+
+### Who can run CI
+
+Only the repository owner and collaborators reach the self-hosted fleet directly. Every
+other author — Dependabot included, whose pull requests carry author association
+`CONTRIBUTOR` — runs nothing until a collaborator has read the change and applied the
+`ci:full` label, which is what starts the merge gate. Until then the gate refuses the
+commit and says so by name. Applying the label takes triage rights, so the label is the
+review. A bot cannot grant it.
 
 Regenerate terminal README assets with:
 

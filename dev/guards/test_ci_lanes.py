@@ -5,17 +5,22 @@ Three lanes, each answering a different question at a different cost:
 - ``ci.yml`` runs on every pull-request push and answers only the cheap static
   questions.
 - ``merge-gate.yml`` measures everything a change must pass, runs only when a
-  maintainer adds ``ci:full`` (or when the release orchestrator calls it), and
-  folds the result into ONE check the ruleset requires.
+  maintainer adds ``ci:full`` (or when the release cut or the orchestrator calls
+  it on a named ref), and folds the result into ONE check the ruleset requires.
+- ``release-please.yml`` keeps the release proposal current on every push and
+  cuts a release only when a maintainer dispatches it.
 - ``product-release.yml`` orchestrates the release, and nothing becomes visible
   to a user until every gate before it has passed.
 
 The soundness of that arrangement rests on properties no single job shows: a
 push must not start the gate, so a new commit cannot merge on an old verdict;
 the gate job must never be skipped, because a skipped required check counts
-as passed; and it must depend on every measuring job, or a job could fail
-without the verdict noticing. Each is asserted here rather than trusted to
-review.
+as passed; it must depend on every measuring job, or a job could fail without
+the verdict noticing; only a trusted author's change may reach the self-hosted
+fleet at all; nothing under the workspace may execute before the job that owns
+it has checked out; and only the dispatched cut may create a release, on a
+commit the gate has already passed. Each is asserted here rather than trusted
+to review.
 """
 
 from __future__ import annotations
@@ -215,11 +220,27 @@ def test_a_push_never_starts_the_merge_gate(repo_root: Path) -> None:
 
 
 def test_the_gate_is_never_skipped_and_sees_every_job(repo_root: Path) -> None:
-    """A skipped required check passes; an unwatched job fails silently."""
+    """A skipped required check passes; an unwatched job fails silently.
+
+    The gate's condition is asserted EXACTLY, not by substring. The condition it
+    replaces read `(event != pull_request || same-repo) && (always())`, which
+    still contains `always()` and is still skipped for a fork - and a skipped
+    required check counts as passed, so the one case the refusal exists for was
+    the one case it never ran. Every refusal belongs in the job's steps, where it
+    produces a red verdict rather than an absent one.
+
+    Mutation proof: narrowing the condition to
+    `${{ github.event_name != 'pull_request' && !cancelled() }}` makes this fail
+    on the exact-condition assertion; restoring it makes this pass.
+    """
     jobs = _load(repo_root, GATE_WORKFLOW)["jobs"]
     gate = jobs[GATE_JOB]
     assert gate["name"] == GATE_NAME
-    assert "always()" in str(gate.get("if", "")), "the gate job must run `always()`"
+    assert str(gate.get("if", "")) == "${{ !cancelled() }}", (
+        "the gate job's condition must be exactly `${{ !cancelled() }}`: any "
+        "narrowing skips the required check for the case it narrows away, and a "
+        f"skipped required check counts as PASSED. Found {gate.get('if')!r}"
+    )
     measuring = set(jobs) - {GATE_JOB}
     assert _needs(gate) == measuring, (
         f"the gate needs {sorted(_needs(gate))} but the workflow measures "
@@ -231,6 +252,140 @@ def test_the_gate_is_never_skipped_and_sees_every_job(repo_root: Path) -> None:
             f"{GATE_WORKFLOW}:{job} must run only for `{FULL_LABEL}` on a "
             "same-repository pull request"
         )
+
+
+#: A pull request reaches the self-hosted fleet only for an author the
+#: repository already trusts. Written as two equalities rather than
+#: `contains(fromJSON('["OWNER", "COLLABORATOR"]'), ...)`: the two mean the same
+#: thing, and a scenario evaluator that treats every function call as
+#: undecidable can prove a verdict for the equality form and not for the other.
+TRUSTED_AUTHOR = (
+    "(github.event.pull_request.author_association == 'OWNER' || "
+    "github.event.pull_request.author_association == 'COLLABORATOR')"
+)
+
+#: The other door: applying a label takes triage rights, so a USER's label is
+#: itself the review that admits a change. A bot's label is not.
+LABEL_BY_USER = (
+    "github.event.action == 'labeled' && "
+    f"github.event.label.name == '{FULL_LABEL}' && "
+    "github.event.sender.type == 'User'"
+)
+
+#: Workflows whose `pull_request`-reachable jobs this repository does not own.
+#: `devserver.yml` is a byte-identical render of the machine-wide harness (see
+#: `_shared_workflows`); its conditions are fixed there, not here.
+_UNOWNED_PULL_REQUEST_LANES = frozenset({"devserver.yml"})
+
+
+def _untrusted_reachable(workflow: str, document: dict) -> list[str]:
+    """Jobs a `pull_request` can start on the fleet for an untrusted author.
+
+    The verdict job is exempt and must NOT carry the clause: it has to run for
+    everyone and refuse by name in its steps.
+    """
+    if "pull_request" not in _triggers(document):
+        return []
+    offenders = []
+    for job, spec in document["jobs"].items():
+        if str(spec.get("name", "")) == GATE_NAME:
+            continue
+        condition = str(spec.get("if", ""))
+        if TRUSTED_AUTHOR not in condition and LABEL_BY_USER not in condition:
+            offenders.append(f"{workflow}:{job}")
+    return offenders
+
+
+def test_only_a_trusted_author_or_a_users_label_reaches_the_fleet(
+    repo_root: Path,
+) -> None:
+    """An untrusted author's code runs nothing here until someone reads it.
+
+    Dependabot and every other author who is neither owner nor collaborator push
+    branches of THIS repository, so the fork clause never stops them and the
+    approval requirement for outside contributors does not cover them. Their
+    change reaches the self-hosted fleet only after a user with triage rights
+    has admitted it - by applying `ci:full` on the gate, which is the one lane
+    with a label door.
+
+    Mutation proof: replacing the author clause in `ci.yml`'s `static` condition
+    with `true` makes this fail naming that job; restoring it makes this pass.
+    """
+    offenders = [
+        finding
+        for workflow in _all_workflows(repo_root)
+        if workflow not in _UNOWNED_PULL_REQUEST_LANES
+        for finding in _untrusted_reachable(workflow, _load(repo_root, workflow))
+    ]
+    assert not offenders, (
+        "these jobs run a pull request on the self-hosted fleet whatever its "
+        f"author, Dependabot included: {offenders}"
+    )
+
+
+@pytest.mark.parametrize(
+    ("workflow", "job"), [(CHEAP_LANE, "static"), (GATE_WORKFLOW, "engine")]
+)
+def test_the_trust_guard_notices_a_removed_clause(
+    repo_root: Path, workflow: str, job: str
+) -> None:
+    """Guard the guard: stripping the trust clause must be reported."""
+    document = _load(repo_root, workflow)
+    assert not _untrusted_reachable(workflow, document)
+    spec = document["jobs"][job]
+    spec["if"] = (
+        str(spec["if"]).replace(TRUSTED_AUTHOR, "true").replace(LABEL_BY_USER, "true")
+    )
+    assert _untrusted_reachable(workflow, document) == [f"{workflow}:{job}"], (
+        f"removing the trust clause from {workflow}:{job} went unnoticed"
+    )
+
+
+def test_the_gate_refuses_an_untrusted_author_by_name(repo_root: Path) -> None:
+    """The verdict says why nothing ran, and says it after looking for a verdict.
+
+    Two orderings carry the whole value of this. The earlier-verdict lookup comes
+    FIRST, so an untrusted author's commit that a collaborator's `ci:full`
+    already proved keeps its pass. The named refusal comes before the generic
+    "add the ci:full label" message, because telling an author to apply a label
+    they have no rights to apply reads as a broken gate rather than as a review
+    still owed.
+
+    Mutation proof: deleting the `case "$ASSOCIATION" in OWNER | COLLABORATOR`
+    refusal from the verdict script makes this fail on that marker; restoring it
+    makes this pass.
+    """
+    gate = _load(repo_root, GATE_WORKFLOW)["jobs"][GATE_JOB]
+    steps = {str(step.get("name", "")): step for step in gate["steps"]}
+    judge = steps["Decide the merge verdict"]
+    env = judge["env"]
+    assert env["ASSOCIATION"] == "${{ github.event.pull_request.author_association }}"
+    assert env["AUTHOR"] == "${{ github.event.pull_request.user.login }}"
+    assert env["SENDER_TYPE"] == "${{ github.event.sender.type }}"
+
+    script = str(judge["run"])
+    marker = 'case "$ASSOCIATION" in OWNER | COLLABORATOR) ;;'
+    assert marker in script, (
+        "the verdict no longer refuses a commit by an author who is neither the "
+        "owner nor a collaborator; it would tell them to apply a label they "
+        "cannot apply"
+    )
+    lookup = script.index("check_name=")
+    refusal = script.index(marker)
+    generic = script.index("No passing ci:full run has measured")
+    assert lookup < refusal, (
+        "an untrusted author's commit that a collaborator's ci:full already "
+        "proved must keep that verdict, so the lookup comes first"
+    )
+    assert refusal < generic, (
+        "the untrusted author must be refused by name, not told to add a label"
+    )
+    nothing_ran = 'if [ "$EVENT" = "pull_request" ] && [ "$measured" = "0" ]; then'
+    assert nothing_ran in script, (
+        "a ci:full run whose every measuring job was conditioned off - a bot "
+        "applied the label - must be refused by name too, not reported as six "
+        "jobs that failed"
+    )
 
 
 FORK_CLAUSE = "github.event.pull_request.head.repo.full_name == github.repository"
@@ -289,6 +444,100 @@ def test_the_fork_guard_notices_a_removed_clause(
         spec["if"] = str(spec.get("if", "")).replace(FORK_CLAUSE, "true")
     assert _fork_offenders(workflow, document), (
         f"removing the fork refusal from {workflow}:{job} went unnoticed"
+    )
+
+
+#: A step reading code out of the workspace rather than out of itself: an
+#: interpreter pointed at a repository path, a recipe, a package script, or a
+#: module from the harness. Anchored to a command position so that `2>/dev/null`
+#: and a path inside a quoted message are not mistaken for one. A `uses:` on a
+#: local path is the same defect in another spelling - the action is resolved
+#: from the checked-out tree - and is handled separately.
+_WORKSPACE_CODE = re.compile(
+    r"(?m)(?:^|[|&;]\s*|\$\()\s*"
+    r"(?:sh|bash|pwsh|python3?|node)\s+[\"']?(?:\./)?(?:\.github|dev|frontend|engine)/"
+    r"|(?:^|[|&;]\s*)\s*(?:just|npm|npx|cargo)\s"
+    r"|(?:^|[|&;]\s*)\s*uv\s+run\b"
+    r"|python3?\s+-m\s+dev\b"
+)
+
+
+def _executes_before_checkout(workflow: str, document: dict) -> list[str]:
+    """Steps that run workspace-resident code before their job checks out."""
+    offenders = []
+    for job, spec in document["jobs"].items():
+        for step in spec.get("steps") or []:
+            uses = str(step.get("uses", ""))
+            if uses.startswith("actions/checkout@"):
+                break
+            if uses.startswith("./"):
+                offenders.append(f"{workflow}:{job}:{uses} (local action)")
+                continue
+            found = _WORKSPACE_CODE.search(str(step.get("run", "")))
+            if found:
+                offenders.append(
+                    f"{workflow}:{job}:{step.get('name')} -> {found.group().strip()!r}"
+                )
+    return offenders
+
+
+def test_nothing_in_the_workspace_runs_before_its_own_checkout(
+    repo_root: Path,
+) -> None:
+    """A job never executes the tree the previous job left behind.
+
+    The runners are persistent and three of them share the machine. A job the
+    runner is shut down under never reaches its trailing steps, so its whole
+    checkout is still there when the next job starts - and that checkout can be
+    any branch, a Dependabot pull request included. A pre-checkout step that
+    reads a script, a recipe or a local action out of the workspace therefore
+    runs the PREVIOUS branch's code with THIS job's credentials and permissions.
+
+    Mutation proof: restoring the pre-checkout step to
+    `run: bash .github/scripts/reclaim-workspace.sh || true` in `ci.yml` makes
+    this fail naming that step; restoring the inline body makes this pass.
+    """
+    offenders = [
+        finding
+        for workflow in _all_workflows(repo_root)
+        for finding in _executes_before_checkout(workflow, _load(repo_root, workflow))
+    ]
+    assert not offenders, (
+        "these steps execute workspace-resident code before their own job has "
+        f"checked out, so they run whatever tree the previous job left: {offenders}"
+    )
+
+
+def test_the_pre_checkout_reclaim_is_one_text_in_every_lane(repo_root: Path) -> None:
+    """The one thing a workflow cannot factor out must not be allowed to drift.
+
+    There is no include, and a script or a local action is exactly what cannot be
+    used here, so the reclaim is inline in every job that needs it. Byte equality
+    is the substitute for having one copy: a fix to one of them is a fix to all
+    of them, or this fails.
+
+    Mutation proof: deleting the `.git/hooks` removal from `code-health.yml`'s
+    copy makes this fail on the drift count; restoring it makes this pass.
+    """
+    bodies: dict[str, list[str]] = {}
+    for workflow in _all_workflows(repo_root):
+        for job, spec in _load(repo_root, workflow)["jobs"].items():
+            for step in spec.get("steps") or []:
+                if str(step.get("name", "")) == "Reclaim the workspace before checkout":
+                    bodies.setdefault(str(step["run"]), []).append(f"{workflow}:{job}")
+    assert len(bodies) == 1, (
+        "the pre-checkout reclaim has drifted into "
+        f"{len(bodies)} variants: {list(bodies.values())}"
+    )
+    sites = next(iter(bodies.values()))
+    assert len(sites) >= 8, (
+        f"only {len(sites)} jobs reclaim before checkout ({sites}); a job that "
+        "stopped doing it hits EACCES on its own checkout instead"
+    )
+    body = next(iter(bodies))
+    assert ".git/hooks" in body, (
+        "the reclaim must drop `.git/hooks`: `git clean` does not reach inside "
+        "`.git`, so a previous job's hook survives into this one"
     )
 
 
@@ -380,18 +629,187 @@ def test_nothing_is_visible_before_every_gate_passes(repo_root: Path) -> None:
     ), f"{ARCHIVES} uploads to the draft; it must never publish it"
 
 
+AUTHORITY = "release-please.yml"
+RELEASE_ACTION = "googleapis/release-please-action@"
+CUT_JOB = "cut"
+
+
+def _release_steps(repo_root: Path, workflow: str) -> list[tuple[str, dict]]:
+    """Every step in *workflow*, paired with the job that owns it."""
+    return [
+        (job, step)
+        for job, spec in _load(repo_root, workflow)["jobs"].items()
+        for step in spec.get("steps") or []
+    ]
+
+
+def test_only_the_dispatched_cut_creates_a_release(repo_root: Path) -> None:
+    """The proposal path proposes; releasing is something a maintainer asks for.
+
+    Every commit on main refreshes the release pull request, and that path must
+    never tag or release: merging the proposal by hand releases nothing either.
+    A maintainer dispatches the cut, which proves, merges, tags and then starts
+    the orchestrator. If the proposal path could release, a commit would tag
+    itself the moment it landed, before any gate had seen the merged tree.
+
+    Mutation proof: dropping `skip-github-release: true` from the proposal step
+    makes this fail naming `release-please` as a job that can release; restoring
+    it makes this pass.
+    """
+    creators = sorted(
+        job
+        for job, step in _release_steps(repo_root, AUTHORITY)
+        if str(step.get("uses", "")).startswith(RELEASE_ACTION)
+        and (step.get("with") or {}).get("skip-github-release") is not True
+    )
+    assert creators == [CUT_JOB], (
+        "only the dispatched cut may create a release; every other "
+        "release-please step must run with `skip-github-release: true`, but "
+        f"these jobs can release: {creators}"
+    )
+    triggers = _triggers(_load(repo_root, AUTHORITY))
+    assert set(triggers) == {"push", "workflow_dispatch"}, (
+        f"{AUTHORITY} carries the proposal and the cut, and nothing else: "
+        f"found {sorted(triggers)}"
+    )
+
+
+def test_the_release_is_proven_before_anything_is_tagged(repo_root: Path) -> None:
+    """The cut merges and tags only the head the full merge gate passed.
+
+    A release tag cannot be deleted, so the proof comes before it: a release
+    commit that fails its gate after its tag exists is a permanent tag of a
+    commit nobody can ship. The cut therefore waits on the merge gate called on
+    the candidate's exact head, carries no condition that could override that
+    success, merges only that head, and refuses a merged tree that differs from
+    the proven one before Release Please creates anything.
+
+    Mutation proof: removing `prove-gate` from the cut's `needs` makes this fail
+    on the gate dependency; restoring it makes this pass.
+    """
+    jobs = _load(repo_root, AUTHORITY)["jobs"]
+    prove = jobs["prove-gate"]
+    assert prove["uses"].endswith(GATE_WORKFLOW)
+    assert prove["with"]["ref"] == "${{ needs.candidate.outputs.sha }}", (
+        "the release gate must measure the candidate's exact head, not a branch "
+        "that can move under it"
+    )
+    cut = jobs[CUT_JOB]
+    assert "prove-gate" in _needs(cut), "the cut must wait on the release gate"
+    assert "if" not in cut, (
+        "a condition on the cut overrides the default success check, which is "
+        "the only thing stopping a failed gate from tagging a release"
+    )
+    names = [str(step.get("name", "")) for step in cut["steps"]]
+    assert names.index("Merge the proven release pull request") < names.index(
+        "Create the release for the merged proposal"
+    ), "the cut must merge before it creates the release"
+    merge = str(cut["steps"][0]["run"])
+    assert '--match-head-commit "${SHA}"' in merge, (
+        "the cut must merge only the head the gate proved"
+    )
+    assert "tree.sha" in merge, (
+        "the cut must refuse a merged commit that does not carry the proven tree"
+    )
+    require = next(
+        step for step in cut["steps"] if step.get("name", "").startswith("Require the")
+    )
+    assert "release_created" in str(require["env"]["CREATED"])
+    assert "not the proven" in str(require["run"]), (
+        "the cut must refuse a tag that points at anything but the proven commit"
+    )
+
+
+def test_a_call_must_name_the_ref_it_wants_measured(repo_root: Path) -> None:
+    """A caller that omits the ref measures its own, which for a release is wrong.
+
+    Mutation proof: changing the cut's `ref:` to `main` makes this fail naming
+    that caller; restoring the candidate's sha makes this pass.
+    """
+    call = _triggers(_load(repo_root, GATE_WORKFLOW))["workflow_call"]
+    assert call["inputs"]["ref"]["required"] is True, (
+        "the merge gate's `ref` input must be required: a caller that leaves it "
+        "out measures the CALLER's ref, and the release cut's ref is main, not "
+        "the commit it is about to merge"
+    )
+    for workflow, expected in ((AUTHORITY, "candidate"), (ORCHESTRATOR, "inputs.tag")):
+        callers = [
+            (job, spec)
+            for job, spec in _load(repo_root, workflow)["jobs"].items()
+            if str(spec.get("uses", "")).endswith(GATE_WORKFLOW)
+        ]
+        assert callers, f"{workflow} no longer calls {GATE_WORKFLOW}"
+        for job, spec in callers:
+            assert expected in str(spec.get("with", {}).get("ref", "")), (
+                f"{workflow}:{job} calls the gate without naming {expected}"
+            )
+
+
 def test_release_please_dispatches_the_orchestrator_by_tag(repo_root: Path) -> None:
     """A workflow-created tag raises no tag event; the chain is an explicit dispatch."""
-    jobs = _load(repo_root, "release-please.yml")["jobs"]
-    runs = [
+    dispatch = [
         str(step.get("run", ""))
-        for spec in jobs.values()
-        for step in spec.get("steps", [])
+        for _, step in _release_steps(repo_root, AUTHORITY)
+        if str(step.get("run", "")).startswith(f"gh workflow run {ORCHESTRATOR}")
     ]
-    dispatch = [r for r in runs if r.startswith(f"gh workflow run {ORCHESTRATOR}")]
     assert dispatch, f"release-please never dispatches {ORCHESTRATOR}"
     assert all("--ref" in r and "-f tag=" in r for r in dispatch), dispatch
     triggers = _triggers(_load(repo_root, ORCHESTRATOR))
     assert set(triggers) == {"workflow_dispatch"}, (
         f"{ORCHESTRATOR} must be dispatch-only, not {sorted(triggers)}"
+    )
+
+
+def test_nothing_listens_for_a_tag_push_or_a_release(repo_root: Path) -> None:
+    """Every lane after the tag starts by dispatch, or by a call from one.
+
+    The workflow token cannot create a tag or a release on a commit whose
+    workflow files differ from main's head, so the tag must follow the merge
+    within seconds and no credential with `workflows` permission may exist. What
+    that buys is only kept if nothing downstream reacts to an event: a lane
+    listening for a tag push or a `release` event starts on its own, outside the
+    ordering the cut and the orchestrator enforce, and can publish a release the
+    gates have not finished judging.
+
+    Mutation proof: adding `tags: ['v*']` to release-please's push trigger makes
+    this fail naming that workflow; removing it makes this pass.
+    """
+    offenders = []
+    for workflow in _all_workflows(repo_root):
+        triggers = _triggers(_load(repo_root, workflow))
+        if "release" in triggers:
+            offenders.append(f"{workflow}: release event")
+        push = triggers.get("push")
+        if isinstance(push, dict) and "tags" in push:
+            offenders.append(f"{workflow}: push tags {push['tags']}")
+    assert not offenders, (
+        f"these workflows start themselves from a release-shaped event: {offenders}"
+    )
+
+
+def test_the_release_is_a_draft_with_its_tag_forced(repo_root: Path) -> None:
+    """Created unpublished, tagged anyway, and rebuilt on main's newest head.
+
+    A published release cannot be filled in afterwards, so the release object is
+    created as a draft and the orchestrator publishes it once it carries
+    everything it claims. `force-tag-creation` is the other half: GitHub creates
+    no git tag for a draft, and the whole orchestrator checks out the tag for its
+    source, so without it the release has no ref to build from. `always-update`
+    is the third: the proposal is rebuilt on main's newest head on every push, so
+    the head the cut proves is never behind main by the time it merges.
+    """
+    import json
+
+    config = json.loads((repo_root / "release-please-config.json").read_text("utf-8"))
+    assert config.get("always-update") is True, (
+        "without `always-update` the proposal branch lags main, and the cut "
+        "refuses a candidate that is behind rather than releasing a stale tree"
+    )
+    package = config["packages"]["."]
+    assert package.get("draft") is True, (
+        "a published release cannot receive the assets that justify it"
+    )
+    assert package.get("force-tag-creation") is True, (
+        "a draft release creates no git tag, and every job in the orchestrator "
+        "checks out the tag for its source"
     )

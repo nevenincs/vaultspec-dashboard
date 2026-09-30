@@ -10,16 +10,36 @@
 # WHEN IT RUNS. A maintainer adds the `ci:full` label. A push never starts it,
 # so a new commit carries no gate result and cannot merge until the label is
 # added again; the gate removes the label when it finishes so that re-adding it
-# is always a fresh request. The release orchestrator also calls it through
-# `workflow_call`, so the tagged tree is measured by exactly this job set before
-# anything is built from it. Nothing here runs on a push to `main`: the ruleset
-# requires linear history, so the merged tree is the tree this gate measured.
+# is always a fresh request. The release cut and the release orchestrator call
+# it through `workflow_call` with the ref they want proven, so the commit a
+# release is built from is measured by exactly this job set before anything is
+# merged, tagged or built from it. Nothing here runs on a push to `main`: the
+# ruleset requires linear history, so the merged tree is the tree this gate
+# measured.
 #
-# THE VERDICT IS NEVER SKIPPED. A skipped required check counts as passed, so
-# the gate job runs `always()` and depends on every measuring job. A run
-# started by some OTHER label measures nothing; the gate then carries the most
-# recent completed verdict for the same head commit, and fails when there is
-# none rather than passing on an absence.
+# ONLY A USER'S LABEL REACHES THE FLEET. Every measuring job below runs for a
+# pull request only when a USER - never a bot - applied `ci:full` to a branch of
+# this repository. Applying a label takes triage rights, so the label IS the
+# review that admits a change to the machines. Dependabot's pull requests carry
+# author association CONTRIBUTOR and open no label of their own, so they run
+# nothing here until a collaborator has read them. A fork's pull request runs
+# the FORK's copy of this file, so for forks these conditions only back up the
+# repository's own approval requirement for outside contributors; for every
+# other author they are the control itself.
+#
+# THE VERDICT IS NEVER SKIPPED, and its condition is never narrowed. A skipped
+# required check counts as PASSED, so the gate job runs on `!cancelled()` with
+# no event or fork clause and depends on every measuring job; the refusals are
+# its first steps instead. A run started by some OTHER label measures nothing;
+# the gate then carries the most recent completed verdict for the same head
+# commit, and fails when there is none rather than passing on an absence. When
+# nothing ran because the author is untrusted, or because a bot applied the
+# label, the gate says so by name - an author told to add a label they cannot
+# add reads the gate as broken rather than as a review still owed.
+#
+# THE REF IS THE CALLER'S, NOT THIS RUN'S. A call or a dispatch names the ref to
+# measure and every job checks out exactly that, so the release cut can prove
+# the commit it is about to merge rather than whatever `main` holds.
 #
 # Every gate step is `just <recipe>`. The steps that are not yet recipes are
 # named in .github/ci-contract-allow.txt with the recipe each is waiting for.
@@ -30,7 +50,17 @@ on:
     branches: [main]
     types: [labeled]
   workflow_call:
+    inputs:
+      ref:
+        description: Git ref to measure
+        required: true
+        type: string
   workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to measure (defaults to the dispatched ref)
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -44,19 +74,58 @@ concurrency:
 jobs:
   lint:
     name: "Check: Full lint (Linux)"
-    if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && (github.event_name != 'pull_request' || (github.event.label.name == 'ci:full' && github.event.pull_request.head.repo.full_name == github.repository)) }}
+    if: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.action == 'labeled' && github.event.label.name == 'ci:full' && github.event.sender.type == 'User') }}
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 45
     steps:
-      # Before checkout, because checkout is the step the EACCES lands on.
-      # `|| true` so a workspace that has never been checked out - where the
-      # script does not exist yet - simply skips it.
-      - name: Reclaim the workspace from a job that may not have finished
+      # INLINE AND SELF-CONTAINED, because nothing under the workspace may
+      # execute before a job's own checkout. A job the runner is shut down
+      # under never reaches its trailing reclaim, so its whole tree is still
+      # there when the next job starts - and a script read out of that tree is
+      # the previous branch's code running with this job's credentials. This
+      # step therefore reads no repository file, and drops `.git/hooks`, which
+      # survives `git clean` and would otherwise run a previous job's hook.
+      - name: Reclaim the workspace before checkout
         shell: bash
-        run: bash .github/scripts/reclaim-workspace.sh || true
+        run: |
+          set -uo pipefail
+          workspace="${GITHUB_WORKSPACE:-}"
+          if [ -z "${workspace}" ] || [ ! -d "${workspace}" ]; then
+            echo "reclaim: no workspace yet - nothing to do"
+            exit 0
+          fi
+          rm -rf "${workspace}/.git/hooks" 2>/dev/null || true
+          # The live suite spawns a real `vaultspec serve` from the built
+          # binary, which a killed job leaves holding files under
+          # engine/target. Matched on the executable path under THIS
+          # workspace: three runners share the machine, and a pattern broad
+          # enough to catch "a vaultspec engine" would kill another
+          # repository's in-flight test.
+          # Unquoted on purpose below: word splitting is how the newline-
+          # separated pid list becomes kill's arguments.
+          left=$(pgrep -f "${workspace}/engine/target/[^ ]*/vaultspec" 2>/dev/null)
+          if [ -n "${left}" ]; then
+            echo "reclaim: stopping engine processes left from a previous job: ${left}"
+            # shellcheck disable=SC2086
+            kill ${left} 2>/dev/null || true
+            sleep 2
+            # shellcheck disable=SC2086
+            kill -9 ${left} 2>/dev/null || true
+          fi
+          # Removing the build directory every time would throw away the
+          # incremental cache, so the test is whether the file the EACCES
+          # actually lands on is writable.
+          probe="${workspace}/engine/target/.rustc_info.json"
+          if [ -e "${probe}" ] && [ ! -w "${probe}" ]; then
+            echo "reclaim: ${probe} is not writable - removing the build directory"
+            rm -rf "${workspace}/engine/target" 2>/dev/null || true
+          fi
+          rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
+          exit 0
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+          ref: ${{ inputs.ref || github.sha }}
       - name: Set up just
         uses: taiki-e/install-action@6012bba2f8e3e666a2b212f8823c06831704ce92 # just
         with:
@@ -72,7 +141,9 @@ jobs:
         run: echo "channel=$(grep -m1 '^channel' engine/rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
       - name: Warm the pinned toolchain, retrying a dropped connection
         shell: bash
-        run: bash .github/scripts/warm-toolchain.sh "${{ steps.toolchain.outputs.channel }}" || true
+        env:
+          CHANNEL: ${{ steps.toolchain.outputs.channel }}
+        run: bash .github/scripts/warm-toolchain.sh "${CHANNEL}" || true
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
         with:
           toolchain: ${{ steps.toolchain.outputs.channel }}
@@ -101,7 +172,7 @@ jobs:
 
   engine:
     name: "Test: Engine suite (${{ matrix.os }})"
-    if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && (github.event_name != 'pull_request' || (github.event.label.name == 'ci:full' && github.event.pull_request.head.repo.full_name == github.repository)) }}
+    if: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.action == 'labeled' && github.event.label.name == 'ci:full' && github.event.sender.type == 'User') }}
     timeout-minutes: 60
     # WINDOWS GATES HERE, and this is the only place in the repository where a
     # `just` recipe runs on Windows at all. The justfile declares
@@ -120,6 +191,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+          ref: ${{ inputs.ref || github.sha }}
       # Pin CI to the repo toolchain (engine/rust-toolchain.toml) instead of
       # floating stable: the action exports RUSTUP_TOOLCHAIN, which overrides
       # the file, so the pin must be read and passed explicitly.
@@ -217,16 +289,58 @@ jobs:
 
   frontend:
     name: "Test: Frontend suite (Linux)"
-    if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && (github.event_name != 'pull_request' || (github.event.label.name == 'ci:full' && github.event.pull_request.head.repo.full_name == github.repository)) }}
+    if: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.action == 'labeled' && github.event.label.name == 'ci:full' && github.event.sender.type == 'User') }}
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 60
     steps:
-      - name: Reclaim the workspace from a job that may not have finished
+      # INLINE AND SELF-CONTAINED, because nothing under the workspace may
+      # execute before a job's own checkout. A job the runner is shut down
+      # under never reaches its trailing reclaim, so its whole tree is still
+      # there when the next job starts - and a script read out of that tree is
+      # the previous branch's code running with this job's credentials. This
+      # step therefore reads no repository file, and drops `.git/hooks`, which
+      # survives `git clean` and would otherwise run a previous job's hook.
+      - name: Reclaim the workspace before checkout
         shell: bash
-        run: bash .github/scripts/reclaim-workspace.sh || true
+        run: |
+          set -uo pipefail
+          workspace="${GITHUB_WORKSPACE:-}"
+          if [ -z "${workspace}" ] || [ ! -d "${workspace}" ]; then
+            echo "reclaim: no workspace yet - nothing to do"
+            exit 0
+          fi
+          rm -rf "${workspace}/.git/hooks" 2>/dev/null || true
+          # The live suite spawns a real `vaultspec serve` from the built
+          # binary, which a killed job leaves holding files under
+          # engine/target. Matched on the executable path under THIS
+          # workspace: three runners share the machine, and a pattern broad
+          # enough to catch "a vaultspec engine" would kill another
+          # repository's in-flight test.
+          # Unquoted on purpose below: word splitting is how the newline-
+          # separated pid list becomes kill's arguments.
+          left=$(pgrep -f "${workspace}/engine/target/[^ ]*/vaultspec" 2>/dev/null)
+          if [ -n "${left}" ]; then
+            echo "reclaim: stopping engine processes left from a previous job: ${left}"
+            # shellcheck disable=SC2086
+            kill ${left} 2>/dev/null || true
+            sleep 2
+            # shellcheck disable=SC2086
+            kill -9 ${left} 2>/dev/null || true
+          fi
+          # Removing the build directory every time would throw away the
+          # incremental cache, so the test is whether the file the EACCES
+          # actually lands on is writable.
+          probe="${workspace}/engine/target/.rustc_info.json"
+          if [ -e "${probe}" ] && [ ! -w "${probe}" ]; then
+            echo "reclaim: ${probe} is not writable - removing the build directory"
+            rm -rf "${workspace}/engine/target" 2>/dev/null || true
+          fi
+          rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
+          exit 0
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+          ref: ${{ inputs.ref || github.sha }}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
@@ -258,7 +372,9 @@ jobs:
       # reads exactly like a test failure.
       - name: Warm the pinned toolchain, retrying a dropped connection
         shell: bash
-        run: bash .github/scripts/warm-toolchain.sh "${{ steps.toolchain.outputs.channel }}" || true
+        env:
+          CHANNEL: ${{ steps.toolchain.outputs.channel }}
+        run: bash .github/scripts/warm-toolchain.sh "${CHANNEL}" || true
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
         with:
           toolchain: ${{ steps.toolchain.outputs.channel }}
@@ -321,23 +437,67 @@ jobs:
     # TypeScript-type drift fails the gate. This closes the seam the Rust
     # conformance suite cannot reach.
     name: "Test: Engine conformance (Linux)"
-    if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && (github.event_name != 'pull_request' || (github.event.label.name == 'ci:full' && github.event.pull_request.head.repo.full_name == github.repository)) }}
+    if: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.action == 'labeled' && github.event.label.name == 'ci:full' && github.event.sender.type == 'User') }}
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 90
     steps:
-      - name: Reclaim the workspace from a job that may not have finished
+      # INLINE AND SELF-CONTAINED, because nothing under the workspace may
+      # execute before a job's own checkout. A job the runner is shut down
+      # under never reaches its trailing reclaim, so its whole tree is still
+      # there when the next job starts - and a script read out of that tree is
+      # the previous branch's code running with this job's credentials. This
+      # step therefore reads no repository file, and drops `.git/hooks`, which
+      # survives `git clean` and would otherwise run a previous job's hook.
+      - name: Reclaim the workspace before checkout
         shell: bash
-        run: bash .github/scripts/reclaim-workspace.sh || true
+        run: |
+          set -uo pipefail
+          workspace="${GITHUB_WORKSPACE:-}"
+          if [ -z "${workspace}" ] || [ ! -d "${workspace}" ]; then
+            echo "reclaim: no workspace yet - nothing to do"
+            exit 0
+          fi
+          rm -rf "${workspace}/.git/hooks" 2>/dev/null || true
+          # The live suite spawns a real `vaultspec serve` from the built
+          # binary, which a killed job leaves holding files under
+          # engine/target. Matched on the executable path under THIS
+          # workspace: three runners share the machine, and a pattern broad
+          # enough to catch "a vaultspec engine" would kill another
+          # repository's in-flight test.
+          # Unquoted on purpose below: word splitting is how the newline-
+          # separated pid list becomes kill's arguments.
+          left=$(pgrep -f "${workspace}/engine/target/[^ ]*/vaultspec" 2>/dev/null)
+          if [ -n "${left}" ]; then
+            echo "reclaim: stopping engine processes left from a previous job: ${left}"
+            # shellcheck disable=SC2086
+            kill ${left} 2>/dev/null || true
+            sleep 2
+            # shellcheck disable=SC2086
+            kill -9 ${left} 2>/dev/null || true
+          fi
+          # Removing the build directory every time would throw away the
+          # incremental cache, so the test is whether the file the EACCES
+          # actually lands on is writable.
+          probe="${workspace}/engine/target/.rustc_info.json"
+          if [ -e "${probe}" ] && [ ! -w "${probe}" ]; then
+            echo "reclaim: ${probe} is not writable - removing the build directory"
+            rm -rf "${workspace}/engine/target" 2>/dev/null || true
+          fi
+          rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
+          exit 0
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+          ref: ${{ inputs.ref || github.sha }}
       - name: Read pinned toolchain
         id: toolchain
         shell: bash
         run: echo "channel=$(grep -m1 '^channel' engine/rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
       - name: Warm the pinned toolchain, retrying a dropped connection
         shell: bash
-        run: bash .github/scripts/warm-toolchain.sh "${{ steps.toolchain.outputs.channel }}" || true
+        env:
+          CHANNEL: ${{ steps.toolchain.outputs.channel }}
+        run: bash .github/scripts/warm-toolchain.sh "${CHANNEL}" || true
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
         with:
           toolchain: ${{ steps.toolchain.outputs.channel }}
@@ -451,23 +611,67 @@ jobs:
     # against the committed lock, so a drift between the pins, the schema and
     # the builder fails here rather than at release.
     name: "Check: Release inputs (Linux)"
-    if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && (github.event_name != 'pull_request' || (github.event.label.name == 'ci:full' && github.event.pull_request.head.repo.full_name == github.repository)) }}
+    if: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.action == 'labeled' && github.event.label.name == 'ci:full' && github.event.sender.type == 'User') }}
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 30
     steps:
-      - name: Reclaim the workspace from a job that may not have finished
+      # INLINE AND SELF-CONTAINED, because nothing under the workspace may
+      # execute before a job's own checkout. A job the runner is shut down
+      # under never reaches its trailing reclaim, so its whole tree is still
+      # there when the next job starts - and a script read out of that tree is
+      # the previous branch's code running with this job's credentials. This
+      # step therefore reads no repository file, and drops `.git/hooks`, which
+      # survives `git clean` and would otherwise run a previous job's hook.
+      - name: Reclaim the workspace before checkout
         shell: bash
-        run: bash .github/scripts/reclaim-workspace.sh || true
+        run: |
+          set -uo pipefail
+          workspace="${GITHUB_WORKSPACE:-}"
+          if [ -z "${workspace}" ] || [ ! -d "${workspace}" ]; then
+            echo "reclaim: no workspace yet - nothing to do"
+            exit 0
+          fi
+          rm -rf "${workspace}/.git/hooks" 2>/dev/null || true
+          # The live suite spawns a real `vaultspec serve` from the built
+          # binary, which a killed job leaves holding files under
+          # engine/target. Matched on the executable path under THIS
+          # workspace: three runners share the machine, and a pattern broad
+          # enough to catch "a vaultspec engine" would kill another
+          # repository's in-flight test.
+          # Unquoted on purpose below: word splitting is how the newline-
+          # separated pid list becomes kill's arguments.
+          left=$(pgrep -f "${workspace}/engine/target/[^ ]*/vaultspec" 2>/dev/null)
+          if [ -n "${left}" ]; then
+            echo "reclaim: stopping engine processes left from a previous job: ${left}"
+            # shellcheck disable=SC2086
+            kill ${left} 2>/dev/null || true
+            sleep 2
+            # shellcheck disable=SC2086
+            kill -9 ${left} 2>/dev/null || true
+          fi
+          # Removing the build directory every time would throw away the
+          # incremental cache, so the test is whether the file the EACCES
+          # actually lands on is writable.
+          probe="${workspace}/engine/target/.rustc_info.json"
+          if [ -e "${probe}" ] && [ ! -w "${probe}" ]; then
+            echo "reclaim: ${probe} is not writable - removing the build directory"
+            rm -rf "${workspace}/engine/target" 2>/dev/null || true
+          fi
+          rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
+          exit 0
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+          ref: ${{ inputs.ref || github.sha }}
       - name: Read pinned toolchain
         id: toolchain
         shell: bash
         run: echo "channel=$(grep -m1 '^channel' engine/rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
       - name: Warm the pinned toolchain, retrying a dropped connection
         shell: bash
-        run: bash .github/scripts/warm-toolchain.sh "${{ steps.toolchain.outputs.channel }}" || true
+        env:
+          CHANNEL: ${{ steps.toolchain.outputs.channel }}
+        run: bash .github/scripts/warm-toolchain.sh "${CHANNEL}" || true
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
         with:
           toolchain: ${{ steps.toolchain.outputs.channel }}
@@ -504,16 +708,58 @@ jobs:
 
   dependencies:
     name: "Check: Dependency advisories (Linux)"
-    if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && (github.event_name != 'pull_request' || (github.event.label.name == 'ci:full' && github.event.pull_request.head.repo.full_name == github.repository)) }}
+    if: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.action == 'labeled' && github.event.label.name == 'ci:full' && github.event.sender.type == 'User') }}
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 45
     steps:
-      - name: Reclaim the workspace from a job that may not have finished
+      # INLINE AND SELF-CONTAINED, because nothing under the workspace may
+      # execute before a job's own checkout. A job the runner is shut down
+      # under never reaches its trailing reclaim, so its whole tree is still
+      # there when the next job starts - and a script read out of that tree is
+      # the previous branch's code running with this job's credentials. This
+      # step therefore reads no repository file, and drops `.git/hooks`, which
+      # survives `git clean` and would otherwise run a previous job's hook.
+      - name: Reclaim the workspace before checkout
         shell: bash
-        run: bash .github/scripts/reclaim-workspace.sh || true
+        run: |
+          set -uo pipefail
+          workspace="${GITHUB_WORKSPACE:-}"
+          if [ -z "${workspace}" ] || [ ! -d "${workspace}" ]; then
+            echo "reclaim: no workspace yet - nothing to do"
+            exit 0
+          fi
+          rm -rf "${workspace}/.git/hooks" 2>/dev/null || true
+          # The live suite spawns a real `vaultspec serve` from the built
+          # binary, which a killed job leaves holding files under
+          # engine/target. Matched on the executable path under THIS
+          # workspace: three runners share the machine, and a pattern broad
+          # enough to catch "a vaultspec engine" would kill another
+          # repository's in-flight test.
+          # Unquoted on purpose below: word splitting is how the newline-
+          # separated pid list becomes kill's arguments.
+          left=$(pgrep -f "${workspace}/engine/target/[^ ]*/vaultspec" 2>/dev/null)
+          if [ -n "${left}" ]; then
+            echo "reclaim: stopping engine processes left from a previous job: ${left}"
+            # shellcheck disable=SC2086
+            kill ${left} 2>/dev/null || true
+            sleep 2
+            # shellcheck disable=SC2086
+            kill -9 ${left} 2>/dev/null || true
+          fi
+          # Removing the build directory every time would throw away the
+          # incremental cache, so the test is whether the file the EACCES
+          # actually lands on is writable.
+          probe="${workspace}/engine/target/.rustc_info.json"
+          if [ -e "${probe}" ] && [ ! -w "${probe}" ]; then
+            echo "reclaim: ${probe} is not writable - removing the build directory"
+            rm -rf "${workspace}/engine/target" 2>/dev/null || true
+          fi
+          rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
+          exit 0
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+          ref: ${{ inputs.ref || github.sha }}
       - name: Set up just
         uses: taiki-e/install-action@6012bba2f8e3e666a2b212f8823c06831704ce92 # just
         with:
@@ -547,7 +793,10 @@ jobs:
   gate:
     name: "Check: Merge gate (Linux)"
     needs: [lint, engine, frontend, conformance, release-inputs, dependencies]
-    if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && (always()) }}
+    # NEVER SKIPPED, and never narrowed. A skipped required check counts as
+    # PASSED, so a condition that excluded forks here would let a fork merge on
+    # an absence. The refusals are the first steps of the job instead.
+    if: ${{ !cancelled() }}
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 10
     permissions:
@@ -576,6 +825,10 @@ jobs:
           RUN_ID: ${{ github.run_id }}
           NEEDS: ${{ toJSON(needs) }}
           GATE_NAME: "Check: Merge gate (Linux)"
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          ASSOCIATION: ${{ github.event.pull_request.author_association }}
+          SENDER: ${{ github.event.sender.login }}
+          SENDER_TYPE: ${{ github.event.sender.type }}
         run: |
           set -euo pipefail
           printf '%s' "$NEEDS" | jq -r 'to_entries[] | "  \(.key): \(.value.result)"'
@@ -592,7 +845,24 @@ jobs:
             if [ "$prior" = "success" ]; then
               exit 0
             fi
+            # An untrusted author's commit starts nothing here, so no earlier
+            # verdict can exist unless a collaborator's ci:full produced one.
+            # Refuse it by name: telling this author to add a label they cannot
+            # add reads as a broken gate rather than as a review still owed.
+            case "$ASSOCIATION" in OWNER | COLLABORATOR) ;; *)
+              echo "::error::pull requests by ${AUTHOR} (${ASSOCIATION}) run nothing on the self-hosted fleet; a collaborator reviews the change and applies the ci:full label to run it"
+              exit 1 ;;
+            esac
             echo "::error::No passing ci:full run has measured ${HEAD_SHA}. Add the ci:full label to run the merge gate."
+            exit 1
+          fi
+
+          # A ci:full run whose every measuring job was conditioned off proved
+          # nothing, and the reason is never the jobs themselves. Applying the
+          # label takes triage rights, so only a USER reaches the fleet with it.
+          measured=$(printf '%s' "$NEEDS" | jq -r '[to_entries[] | select(.value.result != "skipped")] | length')
+          if [ "$EVENT" = "pull_request" ] && [ "$measured" = "0" ]; then
+            echo "::error::the ci:full label on ${HEAD_SHA} started no measuring job: it was applied by ${SENDER:-unknown} (${SENDER_TYPE:-unknown}), and only a user with triage rights reaches the self-hosted fleet. A collaborator reviews ${AUTHOR} (${ASSOCIATION}) and applies the label."
             exit 1
           fi
 
@@ -609,4 +879,6 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh api -X DELETE "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/labels/ci:full" --silent || true
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: gh api -X DELETE "repos/${REPO}/issues/${PR}/labels/ci:full" --silent || true
