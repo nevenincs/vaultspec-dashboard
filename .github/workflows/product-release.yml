@@ -673,56 +673,42 @@ jobs:
           gh release upload "${tag}" dist/* --clobber
           echo "attached ${{ steps.gather.outputs.count }} archive(s) to ${tag}"
 
-  # PUBLISH, BUT NOT AS LATEST. Everything that can condemn the release from
-  # the build side has passed: the merge gate, both archive sets, the
-  # clean-runner verify, the cohort digest and the channel feasibility proof.
-  # The draft now becomes a public prerelease so acquisition can download it
-  # exactly as a user would; `latest` still answers with the previous release.
-  publish-prerelease:
+  # PUBLISH. Everything that can condemn the release from the build side has
+  # passed: the merge gate, both archive sets, the clean-runner verify, the
+  # cohort digest and the channel feasibility proof. The draft becomes the
+  # public release in one step, the release's only visibility change: it is
+  # never published before it is complete, and never held half-published.
+  publish-release:
     timeout-minutes: 15
-    name: "Build: Release candidate (Linux)"
+    name: "Build: Release publication (Linux)"
     needs: [archives, attach-to-release, channel-feasibility]
     runs-on: [self-hosted, Linux, X64]
     permissions:
       contents: write
     steps:
-      - name: Publish the draft as a prerelease
+      - name: Publish the draft as the latest release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ inputs.tag }}
-        run: gh release edit "${TAG}" --repo "${{ github.repository }}" --draft=false --prerelease --latest=false
+        run: gh release edit "${TAG}" --repo "${GITHUB_REPOSITORY}" --draft=false --latest
 
+  # Acquisition downloads the published release exactly as a user would, so it
+  # can only run after publication; it proves what users now receive, and the
+  # package-manager pointers wait for it.
   acquisition:
     name: "Test: Published binaries"
-    needs: publish-prerelease
+    needs: publish-release
     uses: ./.github/workflows/acquisition.yml
     with:
       tag: ${{ inputs.tag }}
 
-  # PROMOTE. The last visibility change, and the reason a defective release can
-  # no longer surface as `latest`. If acquisition fails, the release stays a
-  # prerelease: reachable by its tag for diagnosis, never the default install.
-  promote-release:
-    timeout-minutes: 15
-    name: "Build: Release promotion (Linux)"
-    needs: [publish-prerelease, acquisition]
-    runs-on: [self-hosted, Linux, X64]
-    permissions:
-      contents: write
-    steps:
-      - name: Promote the release to latest
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ inputs.tag }}
-        run: gh release edit "${TAG}" --repo "${{ github.repository }}" --prerelease=false --latest
-
-  # POST-PROMOTION CHANNEL PUBLICATION. Both formula and manifest point at the
+  # POST-ACQUISITION CHANNEL PUBLICATION. Both formula and manifest point at the
   # archives ON THE RELEASE and verify each digest by re-downloading, and each
   # is fail-closed behind `channel-publish-gate`, so a run here publishes
   # nothing until the support matrix marks the channel `supported`.
   homebrew-bump:
     name: "Build: Homebrew channel"
-    needs: [resolve-version, promote-release]
+    needs: [resolve-version, acquisition]
     uses: ./.github/workflows/homebrew-bump.yml
     with:
       version: ${{ needs.resolve-version.outputs.value }}
@@ -731,7 +717,7 @@ jobs:
 
   scoop-bump:
     name: "Build: Scoop channel"
-    needs: [resolve-version, promote-release]
+    needs: [resolve-version, acquisition]
     uses: ./.github/workflows/scoop-bump.yml
     with:
       version: ${{ needs.resolve-version.outputs.value }}

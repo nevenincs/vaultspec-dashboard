@@ -592,7 +592,12 @@ def test_no_credential_falls_back_to_the_default_token(repo_root: Path) -> None:
 
 
 def test_nothing_is_visible_before_every_gate_passes(repo_root: Path) -> None:
-    """Draft -> prerelease after the gates -> latest after acquisition."""
+    """Draft -> published once after the gates -> acquisition -> channels.
+
+    Mutation proof: restoring `--prerelease` on the publication step makes
+    this fail on the half-published release; restoring the step makes this
+    pass.
+    """
     jobs = _load(repo_root, ORCHESTRATOR)["jobs"]
     for builder in ("archives", "build-product-tree"):
         assert "merge-gate" in _needs(jobs[builder]), (
@@ -610,19 +615,22 @@ def test_nothing_is_visible_before_every_gate_passes(repo_root: Path) -> None:
     assert jobs["merge-gate"]["uses"].endswith(GATE_WORKFLOW)
     assert jobs["archives"]["uses"].endswith(ARCHIVES)
     assert {"archives", "attach-to-release", "channel-feasibility"} <= _needs(
-        jobs["publish-prerelease"]
+        jobs["publish-release"]
     )
     assert jobs["acquisition"]["uses"].endswith("acquisition.yml")
-    assert "publish-prerelease" in _needs(jobs["acquisition"])
-    assert "acquisition" in _needs(jobs["promote-release"])
+    assert "publish-release" in _needs(jobs["acquisition"])
     for channel in ("homebrew-bump", "scoop-bump"):
-        assert "promote-release" in _needs(jobs[channel]), (
-            f"{channel} must publish only a promoted release"
+        assert "acquisition" in _needs(jobs[channel]), (
+            f"{channel} must point only at a release acquisition has proven"
         )
 
     text = (repo_root / WORKFLOWS / ORCHESTRATOR).read_text("utf-8")
     assert text.count("--draft=false") == 1, (
         "exactly one step may take the release out of draft"
+    )
+    assert "--prerelease" not in text, (
+        "the release is held as a draft until complete and then published "
+        "once; a prerelease is a published release, visible half-finished"
     )
     assert "--draft=false" not in (repo_root / WORKFLOWS / ARCHIVES).read_text(
         "utf-8"
