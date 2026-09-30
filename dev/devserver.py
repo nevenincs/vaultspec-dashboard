@@ -122,7 +122,14 @@ permissions:
 jobs:
   devserver:
     name: 'Check: Dev server'
-    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    # A pull request runs on the self-hosted fleet only from this repository
+    # and only by the owner or a collaborator: Dependabot and other authors
+    # push branches here too, and the fork refusal never stops them.
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+       (github.event.pull_request.author_association == 'OWNER' ||
+        github.event.pull_request.author_association == 'COLLABORATOR'))
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 20
     steps:
