@@ -67,8 +67,8 @@ proves its head with the full merge gate, squash-merges it, and seconds later cr
 tag `v<version>` and an unpublished draft release, then dispatches
 [the release orchestrator](.github/workflows/product-release.yml) for that tag. The
 orchestrator measures the tagged tree, builds and verifies every artifact, attaches them
-to the draft, publishes it as a prerelease, proves acquisition on the oldest supported
-loaders, promotes it to `latest`, and only then bumps the Homebrew and Scoop channels. A
+to the draft, publishes it once as `latest`, proves acquisition on the oldest supported
+loaders, and only then bumps the Homebrew and Scoop channels. A
 failure before publication leaves an invisible draft rather than a half-finished release.
 Fix the cause and re-dispatch `Dashboard Release` for the same tag. A release pull request
 merged by hand is released by the next dispatched cut.
