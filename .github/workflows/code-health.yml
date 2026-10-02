@@ -49,7 +49,7 @@ jobs:
           # repository's in-flight test.
           # Unquoted on purpose below: word splitting is how the newline-
           # separated pid list becomes kill's arguments.
-          left=$(pgrep -f "${workspace}/engine/target/[^ ]*/vaultspec" 2>/dev/null)
+          left=$(pgrep -f "${workspace}/engine/target/[^ ]*/vaultspec" 2>/dev/null || true)
           if [ -n "${left}" ]; then
             echo "reclaim: stopping engine processes left from a previous job: ${left}"
             # shellcheck disable=SC2086
@@ -68,7 +68,8 @@ jobs:
           fi
           rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
           exit 0
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - id: checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -89,8 +90,8 @@ jobs:
       - name: Provision the dev toolchain
         run: just init
       - name: Unused code (just audit-knip)
-        if: ${{ !cancelled() }}
+        if: ${{ steps.checkout.outcome == 'success' && !cancelled() }}
         run: just audit-knip
       - name: Build tooling advisories (just audit-node-tooling)
-        if: ${{ !cancelled() }}
+        if: ${{ steps.checkout.outcome == 'success' && !cancelled() }}
         run: just audit-node-tooling

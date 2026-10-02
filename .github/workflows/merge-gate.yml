@@ -103,7 +103,7 @@ jobs:
           # repository's in-flight test.
           # Unquoted on purpose below: word splitting is how the newline-
           # separated pid list becomes kill's arguments.
-          left=$(pgrep -f "${workspace}/engine/target/[^ ]*/vaultspec" 2>/dev/null)
+          left=$(pgrep -f "${workspace}/engine/target/[^ ]*/vaultspec" 2>/dev/null || true)
           if [ -n "${left}" ]; then
             echo "reclaim: stopping engine processes left from a previous job: ${left}"
             # shellcheck disable=SC2086
@@ -318,7 +318,7 @@ jobs:
           # repository's in-flight test.
           # Unquoted on purpose below: word splitting is how the newline-
           # separated pid list becomes kill's arguments.
-          left=$(pgrep -f "${workspace}/engine/target/[^ ]*/vaultspec" 2>/dev/null)
+          left=$(pgrep -f "${workspace}/engine/target/[^ ]*/vaultspec" 2>/dev/null || true)
           if [ -n "${left}" ]; then
             echo "reclaim: stopping engine processes left from a previous job: ${left}"
             # shellcheck disable=SC2086
@@ -466,7 +466,7 @@ jobs:
           # repository's in-flight test.
           # Unquoted on purpose below: word splitting is how the newline-
           # separated pid list becomes kill's arguments.
-          left=$(pgrep -f "${workspace}/engine/target/[^ ]*/vaultspec" 2>/dev/null)
+          left=$(pgrep -f "${workspace}/engine/target/[^ ]*/vaultspec" 2>/dev/null || true)
           if [ -n "${left}" ]; then
             echo "reclaim: stopping engine processes left from a previous job: ${left}"
             # shellcheck disable=SC2086
@@ -640,7 +640,7 @@ jobs:
           # repository's in-flight test.
           # Unquoted on purpose below: word splitting is how the newline-
           # separated pid list becomes kill's arguments.
-          left=$(pgrep -f "${workspace}/engine/target/[^ ]*/vaultspec" 2>/dev/null)
+          left=$(pgrep -f "${workspace}/engine/target/[^ ]*/vaultspec" 2>/dev/null || true)
           if [ -n "${left}" ]; then
             echo "reclaim: stopping engine processes left from a previous job: ${left}"
             # shellcheck disable=SC2086
@@ -737,7 +737,7 @@ jobs:
           # repository's in-flight test.
           # Unquoted on purpose below: word splitting is how the newline-
           # separated pid list becomes kill's arguments.
-          left=$(pgrep -f "${workspace}/engine/target/[^ ]*/vaultspec" 2>/dev/null)
+          left=$(pgrep -f "${workspace}/engine/target/[^ ]*/vaultspec" 2>/dev/null || true)
           if [ -n "${left}" ]; then
             echo "reclaim: stopping engine processes left from a previous job: ${left}"
             # shellcheck disable=SC2086
