@@ -798,7 +798,7 @@ jobs:
     # an absence. The refusals are the first steps of the job instead.
     if: ${{ !cancelled() }}
     runs-on: [self-hosted, Linux, X64]
-    timeout-minutes: 10
+    timeout-minutes: 71
     permissions:
       checks: read
       contents: read

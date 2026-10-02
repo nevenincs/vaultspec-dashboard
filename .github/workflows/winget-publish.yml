@@ -61,7 +61,7 @@ jobs:
 
   submit:
     name: "Build: WinGet submission (Windows)"
-    timeout-minutes: 60
+    timeout-minutes: 136
     needs: gate
     runs-on: [self-hosted, Windows, X64]
     steps:
