@@ -1,13 +1,12 @@
-name: Self-hosted runner policy
+name: Dashboard Runner Policy
 on:
-  push:
   pull_request:
 permissions:
   contents: read
 jobs:
   runner-policy:
     name: 'Check: Self-hosted runners'
-    if: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (github.event.pull_request.author_association == 'OWNER' || github.event.pull_request.author_association == 'COLLABORATOR')) }}
+    if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && (github.event_name != 'pull_request' || (github.event.pull_request.author_association == 'OWNER' || github.event.pull_request.author_association == 'COLLABORATOR')) }}
     timeout-minutes: 130
     runs-on: [self-hosted, Linux, X64]
     env:
