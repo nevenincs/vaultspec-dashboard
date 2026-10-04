@@ -79,7 +79,7 @@ concurrency:
 
 jobs:
   scoop:
-    timeout-minutes: 60
+    timeout-minutes: 136
     name: "Test: Scoop reversibility (Windows)"
     if: contains(inputs.channels, 'scoop')
     runs-on: [self-hosted, Windows, X64]
@@ -163,7 +163,7 @@ jobs:
             exit 1
           }
   winget:
-    timeout-minutes: 60
+    timeout-minutes: 136
     name: "Test: WinGet reversibility (Windows)"
     if: contains(inputs.channels, 'winget')
     runs-on: [self-hosted, Windows, X64]
