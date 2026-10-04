@@ -75,7 +75,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
-          cache: npm
+          cache: ''
           cache-dependency-path: frontend/package-lock.json
       - name: Set up just
         uses: taiki-e/install-action@6012bba2f8e3e666a2b212f8823c06831704ce92 # just
@@ -86,6 +86,7 @@ jobs:
         with:
           # The runners already share UV_CACHE_DIR; the action's own cache save
           # hung the post step on the fleet.
+          prune-cache: false
           enable-cache: false
       - name: Provision the dev toolchain
         run: just init

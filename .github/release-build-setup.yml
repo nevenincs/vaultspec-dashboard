@@ -87,7 +87,7 @@
   uses: actions/setup-node@v4
   with:
     node-version: 22
-    cache: npm
+    cache: ''
     cache-dependency-path: frontend/package-lock.json
 - name: Build the SPA bundle for embedding
   # bash on every matrix runner: pwsh only checks native exit codes at script

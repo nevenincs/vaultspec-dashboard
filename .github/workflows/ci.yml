@@ -100,13 +100,14 @@ jobs:
         with:
           # The runners already share UV_CACHE_DIR; the action's own cache save
           # hung the post step on the fleet.
+          prune-cache: false
           enable-cache: false
       # `dev.init` probes node and npm before any phase, so they must be on
       # PATH even though this lane installs only Python and the pinned tools.
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
-          cache: npm
+          cache: ''
           cache-dependency-path: frontend/package-lock.json
       - name: Provision the Python environment
         id: init-python
