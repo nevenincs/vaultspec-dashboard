@@ -225,7 +225,7 @@ jobs:
       group: ${{ matrix.constrained_arm && 'vaultspec-native-arm-release' || format('{0}-{1}-{2}', github.workflow, github.run_id, matrix.target) }}
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
       - name: Set up packaging Python
@@ -365,7 +365,7 @@ jobs:
           "$executable" verify-release "$stage"
           "$executable" --version
       - name: Upload the release-set member
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: product-${{ matrix.target }}
           path: |
@@ -403,7 +403,7 @@ jobs:
     needs: build-product-tree
     runs-on: [self-hosted, Linux, X64]
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
       - name: Read pinned toolchain
@@ -417,7 +417,7 @@ jobs:
       - name: Resolve the engine build output directory
         shell: bash
         run: echo "ENGINE_TARGET_DIR=${CARGO_TARGET_DIR:-$GITHUB_WORKSPACE/engine/target}" >> "$GITHUB_ENV"
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           path: members
       - name: Aggregate the four verified members + emit the cohort digest
@@ -437,7 +437,7 @@ jobs:
             --member x86_64-unknown-linux-gnu=members/product-x86_64-unknown-linux-gnu/release-x86_64-unknown-linux-gnu.json \
             --member x86_64-pc-windows-msvc=members/product-x86_64-pc-windows-msvc/release-x86_64-pc-windows-msvc.json \
             --out cohort-descriptor.json
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: cohort-descriptor
           path: cohort-descriptor.json
@@ -466,7 +466,7 @@ jobs:
       matrix:
         python-version: ["3.13", "3.14"]
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
       - name: Set up just
@@ -511,7 +511,7 @@ jobs:
       value: ${{ steps.v.outputs.value }}
       prior: ${{ steps.v.outputs.prior }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
       - id: v
@@ -577,11 +577,11 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
 
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           path: members
 

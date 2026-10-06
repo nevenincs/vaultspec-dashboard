@@ -67,7 +67,7 @@ jobs:
     outputs:
       release_branch: ${{ steps.release.outputs.pr && fromJSON(steps.release.outputs.pr).headBranchName }}
     steps:
-      - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
         with:
           config-file: release-please-config.json
@@ -142,7 +142,7 @@ jobs:
       # This job pushes the regenerated lock back to the release branch, so the
       # checkout must keep its credentials. They are the workflow token's, which
       # holds no `workflows` permission and starts no runs of its own.
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # zizmor: ignore[artipacked] pushes the lock back with this token
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # zizmor: ignore[artipacked] pushes the lock back with this token
         with:
           ref: ${{ needs.release-please.outputs.release_branch }}
       - name: Read pinned toolchain
@@ -307,7 +307,7 @@ jobs:
 
       - name: Create the release for the merged proposal
         id: release
-        uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
