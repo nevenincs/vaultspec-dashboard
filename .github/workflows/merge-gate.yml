@@ -122,7 +122,7 @@ jobs:
           fi
           rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
           exit 0
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           ref: ${{ inputs.ref || github.sha }}
@@ -144,12 +144,12 @@ jobs:
         env:
           CHANNEL: ${{ steps.toolchain.outputs.channel }}
         run: bash .github/scripts/warm-toolchain.sh "${CHANNEL}" || true
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
         with:
           toolchain: ${{ steps.toolchain.outputs.channel }}
           components: rustfmt, clippy
       - name: Set up uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           # The runners already share UV_CACHE_DIR; the action's own cache save
           # hung the post step on the fleet.
@@ -189,7 +189,7 @@ jobs:
           - { os: Linux, arch: X64 }
           - { os: Windows, arch: X64 }
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           ref: ${{ inputs.ref || github.sha }}
@@ -200,7 +200,7 @@ jobs:
         id: toolchain
         shell: bash
         run: echo "channel=$(grep -m1 '^channel' engine/rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
         with:
           toolchain: ${{ steps.toolchain.outputs.channel }}
           components: rustfmt, clippy
@@ -239,7 +239,7 @@ jobs:
         with:
           tool: just@1.38.0
       - name: Set up uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           # The runners already share UV_CACHE_DIR; the action's own cache save
           # hung the post step on the fleet.
@@ -339,7 +339,7 @@ jobs:
           fi
           rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
           exit 0
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           ref: ${{ inputs.ref || github.sha }}
@@ -353,7 +353,7 @@ jobs:
         with:
           tool: just@1.38.0
       - name: Set up uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           # The runners already share UV_CACHE_DIR; the action's own cache save
           # hung the post step on the fleet.
@@ -378,7 +378,7 @@ jobs:
         env:
           CHANNEL: ${{ steps.toolchain.outputs.channel }}
         run: bash .github/scripts/warm-toolchain.sh "${CHANNEL}" || true
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
         with:
           toolchain: ${{ steps.toolchain.outputs.channel }}
       # The runners share one persistent cargo target directory outside the
@@ -488,7 +488,7 @@ jobs:
           fi
           rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
           exit 0
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           ref: ${{ inputs.ref || github.sha }}
@@ -501,7 +501,7 @@ jobs:
         env:
           CHANNEL: ${{ steps.toolchain.outputs.channel }}
         run: bash .github/scripts/warm-toolchain.sh "${CHANNEL}" || true
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
         with:
           toolchain: ${{ steps.toolchain.outputs.channel }}
       - name: Resolve the engine build output directory
@@ -512,7 +512,7 @@ jobs:
         with:
           tool: just@1.38.0
       - name: Set up uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           # The runners already share UV_CACHE_DIR; the action's own cache save
           # hung the post step on the fleet.
@@ -663,7 +663,7 @@ jobs:
           fi
           rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
           exit 0
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           ref: ${{ inputs.ref || github.sha }}
@@ -676,7 +676,7 @@ jobs:
         env:
           CHANNEL: ${{ steps.toolchain.outputs.channel }}
         run: bash .github/scripts/warm-toolchain.sh "${CHANNEL}" || true
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
         with:
           toolchain: ${{ steps.toolchain.outputs.channel }}
       - name: Component lock + release-set-manifest schema are well-formed
@@ -760,7 +760,7 @@ jobs:
           fi
           rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
           exit 0
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           ref: ${{ inputs.ref || github.sha }}
@@ -774,7 +774,7 @@ jobs:
         with:
           tool: cargo-deny@0.19.0
       - name: Set up uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           # The runners already share UV_CACHE_DIR; the action's own cache save
           # hung the post step on the fleet.
