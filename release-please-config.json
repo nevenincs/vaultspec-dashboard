@@ -54,6 +54,11 @@
           "type": "toml",
           "path": "engine/Cargo.toml",
           "jsonpath": "$.workspace.package.version"
+        },
+        {
+          "type": "toml",
+          "path": "engine/Cargo.lock",
+          "jsonpath": "$.package[?(!@.source)].version"
         }
       ],
       "changelog-path": "engine/CHANGELOG.md"
