@@ -28,10 +28,13 @@
 # of their own.
 #
 # THE REQUIRED CONTEXT IS NEVER SKIPPED. A skipped required check counts as
-# PASSED, so a run that admits nothing names its skipped verdict job
-# `Check: Admission withheld (Linux)` instead. The required context then keeps
-# the verdict of the newest admitted run for that commit, or stays missing and
-# blocks the merge. An admitted run reports the verdict on `always()`.
+# PASSED, so the verdict job's name is an expression: GitHub evaluates it only
+# for a job that runs, which yields the required context, and a skipped job is
+# listed under the unevaluated expression text instead (it would read
+# `Check: Admission withheld (Linux)` if it were ever evaluated). The required
+# context then keeps the verdict of the newest admitted run for that commit, or
+# stays missing and blocks the merge. An admitted run reports the verdict on
+# `always()`.
 #
 # THE REF IS THE CALLER'S, NOT THIS RUN'S. A call or a dispatch names the ref to
 # measure and every job checks out exactly that, so the release cut can prove
@@ -793,9 +796,9 @@ jobs:
 
   gate:
     # A run that admits nothing must never report the required context: GitHub
-    # counts a skipped required check as passed. Such a run's verdict job is
-    # skipped under another name, so the commit keeps whatever verdict an
-    # admitted run gave it, or none.
+    # counts a skipped required check as passed. A skipped job is listed under
+    # its unevaluated name expression, never the required context, so the
+    # commit keeps whatever verdict an admitted run gave it, or none.
     name: >-
       ${{ (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (github.event.pull_request.author_association == 'OWNER' || github.event.pull_request.author_association == 'COLLABORATOR' || github.event.pull_request.user.login == 'nevenincs-release[bot]') && ((github.event.action == 'labeled' && github.event.label.name == 'ci:full' && github.event.sender.type == 'User') || (github.event.action != 'labeled' && github.event.pull_request.user.login == 'nevenincs-release[bot]')))) && 'Check: Merge gate (Linux)' || 'Check: Admission withheld (Linux)' }}
     needs: [lint, engine, frontend, conformance, release-inputs, dependencies]

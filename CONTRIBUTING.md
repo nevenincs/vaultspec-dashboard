@@ -122,9 +122,9 @@ write only; tags and releases are created with the workflow token.
 Only pull requests from a branch of this repository by the owner, a collaborator, or the
 release App (`nevenincs-release[bot]`) reach the self-hosted fleet. Every other author —
 forks, Dependabot, whose pull requests carry author association `CONTRIBUTOR`, and any
-other bot — runs nothing there, with or without a label, and its merge gate reports
-`Check: Admission withheld (Linux)` instead of the required check. To land such a change,
-a maintainer reviews it and re-opens it from a branch of their own. A collaborator starts
+other bot — runs nothing there, with or without a label, and its merge gate is skipped
+without ever reporting the required check. To land such a change, a maintainer reviews it
+and re-opens it from a branch of their own. A collaborator starts
 the merge gate on a pull request by applying the `ci:full` label; a label applied by a bot
 starts nothing.
 

@@ -293,10 +293,12 @@ def test_the_required_context_comes_only_from_an_admitted_run(
     """A skipped required check passes; an unwatched job fails silently.
 
     Every measuring job, the verdict's condition and the verdict's name carry
-    the one admission condition byte for byte. A run that admits nothing skips
-    its verdict under `WITHHELD_NAME`, so the required context is never reported
-    skipped; an admitted run reports it on `always()`, so a cancelled or failed
-    measurement is red rather than absent.
+    the one admission condition byte for byte. GitHub evaluates a job name only
+    for a job that runs, so an admitted verdict reports the required context and
+    a skipped one is listed under its unevaluated expression (or `WITHHELD_NAME`
+    if it were ever evaluated) - never the required context. An admitted run
+    reports it on `always()`, so a cancelled or failed measurement is red rather
+    than absent.
 
     Mutation proof: narrowing the verdict's condition to
     `${{ !cancelled() && (<admitted>) }}` fails on the exact-condition
