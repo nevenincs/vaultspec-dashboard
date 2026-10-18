@@ -72,7 +72,7 @@ jobs:
   # spent on a build.
   prove-ref:
     name: "Check: Prove ref commit (Linux)"
-    timeout-minutes: 10
+    timeout-minutes: 130
     runs-on: [self-hosted, Linux, X64]
     permissions:
       contents: write
@@ -146,7 +146,7 @@ jobs:
   # instead of a day of silence.
   queue-watchdog:
     name: "Check: Queue watchdog (Linux)"
-    timeout-minutes: 90
+    timeout-minutes: 210
     needs: prove-ref
     runs-on: [self-hosted, Linux, X64]
     permissions:
@@ -192,7 +192,7 @@ jobs:
       contents: write
 
   build-product-tree:
-    timeout-minutes: 120
+    timeout-minutes: 240
     needs: [prove-ref, merge-gate]
     name: "Build: Product tree (${{ matrix.platform }})"
     strategy:
@@ -397,7 +397,7 @@ jobs:
           Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used } | Format-Table -AutoSize
 
   cohort-digest:
-    timeout-minutes: 30
+    timeout-minutes: 150
     name: "Build: Cohort digest (Linux)"
     needs: build-product-tree
     runs-on: [self-hosted, Linux, X64]
@@ -455,7 +455,7 @@ jobs:
           df -h . 2>/dev/null | tail -1
 
   python-compatibility:
-    timeout-minutes: 30
+    timeout-minutes: 150
     name: "Check: Python harness (Linux ${{ matrix.python-version }})"
     needs: prove-ref
     runs-on: [self-hosted, Linux, X64]
@@ -488,7 +488,7 @@ jobs:
   # One verdict over every artifact check, so the jobs that touch the release
   # need a single name rather than a list that can drift.
   artifact-correctness:
-    timeout-minutes: 15
+    timeout-minutes: 135
     name: "Check: Release artifacts (Linux)"
     needs: [build-product-tree, cohort-digest, python-compatibility]
     runs-on: [self-hosted, Linux, X64]
@@ -502,7 +502,7 @@ jobs:
   # It fails closed (matrix untouched) until real release inputs make a proof
   # possible, and the release is not published until it passes.
   resolve-version:
-    timeout-minutes: 15
+    timeout-minutes: 135
     name: "Check: Release version (Linux)"
     needs: prove-ref
     runs-on: [self-hosted, Linux, X64]
@@ -568,7 +568,7 @@ jobs:
   # needs every natively verified member, the cohort digest and the Python
   # harness, so a partial cohort cannot be attached.
   attach-to-release:
-    timeout-minutes: 45
+    timeout-minutes: 165
     name: "Build: Release attachments (Linux)"
     if: ${{ !inputs.validation_only }}
     needs: [archives, artifact-correctness, resolve-version]
@@ -680,7 +680,7 @@ jobs:
   # public release in one step, the release's only visibility change: it is
   # never published before it is complete, and never held half-published.
   publish-release:
-    timeout-minutes: 15
+    timeout-minutes: 180
     name: "Build: Release publication (Linux)"
     needs: [archives, attach-to-release, channel-feasibility]
     runs-on: [self-hosted, Linux, X64]

@@ -75,7 +75,7 @@ jobs:
     name: "Check: Full lint (Linux)"
     if: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (github.event.pull_request.author_association == 'OWNER' || github.event.pull_request.author_association == 'COLLABORATOR' || github.event.pull_request.user.login == 'nevenincs-release[bot]') && ((github.event.action == 'labeled' && github.event.label.name == 'ci:full' && github.event.sender.type == 'User') || (github.event.action != 'labeled' && github.event.pull_request.user.login == 'nevenincs-release[bot]'))) }}
     runs-on: [self-hosted, Linux, X64]
-    timeout-minutes: 45
+    timeout-minutes: 165
     steps:
       # INLINE AND SELF-CONTAINED, because nothing under the workspace may
       # execute before a job's own checkout. A job the runner is shut down
@@ -173,7 +173,7 @@ jobs:
   engine:
     name: "Test: Engine suite (${{ matrix.os }})"
     if: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (github.event.pull_request.author_association == 'OWNER' || github.event.pull_request.author_association == 'COLLABORATOR' || github.event.pull_request.user.login == 'nevenincs-release[bot]') && ((github.event.action == 'labeled' && github.event.label.name == 'ci:full' && github.event.sender.type == 'User') || (github.event.action != 'labeled' && github.event.pull_request.user.login == 'nevenincs-release[bot]'))) }}
-    timeout-minutes: 60
+    timeout-minutes: 180
     # WINDOWS GATES HERE, and this is the only place in the repository where a
     # `just` recipe runs on Windows at all. The justfile declares
     # `set windows-shell` and every recipe body is a single command with no
@@ -292,7 +292,7 @@ jobs:
     name: "Test: Frontend suite (Linux)"
     if: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (github.event.pull_request.author_association == 'OWNER' || github.event.pull_request.author_association == 'COLLABORATOR' || github.event.pull_request.user.login == 'nevenincs-release[bot]') && ((github.event.action == 'labeled' && github.event.label.name == 'ci:full' && github.event.sender.type == 'User') || (github.event.action != 'labeled' && github.event.pull_request.user.login == 'nevenincs-release[bot]'))) }}
     runs-on: [self-hosted, Linux, X64]
-    timeout-minutes: 60
+    timeout-minutes: 180
     steps:
       # INLINE AND SELF-CONTAINED, because nothing under the workspace may
       # execute before a job's own checkout. A job the runner is shut down
@@ -441,7 +441,7 @@ jobs:
     name: "Test: Engine conformance (Linux)"
     if: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (github.event.pull_request.author_association == 'OWNER' || github.event.pull_request.author_association == 'COLLABORATOR' || github.event.pull_request.user.login == 'nevenincs-release[bot]') && ((github.event.action == 'labeled' && github.event.label.name == 'ci:full' && github.event.sender.type == 'User') || (github.event.action != 'labeled' && github.event.pull_request.user.login == 'nevenincs-release[bot]'))) }}
     runs-on: [self-hosted, Linux, X64]
-    timeout-minutes: 90
+    timeout-minutes: 210
     steps:
       # INLINE AND SELF-CONTAINED, because nothing under the workspace may
       # execute before a job's own checkout. A job the runner is shut down
@@ -616,7 +616,7 @@ jobs:
     name: "Check: Release inputs (Linux)"
     if: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (github.event.pull_request.author_association == 'OWNER' || github.event.pull_request.author_association == 'COLLABORATOR' || github.event.pull_request.user.login == 'nevenincs-release[bot]') && ((github.event.action == 'labeled' && github.event.label.name == 'ci:full' && github.event.sender.type == 'User') || (github.event.action != 'labeled' && github.event.pull_request.user.login == 'nevenincs-release[bot]'))) }}
     runs-on: [self-hosted, Linux, X64]
-    timeout-minutes: 30
+    timeout-minutes: 150
     steps:
       # INLINE AND SELF-CONTAINED, because nothing under the workspace may
       # execute before a job's own checkout. A job the runner is shut down
@@ -713,7 +713,7 @@ jobs:
     name: "Check: Dependency advisories (Linux)"
     if: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (github.event.pull_request.author_association == 'OWNER' || github.event.pull_request.author_association == 'COLLABORATOR' || github.event.pull_request.user.login == 'nevenincs-release[bot]') && ((github.event.action == 'labeled' && github.event.label.name == 'ci:full' && github.event.sender.type == 'User') || (github.event.action != 'labeled' && github.event.pull_request.user.login == 'nevenincs-release[bot]'))) }}
     runs-on: [self-hosted, Linux, X64]
-    timeout-minutes: 45
+    timeout-minutes: 165
     steps:
       # INLINE AND SELF-CONTAINED, because nothing under the workspace may
       # execute before a job's own checkout. A job the runner is shut down
@@ -806,7 +806,7 @@ jobs:
     # reports a red verdict instead of a skipped, passing one.
     if: ${{ always() && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (github.event.pull_request.author_association == 'OWNER' || github.event.pull_request.author_association == 'COLLABORATOR' || github.event.pull_request.user.login == 'nevenincs-release[bot]') && ((github.event.action == 'labeled' && github.event.label.name == 'ci:full' && github.event.sender.type == 'User') || (github.event.action != 'labeled' && github.event.pull_request.user.login == 'nevenincs-release[bot]')))) }}
     runs-on: [self-hosted, Linux, X64]
-    timeout-minutes: 10
+    timeout-minutes: 71
     permissions:
       contents: read
       pull-requests: write

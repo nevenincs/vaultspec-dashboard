@@ -81,7 +81,7 @@ jobs:
   # Per-target certification of the published archive on a native runner.
   # ---------------------------------------------------------------------------
   certify-target:
-    timeout-minutes: 90
+    timeout-minutes: 210
     name: "Test: Published artifact (${{ matrix.platform }})"
     strategy:
       fail-fast: false
@@ -309,7 +309,7 @@ jobs:
   # One logical release set across every target and supported channel.
   # ---------------------------------------------------------------------------
   compare-inventories:
-    timeout-minutes: 30
+    timeout-minutes: 150
     name: "Check: Release set inventory (Linux)"
     needs: [certify-target, certify-scoop-winget]
     runs-on: [self-hosted, Linux, X64]

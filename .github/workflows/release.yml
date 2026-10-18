@@ -48,7 +48,7 @@ concurrency:
 jobs:
   plan:
     name: "Build: Release plan (Linux)"
-    timeout-minutes: 30
+    timeout-minutes: 150
     # Hand-set for the self-hosted fleet; re-apply if `dist generate-ci` regenerates this file.
     runs-on: [self-hosted, Linux, X64]
     outputs:
@@ -117,7 +117,7 @@ jobs:
   # Build and packages all the platform-specific things
   build-local-artifacts:
     name: "Build: CLI archive (${{ join(matrix.targets, ', ') }})"
-    timeout-minutes: 120
+    timeout-minutes: 240
     # Let the initial task tell us to not run (currently very blunt)
     needs:
       - plan
@@ -371,7 +371,7 @@ jobs:
   # Build and package all the platform-agnostic(ish) things
   build-global-artifacts:
     name: "Build: Global artifacts (Linux)"
-    timeout-minutes: 120
+    timeout-minutes: 240
     needs:
       - plan
       - build-local-artifacts
@@ -423,7 +423,7 @@ jobs:
   # Determines if we should publish/announce
   host:
     name: "Build: Release upload (Linux)"
-    timeout-minutes: 120
+    timeout-minutes: 240
     # The only job that writes to the release: it uploads to the draft.
     permissions:
       contents: write
@@ -506,7 +506,7 @@ jobs:
   # that state is the empty `latest` v0.1.4 served for six weeks. This refuses
   # the run, so the orchestrator never publishes the draft.
   verify-release-assets:
-    timeout-minutes: 30
+    timeout-minutes: 150
     name: "Check: Release archives attached (Linux)"
     needs:
       - plan

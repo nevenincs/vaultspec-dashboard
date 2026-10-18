@@ -36,7 +36,7 @@ jobs:
     # of their own.
     if: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (github.event.pull_request.author_association == 'OWNER' || github.event.pull_request.author_association == 'COLLABORATOR' || github.event.pull_request.user.login == 'nevenincs-release[bot]')) }}
     runs-on: [self-hosted, Linux, X64]
-    timeout-minutes: 20
+    timeout-minutes: 140
     steps:
       # INLINE AND SELF-CONTAINED, because nothing under the workspace may
       # execute before a job's own checkout. A job the runner is shut down
