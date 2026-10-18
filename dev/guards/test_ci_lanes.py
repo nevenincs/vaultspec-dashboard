@@ -4,23 +4,25 @@ Three lanes, each answering a different question at a different cost:
 
 - ``ci.yml`` runs on every pull-request push and answers only the cheap static
   questions.
-- ``merge-gate.yml`` measures everything a change must pass, runs only when a
-  maintainer adds ``ci:full`` (or when the release cut or the orchestrator calls
-  it on a named ref), and folds the result into ONE check the ruleset requires.
+- ``merge-gate.yml`` measures everything a change must pass, runs when a
+  maintainer adds ``ci:full``, on the release App's own pull request events, or
+  when the release orchestrator calls it on a tag, and folds the result into ONE
+  check the ruleset requires.
 - ``release-please.yml`` keeps the release proposal current on every push and
   cuts a release only when a maintainer dispatches it.
 - ``product-release.yml`` orchestrates the release, and nothing becomes visible
   to a user until every gate before it has passed.
 
 The soundness of that arrangement rests on properties no single job shows: a
-push must not start the gate, so a new commit cannot merge on an old verdict;
-the gate job must never be skipped, because a skipped required check counts
-as passed; it must depend on every measuring job, or a job could fail without
-the verdict noticing; only a trusted author's change may reach the self-hosted
-fleet at all; nothing under the workspace may execute before the job that owns
-it has checked out; and only the dispatched cut may create a release, on a
-commit the gate has already passed. Each is asserted here rather than trusted
-to review.
+person's push must not start the gate, so a new commit cannot merge on an old
+verdict; a run that admits nothing must never report the required context,
+because a skipped required check counts as passed; the verdict must depend on
+every measuring job, or a job could fail without the verdict noticing; only a
+trusted author's branch may reach the self-hosted fleet at all; nothing under
+the workspace may execute before the job that owns it has checked out; the
+release pull request is written by the release App so its own events run the
+gate; and only the dispatched cut may create a release, on a commit the gate
+has already passed. Each is asserted here rather than trusted to review.
 """
 
 from __future__ import annotations
@@ -61,6 +63,9 @@ JOB_NAME = re.compile(
     rf"^(?:{'|'.join(KINDS)}): [A-Z][^()]*[^()\s](?: \({_PLATFORM}\))?$"
 )
 _EXPRESSION = re.compile(r"\$\{\{.*?\}\}")
+#: A name chosen by a condition, `${{ (<condition>) && 'A' || 'B' }}`: each
+#: alternative is a name in its own right and must follow the grammar.
+_CHOSEN_NAME = re.compile(r"^\$\{\{ .* && '([^']+)' \|\| '([^']+)' \}\}$")
 
 #: The release chain. A cancelled run reports `cancelled`, not `failed`, so
 #: none of these may cancel an in-flight run.
@@ -142,13 +147,23 @@ def test_every_workflow_is_named_for_the_product(repo_root: Path) -> None:
 
 
 def test_every_job_follows_the_name_grammar(repo_root: Path) -> None:
-    """The merge box is read by name; one grammar across every lane."""
+    """The merge box is read by name; one grammar across every lane.
+
+    A name chosen by a condition is checked alternative by alternative.
+
+    Mutation proof: renaming the merge verdict's withheld alternative to
+    `Admission withheld (Linux)` fails naming that job; restoring
+    `Check: Admission withheld (Linux)` makes this pass.
+    """
     offenders = []
     for workflow in _all_workflows(repo_root):
         for job, spec in _load(repo_root, workflow)["jobs"].items():
             name = str(spec.get("name", ""))
-            collapsed = _EXPRESSION.sub(_PLACEHOLDER, name)
-            if not JOB_NAME.match(collapsed):
+            chosen = _CHOSEN_NAME.match(name)
+            candidates = (
+                chosen.groups() if chosen else (_EXPRESSION.sub(_PLACEHOLDER, name),)
+            )
+            if not all(JOB_NAME.match(candidate) for candidate in candidates):
                 offenders.append(f"{workflow}:{job} -> {name!r}")
     assert not offenders, (
         "job names must read `<Check|Test|Build>: <Subject> [(<Platform>)]`: "
@@ -206,245 +221,206 @@ def test_the_cheap_lane_runs_on_every_pull_request_push(repo_root: Path) -> None
     assert GATE_NAME not in names, "the cheap lane must not report the merge verdict"
 
 
-def test_a_push_never_starts_the_merge_gate(repo_root: Path) -> None:
-    """A new commit must carry no gate result until the label is added again."""
+#: The release pull request's author. The fleet's release GitHub App writes it,
+#: so its own pull request events start workflows like any other author's.
+RELEASE_BOT = "nevenincs-release[bot]"
+
+#: A pull request reaches the self-hosted fleet only for an author the
+#: repository already trusts. Byte-identical across the fleet, and written as
+#: equalities rather than `contains(fromJSON(...))` so a scenario evaluator that
+#: treats every function call as undecidable can still prove a verdict for it.
+TRUSTED_AUTHOR = (
+    "(github.event.pull_request.author_association == 'OWNER' || "
+    "github.event.pull_request.author_association == 'COLLABORATOR' || "
+    f"github.event.pull_request.user.login == '{RELEASE_BOT}')"
+)
+
+#: The label door: applying a label takes triage rights, so a USER's label is
+#: the request. A bot's label is not, even on a trusted author's branch.
+LABEL_BY_USER = (
+    "github.event.action == 'labeled' && "
+    f"github.event.label.name == '{FULL_LABEL}' && "
+    "github.event.sender.type == 'User'"
+)
+_USER_SENDER = "github.event.sender.type == 'User'"
+
+FORK_CLAUSE = "github.event.pull_request.head.repo.full_name == github.repository"
+
+#: The one condition that admits a merge-gate run. Calls and dispatches measure
+#: the ref they name; a pull request is measured only from a trusted author's
+#: branch of this repository, on a user's `ci:full` or on the release App's own
+#: opened, reopened and synchronize events.
+ADMITTED = (
+    "github.event_name != 'pull_request' || "
+    f"({FORK_CLAUSE} && {TRUSTED_AUTHOR} && "
+    f"(({LABEL_BY_USER}) || "
+    f"(github.event.action != 'labeled' && "
+    f"github.event.pull_request.user.login == '{RELEASE_BOT}')))"
+)
+WITHHELD_NAME = "Check: Admission withheld (Linux)"
+
+
+def test_only_a_label_or_the_release_app_starts_the_merge_gate(
+    repo_root: Path,
+) -> None:
+    """A person's push carries no gate result until the label is added again.
+
+    The gate listens for opened, reopened and synchronize only because the
+    release App's pull request has no person to add the label; the admission
+    condition pinned by the next test keeps every other author on the label.
+
+    Mutation proof: narrowing the types to `[labeled]` fails on the types
+    assertion (the release pull request would never be measured); restoring
+    them makes this pass.
+    """
     triggers = _triggers(_load(repo_root, GATE_WORKFLOW))
     pull_request = triggers["pull_request"]
-    assert pull_request.get("types") == ["labeled"], (
-        f"{GATE_WORKFLOW} must start only on `labeled`, not {pull_request.get('types')}"
-    )
+    assert pull_request.get("types") == [
+        "opened",
+        "reopened",
+        "synchronize",
+        "labeled",
+    ], f"{GATE_WORKFLOW} starts on {pull_request.get('types')}"
     assert pull_request.get("branches") == ["main"], "name the base branch"
     assert "workflow_call" in triggers, (
         "the release orchestrator measures the tagged tree through this workflow"
     )
 
 
-def test_the_gate_is_never_skipped_and_sees_every_job(repo_root: Path) -> None:
+def test_the_required_context_comes_only_from_an_admitted_run(
+    repo_root: Path,
+) -> None:
     """A skipped required check passes; an unwatched job fails silently.
 
-    The gate's condition is asserted EXACTLY, not by substring. The condition it
-    replaces read `(event != pull_request || same-repo) && (always())`, which
-    still contains `always()` and is still skipped for a fork - and a skipped
-    required check counts as passed, so the one case the refusal exists for was
-    the one case it never ran. Every refusal belongs in the job's steps, where it
-    produces a red verdict rather than an absent one.
+    Every measuring job, the verdict's condition and the verdict's name carry
+    the one admission condition byte for byte. A run that admits nothing skips
+    its verdict under `WITHHELD_NAME`, so the required context is never reported
+    skipped; an admitted run reports it on `always()`, so a cancelled or failed
+    measurement is red rather than absent.
 
-    Mutation proof: narrowing the condition to
-    `${{ github.event_name != 'pull_request' && !cancelled() }}` makes this fail
-    on the exact-condition assertion; restoring it makes this pass.
+    Mutation proof: narrowing the verdict's condition to
+    `${{ !cancelled() && (<admitted>) }}` fails on the exact-condition
+    assertion; changing the withheld alternative of its name to
+    `Check: Merge gate (Linux)` fails on the exact-name assertion (a skipped run
+    would then report the required context as passed); restoring each makes
+    this pass.
     """
     jobs = _load(repo_root, GATE_WORKFLOW)["jobs"]
     gate = jobs[GATE_JOB]
-    assert gate["name"] == GATE_NAME
-    assert str(gate.get("if", "")) == "${{ !cancelled() }}", (
-        "the gate job's condition must be exactly `${{ !cancelled() }}`: any "
-        "narrowing skips the required check for the case it narrows away, and a "
-        f"skipped required check counts as PASSED. Found {gate.get('if')!r}"
+    assert str(gate.get("name", "")) == (
+        f"${{{{ ({ADMITTED}) && '{GATE_NAME}' || '{WITHHELD_NAME}' }}}}"
+    ), (
+        "the verdict must report the required context only for an admitted run; "
+        f"found name {gate.get('name')!r}"
+    )
+    assert str(gate.get("if", "")) == f"${{{{ always() && ({ADMITTED}) }}}}", (
+        "the verdict must run on `always()` for exactly the admitted runs; "
+        f"found {gate.get('if')!r}"
     )
     measuring = set(jobs) - {GATE_JOB}
     assert _needs(gate) == measuring, (
         f"the gate needs {sorted(_needs(gate))} but the workflow measures "
         f"{sorted(measuring)}"
     )
-    for job in measuring:
-        condition = str(jobs[job].get("if", ""))
-        assert FULL_LABEL in condition and "head.repo.full_name" in condition, (
-            f"{GATE_WORKFLOW}:{job} must run only for `{FULL_LABEL}` on a "
-            "same-repository pull request"
+    for job in sorted(measuring):
+        assert str(jobs[job].get("if", "")) == f"${{{{ {ADMITTED} }}}}", (
+            f"{GATE_WORKFLOW}:{job} must run on exactly the admission condition"
         )
 
 
-#: A pull request reaches the self-hosted fleet only for an author the
-#: repository already trusts. Written as two equalities rather than
-#: `contains(fromJSON('["OWNER", "COLLABORATOR"]'), ...)`: the two mean the same
-#: thing, and a scenario evaluator that treats every function call as
-#: undecidable can prove a verdict for the equality form and not for the other.
-TRUSTED_AUTHOR = (
-    "(github.event.pull_request.author_association == 'OWNER' || "
-    "github.event.pull_request.author_association == 'COLLABORATOR')"
-)
-
-#: The other door: applying a label takes triage rights, so a USER's label is
-#: itself the review that admits a change. A bot's label is not.
-LABEL_BY_USER = (
-    "github.event.action == 'labeled' && "
-    f"github.event.label.name == '{FULL_LABEL}' && "
-    "github.event.sender.type == 'User'"
-)
-
-#: Workflows whose `pull_request`-reachable jobs this repository does not own.
-#: `devserver.yml` is a byte-identical render of the machine-wide harness (see
-#: `_shared_workflows`); its conditions are fixed there, not here.
-_UNOWNED_PULL_REQUEST_LANES = frozenset({"devserver.yml"})
+def _normalised(condition: object) -> str:
+    """A condition with its whitespace collapsed, as GitHub evaluates it."""
+    return " ".join(str(condition).split())
 
 
-def _untrusted_reachable(workflow: str, document: dict) -> list[str]:
-    """Jobs a `pull_request` can start on the fleet for an untrusted author.
+def _uncontained(workflow: str, document: dict) -> list[str]:
+    """Jobs a pull request could start on the fleet outside the trust clause.
 
-    The verdict job is exempt and must NOT carry the clause: it has to run for
-    everyone and refuse by name in its steps.
+    Every job a `pull_request` can start - the verdict included - must refuse a
+    fork's branch and an untrusted author in its own `if:`, and a `ci:full`
+    door must also require that a USER applied the label. A runner switch to a
+    hosted image is not refusal: it still runs the pull request's code.
     """
-    if "pull_request" not in _triggers(document):
-        return []
-    offenders = []
-    for job, spec in document["jobs"].items():
-        if str(spec.get("name", "")) == GATE_NAME:
-            continue
-        condition = str(spec.get("if", ""))
-        if TRUSTED_AUTHOR not in condition and LABEL_BY_USER not in condition:
-            offenders.append(f"{workflow}:{job}")
-    return offenders
-
-
-def test_only_a_trusted_author_or_a_users_label_reaches_the_fleet(
-    repo_root: Path,
-) -> None:
-    """An untrusted author's code runs nothing here until someone reads it.
-
-    Dependabot and every other author who is neither owner nor collaborator push
-    branches of THIS repository, so the fork clause never stops them and the
-    approval requirement for outside contributors does not cover them. Their
-    change reaches the self-hosted fleet only after a user with triage rights
-    has admitted it - by applying `ci:full` on the gate, which is the one lane
-    with a label door.
-
-    Mutation proof: replacing the author clause in `ci.yml`'s `static` condition
-    with `true` makes this fail naming that job; restoring it makes this pass.
-    """
-    offenders = [
-        finding
-        for workflow in _all_workflows(repo_root)
-        if workflow not in _UNOWNED_PULL_REQUEST_LANES
-        for finding in _untrusted_reachable(workflow, _load(repo_root, workflow))
-    ]
-    assert not offenders, (
-        "these jobs run a pull request on the self-hosted fleet whatever its "
-        f"author, Dependabot included: {offenders}"
-    )
-
-
-@pytest.mark.parametrize(
-    ("workflow", "job"), [(CHEAP_LANE, "static"), (GATE_WORKFLOW, "engine")]
-)
-def test_the_trust_guard_notices_a_removed_clause(
-    repo_root: Path, workflow: str, job: str
-) -> None:
-    """Guard the guard: stripping the trust clause must be reported."""
-    document = _load(repo_root, workflow)
-    assert not _untrusted_reachable(workflow, document)
-    spec = document["jobs"][job]
-    spec["if"] = (
-        str(spec["if"]).replace(TRUSTED_AUTHOR, "true").replace(LABEL_BY_USER, "true")
-    )
-    assert _untrusted_reachable(workflow, document) == [f"{workflow}:{job}"], (
-        f"removing the trust clause from {workflow}:{job} went unnoticed"
-    )
-
-
-def test_the_gate_refuses_an_untrusted_author_by_name(repo_root: Path) -> None:
-    """The verdict says why nothing ran, and says it after looking for a verdict.
-
-    Two orderings carry the whole value of this. The earlier-verdict lookup comes
-    FIRST, so an untrusted author's commit that a collaborator's `ci:full`
-    already proved keeps its pass. The named refusal comes before the generic
-    "add the ci:full label" message, because telling an author to apply a label
-    they have no rights to apply reads as a broken gate rather than as a review
-    still owed.
-
-    Mutation proof: deleting the `case "$ASSOCIATION" in OWNER | COLLABORATOR`
-    refusal from the verdict script makes this fail on that marker; restoring it
-    makes this pass.
-    """
-    gate = _load(repo_root, GATE_WORKFLOW)["jobs"][GATE_JOB]
-    steps = {str(step.get("name", "")): step for step in gate["steps"]}
-    judge = steps["Decide the merge verdict"]
-    env = judge["env"]
-    assert env["ASSOCIATION"] == "${{ github.event.pull_request.author_association }}"
-    assert env["AUTHOR"] == "${{ github.event.pull_request.user.login }}"
-    assert env["SENDER_TYPE"] == "${{ github.event.sender.type }}"
-
-    script = str(judge["run"])
-    marker = 'case "$ASSOCIATION" in OWNER | COLLABORATOR) ;;'
-    assert marker in script, (
-        "the verdict no longer refuses a commit by an author who is neither the "
-        "owner nor a collaborator; it would tell them to apply a label they "
-        "cannot apply"
-    )
-    lookup = script.index("check_name=")
-    refusal = script.index(marker)
-    generic = script.index("No passing ci:full run has measured")
-    assert lookup < refusal, (
-        "an untrusted author's commit that a collaborator's ci:full already "
-        "proved must keep that verdict, so the lookup comes first"
-    )
-    assert refusal < generic, (
-        "the untrusted author must be refused by name, not told to add a label"
-    )
-    nothing_ran = 'if [ "$EVENT" = "pull_request" ] && [ "$measured" = "0" ]; then'
-    assert nothing_ran in script, (
-        "a ci:full run whose every measuring job was conditioned off - a bot "
-        "applied the label - must be refused by name too, not reported as six "
-        "jobs that failed"
-    )
-
-
-FORK_CLAUSE = "github.event.pull_request.head.repo.full_name == github.repository"
-FORK_REFUSAL = "github.event.pull_request.head.repo.full_name != github.repository"
-
-
-def _fork_offenders(workflow: str, document: dict) -> list[str]:
-    """Where a fork's pull request could reach a runner, or pass the verdict.
-
-    Every job a `pull_request` can start must refuse forks in its own `if:`,
-    except the verdict, which must run for a fork and fail it in its first step.
-    A runner switch to a hosted image is not refusal: it still runs fork code.
-    """
-    if "pull_request" not in _triggers(document):
+    triggers = _triggers(document)
+    if "pull_request_target" in triggers:
+        return [f"{workflow} listens for pull_request_target"]
+    if "pull_request" not in triggers:
         return []
     offenders = []
     for job, spec in document["jobs"].items():
         runs_on = str(spec.get("runs-on", ""))
+        condition = _normalised(spec.get("if", ""))
         if "fromJSON" in runs_on and "head.repo" in runs_on:
             offenders.append(f"{workflow}:{job} switches runners for forks")
-        if str(spec.get("name", "")) == GATE_NAME:
-            steps = spec.get("steps") or [{}]
-            first = steps[0]
-            if FORK_REFUSAL not in str(first.get("if", "")) or "uses" in first:
-                offenders.append(f"{workflow}:{job} does not fail forks first")
-            continue
-        if FORK_CLAUSE not in str(spec.get("if", "")):
+        if FORK_CLAUSE not in condition:
             offenders.append(f"{workflow}:{job} can run for a fork")
+        if TRUSTED_AUTHOR not in condition:
+            offenders.append(f"{workflow}:{job} can run for an untrusted author")
+        if FULL_LABEL in condition and _USER_SENDER not in condition:
+            offenders.append(f"{workflow}:{job} admits a bot's {FULL_LABEL} label")
     return offenders
 
 
-def test_fork_pull_requests_are_always_refused(repo_root: Path) -> None:
-    """No fork's pull request gets a runner, and none can pass the verdict."""
+def test_only_a_trusted_authors_branch_reaches_the_fleet(repo_root: Path) -> None:
+    """Forks, Dependabot and every other untrusted author run nothing here.
+
+    Dependabot and other authors who are neither owner, collaborator nor the
+    release App push branches of THIS repository, so the fork clause alone
+    never stops them and the approval requirement for outside contributors does
+    not cover them. The shared Dev server workflow is held to the same clause:
+    it runs on the same machines.
+
+    Mutation proof: replacing the author clause in `ci.yml`'s `static` condition
+    with `true` fails with `ci.yml:static can run for an untrusted author`;
+    replacing the fork clause in the merge verdict's condition with `true` fails
+    with `merge-gate.yml:gate can run for a fork`; restoring each makes this
+    pass.
+    """
     offenders = [
         finding
         for workflow in _all_workflows(repo_root)
-        for finding in _fork_offenders(workflow, _load(repo_root, workflow))
+        for finding in _uncontained(workflow, _load(repo_root, workflow))
     ]
     assert not offenders, offenders
 
 
 @pytest.mark.parametrize(
-    ("workflow", "job"),
-    [(CHEAP_LANE, "static"), (GATE_WORKFLOW, "engine"), (GATE_WORKFLOW, GATE_JOB)],
+    ("workflow", "job", "clause", "finding"),
+    [
+        (CHEAP_LANE, "static", TRUSTED_AUTHOR, "can run for an untrusted author"),
+        (GATE_WORKFLOW, "engine", TRUSTED_AUTHOR, "can run for an untrusted author"),
+        (GATE_WORKFLOW, GATE_JOB, TRUSTED_AUTHOR, "can run for an untrusted author"),
+        (CHEAP_LANE, "static", FORK_CLAUSE, "can run for a fork"),
+        (GATE_WORKFLOW, GATE_JOB, FORK_CLAUSE, "can run for a fork"),
+        (GATE_WORKFLOW, "lint", _USER_SENDER, f"admits a bot's {FULL_LABEL} label"),
+        (
+            "devserver.yml",
+            "devserver",
+            TRUSTED_AUTHOR,
+            "can run for an untrusted author",
+        ),
+    ],
 )
-def test_the_fork_guard_notices_a_removed_clause(
-    repo_root: Path, workflow: str, job: str
+def test_the_containment_guard_notices_a_removed_clause(
+    repo_root: Path, workflow: str, job: str, clause: str, finding: str
 ) -> None:
-    """Guard the guard: stripping the refusal must be reported."""
+    """Guard the guard: stripping any one clause is reported by name."""
     document = _load(repo_root, workflow)
-    assert not _fork_offenders(workflow, document)
+    assert not _uncontained(workflow, document)
     spec = document["jobs"][job]
-    if job == GATE_JOB:
-        spec["steps"][0]["if"] = "${{ false }}"
-    else:
-        spec["if"] = str(spec.get("if", "")).replace(FORK_CLAUSE, "true")
-    assert _fork_offenders(workflow, document), (
-        f"removing the fork refusal from {workflow}:{job} went unnoticed"
+    spec["if"] = _normalised(spec["if"]).replace(clause, "true")
+    assert f"{workflow}:{job} {finding}" in _uncontained(workflow, document), (
+        f"removing {clause!r} from {workflow}:{job} went unnoticed"
     )
+
+
+def test_pull_request_target_is_refused(repo_root: Path) -> None:
+    """Guard the guard: a `pull_request_target` lane is reported outright."""
+    document = _load(repo_root, CHEAP_LANE)
+    _triggers(document)["pull_request_target"] = None
+    assert _uncontained(CHEAP_LANE, document) == [
+        f"{CHEAP_LANE} listens for pull_request_target"
+    ]
 
 
 #: A step reading code out of the workspace rather than out of itself: an
@@ -517,7 +493,9 @@ def test_the_pre_checkout_reclaim_is_one_text_in_every_lane(repo_root: Path) -> 
     of them, or this fails.
 
     Mutation proof: deleting the `.git/hooks` removal from `code-health.yml`'s
-    copy makes this fail on the drift count; restoring it makes this pass.
+    copy makes this fail on the drift count; renaming the step in
+    `merge-gate.yml`'s `dependencies` job fails naming that job as no longer
+    reclaiming; restoring each makes this pass.
     """
     bodies: dict[str, list[str]] = {}
     for workflow in _all_workflows(repo_root):
@@ -529,10 +507,19 @@ def test_the_pre_checkout_reclaim_is_one_text_in_every_lane(repo_root: Path) -> 
         "the pre-checkout reclaim has drifted into "
         f"{len(bodies)} variants: {list(bodies.values())}"
     )
-    sites = next(iter(bodies.values()))
-    assert len(sites) >= 8, (
-        f"only {len(sites)} jobs reclaim before checkout ({sites}); a job that "
-        "stopped doing it hits EACCES on its own checkout instead"
+    sites = set(next(iter(bodies.values())))
+    expected = {
+        "ci.yml:static",
+        "code-health.yml:health",
+        "merge-gate.yml:lint",
+        "merge-gate.yml:frontend",
+        "merge-gate.yml:conformance",
+        "merge-gate.yml:release-inputs",
+        "merge-gate.yml:dependencies",
+    }
+    assert sites >= expected, (
+        f"{sorted(expected - sites)} no longer reclaim before checkout; a job "
+        "that stopped doing it hits EACCES on its own checkout instead"
     )
     body = next(iter(bodies))
     assert ".git/hooks" in body, (
@@ -683,30 +670,41 @@ def test_only_the_dispatched_cut_creates_a_release(repo_root: Path) -> None:
 
 
 def test_the_release_is_proven_before_anything_is_tagged(repo_root: Path) -> None:
-    """The cut merges and tags only the head the full merge gate passed.
+    """The cut merges and tags only a head whose merge gate passed.
 
     A release tag cannot be deleted, so the proof comes before it: a release
     commit that fails its gate after its tag exists is a permanent tag of a
-    commit nobody can ship. The cut therefore waits on the merge gate called on
-    the candidate's exact head, carries no condition that could override that
-    success, merges only that head, and refuses a merged tree that differs from
-    the proven one before Release Please creates anything.
+    commit nobody can ship. The proposal's own pull request events run the gate,
+    so the candidate requires the newest `Check: Merge gate (Linux)` on the exact
+    head to have completed successfully; the cut carries no condition that could
+    override the candidate's success, merges only that head, and refuses a
+    merged tree that differs from the proven one before Release Please creates
+    anything.
 
-    Mutation proof: removing `prove-gate` from the cut's `needs` makes this fail
-    on the gate dependency; restoring it makes this pass.
+    Mutation proof: changing the candidate's required verdict from
+    `completed/success` to `completed/failure` makes this fail on the verdict
+    assertion; restoring it makes this pass.
     """
     jobs = _load(repo_root, AUTHORITY)["jobs"]
-    prove = jobs["prove-gate"]
-    assert prove["uses"].endswith(GATE_WORKFLOW)
-    assert prove["with"]["ref"] == "${{ needs.candidate.outputs.sha }}", (
-        "the release gate must measure the candidate's exact head, not a branch "
-        "that can move under it"
+    find = next(
+        step
+        for step in jobs["candidate"]["steps"]
+        if step.get("name") == "Find the release pull request and the commit to prove"
+    )
+    assert find["env"]["GATE_NAME"] == GATE_NAME
+    script = str(find["run"])
+    newest = "sort_by(.started_at) | last"
+    assert 'check_name="$GATE_NAME"' in script and newest in script, (
+        "the candidate must read the newest gate run on the head, not any green one"
+    )
+    assert '[ "${verdict}" != "completed/success" ]' in script, (
+        "the candidate must refuse a head whose newest gate run did not pass"
     )
     cut = jobs[CUT_JOB]
-    assert "prove-gate" in _needs(cut), "the cut must wait on the release gate"
+    assert _needs(cut) == {"candidate"}, "the cut must wait on the proven candidate"
     assert "if" not in cut, (
         "a condition on the cut overrides the default success check, which is "
-        "the only thing stopping a failed gate from tagging a release"
+        "the only thing stopping an unproven head from being tagged"
     )
     names = [str(step.get("name", "")) for step in cut["steps"]]
     assert names.index("Merge the proven release pull request") < names.index(
@@ -728,29 +726,133 @@ def test_the_release_is_proven_before_anything_is_tagged(repo_root: Path) -> Non
     )
 
 
+def test_nothing_dispatches_the_merge_gate(repo_root: Path) -> None:
+    """The required check comes from pull request events, never a hand-off.
+
+    A dispatched run's checks belong to no pull request, so a gate dispatched
+    for the release pull request leaves its required context missing. Only the
+    orchestrator calls the gate, on the tag it builds.
+
+    Mutation proof: adding a step running
+    `gh workflow run merge-gate.yml --ref "${RELEASE_BRANCH}"` to the proposal
+    job makes this fail naming release-please.yml; removing it makes this pass.
+    """
+    dispatchers = sorted(
+        workflow
+        for workflow in _all_workflows(repo_root)
+        if re.search(
+            rf"gh\s+workflow\s+run\s+{re.escape(GATE_WORKFLOW)}",
+            (repo_root / WORKFLOWS / workflow).read_text("utf-8"),
+        )
+    )
+    assert not dispatchers, f"these workflows dispatch the merge gate: {dispatchers}"
+    callers = sorted(
+        f"{workflow}:{job}"
+        for workflow in _all_workflows(repo_root)
+        for job, spec in _load(repo_root, workflow)["jobs"].items()
+        if str(spec.get("uses", "")).endswith(GATE_WORKFLOW)
+    )
+    assert callers == [f"{ORCHESTRATOR}:merge-gate"], callers
+
+
 def test_a_call_must_name_the_ref_it_wants_measured(repo_root: Path) -> None:
     """A caller that omits the ref measures its own, which for a release is wrong.
 
-    Mutation proof: changing the cut's `ref:` to `main` makes this fail naming
-    that caller; restoring the candidate's sha makes this pass.
+    Mutation proof: changing the orchestrator's `ref:` to `main` makes this fail
+    naming that caller; restoring the tag makes this pass.
     """
     call = _triggers(_load(repo_root, GATE_WORKFLOW))["workflow_call"]
     assert call["inputs"]["ref"]["required"] is True, (
         "the merge gate's `ref` input must be required: a caller that leaves it "
-        "out measures the CALLER's ref, and the release cut's ref is main, not "
-        "the commit it is about to merge"
+        "out measures the CALLER's ref, not the tree it is about to release"
     )
-    for workflow, expected in ((AUTHORITY, "candidate"), (ORCHESTRATOR, "inputs.tag")):
-        callers = [
-            (job, spec)
-            for job, spec in _load(repo_root, workflow)["jobs"].items()
-            if str(spec.get("uses", "")).endswith(GATE_WORKFLOW)
-        ]
-        assert callers, f"{workflow} no longer calls {GATE_WORKFLOW}"
-        for job, spec in callers:
-            assert expected in str(spec.get("with", {}).get("ref", "")), (
-                f"{workflow}:{job} calls the gate without naming {expected}"
+    spec = _load(repo_root, ORCHESTRATOR)["jobs"]["merge-gate"]
+    assert "inputs.tag" in str(spec.get("with", {}).get("ref", "")), (
+        f"{ORCHESTRATOR}:merge-gate calls the gate without naming the tag"
+    )
+
+
+APP_TOKEN_ACTION = "actions/create-github-app-token@"
+_FULL_SHA = re.compile(r"@[0-9a-f]{40}$")
+
+
+def test_the_release_pull_request_is_written_by_the_release_app(
+    repo_root: Path,
+) -> None:
+    """The proposal's own events run the gate only if the App writes it.
+
+    A pull request the default token writes starts no workflow runs, so its
+    required check could only ever come from a dispatch, which belongs to no
+    pull request. Every proposal step therefore takes a freshly minted App token
+    with contents and pull-request write and nothing else, with no fallback to
+    the default token; the release-creating step keeps the default token, whose
+    tags and releases wake no other workflow.
+
+    Mutation proof: deleting `token:` from the proposal step makes this fail on
+    the App-token assertion; restoring it makes this pass.
+    """
+    jobs = _load(repo_root, AUTHORITY)["jobs"]
+    for job, spec in jobs.items():
+        steps = spec.get("steps") or []
+        minted = {
+            str(step["id"]): step
+            for step in steps
+            if str(step.get("uses", "")).startswith(APP_TOKEN_ACTION)
+        }
+        for step in steps:
+            if not str(step.get("uses", "")).startswith(RELEASE_ACTION):
+                continue
+            options = step.get("with") or {}
+            if options.get("skip-github-release") is not True:
+                assert "token" not in options, (
+                    f"{AUTHORITY}:{job} creates tags and releases; it keeps the "
+                    "default token"
+                )
+                continue
+            token = str(options.get("token", ""))
+            match = re.fullmatch(r"\$\{\{ steps\.([a-z-]+)\.outputs\.token \}\}", token)
+            assert match and match[1] in minted, (
+                f"{AUTHORITY}:{job} writes the release pull request without the "
+                f"release App's token: token={token!r}"
             )
+            app = minted[match[1]]
+            assert _FULL_SHA.search(str(app["uses"])), app["uses"]
+            assert app["with"] == {
+                "client-id": "${{ vars.RELEASE_APP_CLIENT_ID }}",
+                "private-key": "${{ secrets.RELEASE_APP_PRIVATE_KEY }}",
+                "permission-contents": "write",
+                "permission-pull-requests": "write",
+            }, app["with"]
+    proposal = jobs["release-please"]
+    assert any(
+        str(step.get("uses", "")).startswith(RELEASE_ACTION)
+        and (step.get("with") or {}).get("token")
+        for step in proposal["steps"]
+    ), "the proposal job no longer writes the release pull request"
+
+
+def test_the_release_pull_request_has_one_head(repo_root: Path) -> None:
+    """Nothing writes to the release branch after Release Please does.
+
+    The engine lock moves with the workspace version inside Release Please's own
+    commit, matched on every package without a registry source (the workspace's
+    own crates), so the proposal carries one head and one gate run, and no step
+    pushes to it with any token.
+
+    Mutation proof: removing the `engine/Cargo.lock` entry from `extra-files`
+    makes this fail on the lock assertion; restoring it makes this pass.
+    """
+    import json
+
+    config = json.loads((repo_root / "release-please-config.json").read_text("utf-8"))
+    extra = config["packages"]["."].get("extra-files", [])
+    assert {
+        "type": "toml",
+        "path": "engine/Cargo.lock",
+        "jsonpath": "$.package[?(!@.source)].version",
+    } in extra, "the engine lock must move inside Release Please's own commit"
+    text = (repo_root / WORKFLOWS / AUTHORITY).read_text("utf-8")
+    assert "git push" not in text, f"{AUTHORITY} pushes to the release branch"
 
 
 def test_release_please_dispatches_the_orchestrator_by_tag(repo_root: Path) -> None:

@@ -129,7 +129,6 @@ jobs:
     needs: prove-ref
     uses: ./.github/workflows/merge-gate.yml
     permissions:
-      checks: read
       contents: read
       pull-requests: write
     with:

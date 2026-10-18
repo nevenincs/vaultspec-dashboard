@@ -25,17 +25,16 @@ jobs:
   static:
     name: "Check: Lint (Linux)"
     # A fork's pull request never starts a job: a step-level refusal would still
-    # have handed the fork's workflow file a runner. The merge gate's verdict is
-    # what turns a fork into a red, unmergeable check.
+    # have handed the fork's workflow file a runner. The required merge verdict
+    # stays missing for a fork, so it cannot merge.
     #
-    # Nor does any author who is neither the owner nor a collaborator. They push
-    # branches of THIS repository, so the fork clause never stops them and the
-    # approval requirement for outside contributors does not cover them;
-    # Dependabot is the one that arrives daily. This lane has no label door -
-    # it runs on every push by design - so an untrusted author's change reaches
-    # the fleet through the merge gate's `ci:full` label, once a collaborator
-    # has read it, and not before.
-    if: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (github.event.pull_request.author_association == 'OWNER' || github.event.pull_request.author_association == 'COLLABORATOR')) }}
+    # Nor does any author who is neither the owner, a collaborator nor the
+    # release App. They push branches of THIS repository, so the fork clause
+    # never stops them and the approval requirement for outside contributors
+    # does not cover them; Dependabot is the one that arrives daily. Their
+    # change reaches the fleet only once a maintainer re-opens it from a branch
+    # of their own.
+    if: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (github.event.pull_request.author_association == 'OWNER' || github.event.pull_request.author_association == 'COLLABORATOR' || github.event.pull_request.user.login == 'nevenincs-release[bot]')) }}
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 20
     steps:

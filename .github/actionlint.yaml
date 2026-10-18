@@ -22,8 +22,8 @@
 #   self-hosted, Linux,   ARM64, linux-arm64 →  aarch64-unknown-linux-gnu
 #   self-hosted, macOS,   ARM64              →  aarch64-apple-darwin
 #
-# Every job runs on that self-hosted fleet, including the runner preflights and
-# the `aarch64-unknown-linux-gnu` release leg. That leg builds inside a
+# Every job runs on that self-hosted fleet, including the
+# `aarch64-unknown-linux-gnu` release leg. That leg builds inside a
 # digest-pinned manylinux container on the fleet's ARM64 Linux runner, which is
 # itself a colima container: until that runner is re-enrolled with its home
 # bind-mounted from the identical VM path, a container job there dies in
