@@ -25,7 +25,7 @@ use std::process::Output;
 use std::time::{Duration, Instant, SystemTime};
 use vaultspec_product::a2a_contract::GATEWAY_DISCOVERY_FILE;
 
-use fs4::fs_std::FileExt;
+use fs4::FileExt;
 use rusqlite::Connection;
 use vaultspec_product::credentials::DashboardCredentialStore;
 use vaultspec_product::gateway_drain::{DrainContext, DrainDeadlines, OwnedGatewayLease};
@@ -622,7 +622,7 @@ fn serve_as_gateway(app_home: &Path) -> ! {
         .write(true)
         .open(paths.app_home().join(RUNTIME_SINGLETON))
         .expect("open the runtime singleton");
-    FileExt::lock_exclusive(&singleton).expect("hold the runtime singleton");
+    FileExt::lock(&singleton).expect("hold the runtime singleton");
 
     // The gateway may never acquire or wait on the installation lock.
     let begun = Instant::now();
@@ -782,8 +782,8 @@ fn singleton_is_free(paths: &ProductPaths) -> bool {
     else {
         return false;
     };
-    match FileExt::try_lock_exclusive(&file) {
-        Ok(true) => {
+    match FileExt::try_lock(&file) {
+        Ok(()) => {
             let _ = FileExt::unlock(&file);
             true
         }
