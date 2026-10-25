@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#worktree-parse-performance'
 date: '2026-08-01'
-modified: '2026-09-19'
+modified: '2026-09-23'
 body_schema: 'body-v2'
 body_hash: 'sha256:5eba8098d29d47f9abb9a5cec8605b807b131d508d34e7a3e2de699661d28eab'
 related:

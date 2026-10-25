@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#worktree-enumeration-sweep'
 date: '2026-08-01'
-modified: '2026-09-19'
+modified: '2026-09-23'
 body_schema: 'body-v2'
 body_hash: 'sha256:8286c9fc9751ddcd6742c2fcca95c195b7260fafa775465a13335ac26899e807'
 related:

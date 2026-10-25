@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#rag-console-review'
 date: '2026-08-01'
-modified: '2026-09-19'
+modified: '2026-09-23'
 body_schema: 'body-v2'
 body_hash: 'sha256:822a42e1b32fe653ddb44e6fc53f74ee6be8c45d82c8f7e44e083eda745f2754'
 related:

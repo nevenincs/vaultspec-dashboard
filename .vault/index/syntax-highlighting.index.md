@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#syntax-highlighting'
 date: '2026-08-01'
-modified: '2026-09-19'
+modified: '2026-09-23'
 body_schema: 'body-v2'
 body_hash: 'sha256:ce8f40a11b1d8543d1b42dc5c11356afc458ad91f363d9d0c7896135e458d9c5'
 related:

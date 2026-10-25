@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#figma-frontend-consolidation'
 date: '2026-08-01'
-modified: '2026-09-19'
+modified: '2026-09-23'
 body_schema: 'body-v2'
 body_hash: 'sha256:8b3b1e21f2125183adbab82a4bcd426c60ae50c33d77ea0a972ef60b6a1bca52'
 related:

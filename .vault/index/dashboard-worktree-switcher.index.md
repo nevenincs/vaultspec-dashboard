@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#dashboard-worktree-switcher'
 date: '2026-08-01'
-modified: '2026-09-19'
+modified: '2026-09-23'
 body_schema: 'body-v2'
 body_hash: 'sha256:93a9a214adc2aa247cefa18c06b43de68407f4f755205cf5f3496af222f75430'
 related:

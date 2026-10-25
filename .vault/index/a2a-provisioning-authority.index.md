@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#a2a-provisioning-authority'
 date: '2026-08-01'
-modified: '2026-09-19'
+modified: '2026-09-23'
 body_schema: 'body-v2'
 body_hash: 'sha256:fafb3c4c82c693f8b7b487394eade8b8510acb215ad09386802da64316ae84df'
 related:

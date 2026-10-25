@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#dashboard-workspace-registry'
 date: '2026-08-01'
-modified: '2026-09-19'
+modified: '2026-09-23'
 body_schema: 'body-v2'
 body_hash: 'sha256:fa356767301f36927cf6749e50b49e168cb42056e21702ff6ad6916c8831b1f2'
 related:

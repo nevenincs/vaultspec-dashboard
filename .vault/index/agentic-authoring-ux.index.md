@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#agentic-authoring-ux'
 date: '2026-08-01'
-modified: '2026-09-19'
+modified: '2026-09-23'
 body_schema: 'body-v2'
 body_hash: 'sha256:fd2c96d3fb0c568fcbebfabdda6f7e3dabe50d8ec9e4d5e39826b45a8915b409'
 related:

@@ -1,24 +1,53 @@
+import { readFileSync } from "node:fs";
 import { hostname } from "node:os";
 
-// Single source of truth for every vaultspec-dashboard dev/test server port.
+// Every vaultspec-dashboard dev/test server port, read from the ONE place that
+// declares them: the `portless` and `devserver` keys of frontend/package.json.
 //
-// Other projects on this machine run their own dev/test servers, so a port left
-// on a framework default (Vite's 5173) or allowed to drift to "the next free
-// port" silently lands on whatever is open and collides without warning. Two
-// rules keep us deterministic:
+// That declaration is the machine-wide dev-server standard shared by every web
+// app on this workstation (`dev/devserver.py`, driven by `just dev`). It gives
+// this app the block 5320-5339, clear of the framework defaults (Vite 5173,
+// 3000, 8080) and of the 87xx neighbourhood where vaultspec-rag (8766), Qdrant
+// (8764/8765) and the installed engine's product default (8767) live. The
+// harness starts, reattaches, health-checks and evicts; this module only tells
+// the Vite configs, the engine plugin, Playwright and the tooling which number
+// to use, so nothing here restates a port.
 //
-//   1. EXACT, NON-DEFAULT ports. Every long-lived server is pinned to a distinct
-//      port in a distinctive 87xx block aligned with the engine (8767) — far
-//      from the common 5173/3000/8080 defaults other tools grab.
+// Two rules keep us deterministic:
+//
+//   1. EXACT, NON-DEFAULT ports, every one declared inside the block.
 //   2. FAIL FAST. Vite servers bind with `strictPort`, so a taken port aborts
 //      the boot with a clear error instead of drifting to a neighbour. The Rust
 //      engine already fails loud on a bind conflict.
 //
-// Each port is env-overridable for the rare case two of our own worktrees must
-// run side by side. The ONE deliberate exception is the vitest live engine,
-// which binds an OS-assigned ephemeral port (see liveEngine.globalSetup.ts): a
-// free-port pick is the strongest anti-collision guarantee for an automated,
-// possibly-parallel test process and must NOT be pinned.
+// Each port stays env-overridable (`VAULTSPEC_DEV_*_PORT`) for the rare case a
+// run must sit elsewhere. The ONE deliberate exception to pinning is the vitest
+// live engine, which binds an OS-assigned ephemeral port (see
+// liveEngine.globalSetup.ts): a free-port pick is the strongest anti-collision
+// guarantee for an automated, possibly-parallel test process.
+
+interface Declaration {
+  portless?: { appPort?: unknown };
+  devserver?: { services?: Record<string, { port?: unknown } | undefined> };
+}
+
+const DECLARATION = JSON.parse(
+  readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+) as Declaration;
+
+/** The port frontend/package.json declares for `service` (`dev` is the SPA). */
+function declared(service: string): number {
+  const value =
+    service === "dev"
+      ? DECLARATION.portless?.appPort
+      : DECLARATION.devserver?.services?.[service]?.port;
+  if (typeof value !== "number" || !Number.isInteger(value)) {
+    throw new Error(
+      `frontend/package.json declares no port for dev-server service "${service}"`,
+    );
+  }
+  return value;
+}
 
 function port(envVar: string, fallback: number): number {
   const raw = process.env[envVar];
@@ -33,36 +62,22 @@ function port(envVar: string, fallback: number): number {
 }
 
 export const DEV_PORTS = {
-  /** Main SPA dev server — `npm run dev` / `just dev-serve`. */
-  spa: port("VAULTSPEC_DEV_SPA_PORT", 8770),
-  /** Rust engine (`vaultspec serve`) the SPA dev server proxies `/api` to. */
-  engine: port("VAULTSPEC_DEV_PORT", 8767),
-  /** Isolated graph-lab harness — `npm run graph:dev`. */
-  graphLab: port("VAULTSPEC_DEV_GRAPH_PORT", 8775),
-  /** Adverse-condition Playwright SPA (mock engine, dev affordances). */
-  adverse: port("VAULTSPEC_DEV_ADVERSE_PORT", 8774),
-  /** Perf Playwright SPA. */
-  perf: port("VAULTSPEC_DEV_PERF_PORT", 8776),
+  /** Main SPA dev server (`portless.appPort`) - `just dev`. */
+  spa: port("VAULTSPEC_DEV_SPA_PORT", declared("dev")),
   /**
-   * Engine backing the visual review desk. SEPARATE from the developer's own engine
-   * (`engine`, 8767) on purpose: the desk's engine runs with demo-condition
-   * simulation enabled and points at the committed demo corpus, so pointing the desk
-   * at the working engine would both contaminate the review with live data and put
-   * simulated outages in front of someone trying to use the app.
+   * Rust engine (`vaultspec serve`) the SPA dev server proxies `/api` to. The
+   * engine-dev Vite plugin spawns it; the harness frees this port of any foreign
+   * holder (another worktree's engine) before the SPA starts, so the plugin never
+   * adopts an engine serving some other checkout. Not the installed product's
+   * default port - that stays the engine's own `DEFAULT_PORT`.
    */
-  demoEngine: port("VAULTSPEC_DEV_DEMO_ENGINE_PORT", 8778),
-  /**
-   * Second demo engine, serving the EMPTY corpus that backs the review desk's `empty`
-   * condition. It is a separate engine rather than a flag because "empty" is a
-   * property of the CORPUS, not of a request: the honest way to render an empty state
-   * is to let the engine genuinely compute one over a vault with no documents. The
-   * alternative — blanking collections in a response — produces incoherent payloads
-   * (engine-computed counts disagreeing with the emptied arrays they summarise) and
-   * would be exactly the faked wire the wire-contract rule forbids.
-   */
-  demoEngineEmpty: port("VAULTSPEC_DEV_DEMO_ENGINE_EMPTY_PORT", 8779),
-  /** Visual review surface — `npm run dev:visual-review`, served from frontend/dev/. */
-  visualReview: port("VAULTSPEC_DEV_VISUAL_REVIEW_PORT", 8777),
+  engine: port("VAULTSPEC_DEV_PORT", declared("engine")),
+  /** Adverse-condition and localization Playwright SPA (mock engine, dev affordances). */
+  adverse: port("VAULTSPEC_DEV_ADVERSE_PORT", declared("adverse")),
+  /** Graph performance harness's static server (dev/tooling/graph-performance.ts). */
+  perf: port("VAULTSPEC_DEV_PERF_PORT", declared("perf")),
+  /** Visual review desk - `just dev up review`, served from frontend/dev/. */
+  visualReview: port("VAULTSPEC_DEV_VISUAL_REVIEW_PORT", declared("review")),
 } as const;
 
 // Vite's dev server validates the request `Host` header as a DNS-rebinding guard
@@ -75,7 +90,7 @@ export const DEV_PORTS = {
 // this file.
 //
 // ".ts.net" alone is NOT enough, because MagicDNS resolves a peer by its BARE name
-// as well as its FQDN. Reaching the desk as `http://gw-workstation:8777/` sends
+// as well as its FQDN. Reaching the desk as `http://gw-workstation:<port>/` sends
 // `Host: gw-workstation`, which no suffix rule matches — the request is refused
 // with Vite's "add it to server.allowedHosts" message even though the machine is
 // plainly on the tailnet. This machine's own hostname is therefore always allowed:

@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#rag-schema-gate'
 date: '2026-08-01'
-modified: '2026-09-19'
+modified: '2026-09-23'
 body_schema: 'body-v2'
 body_hash: 'sha256:faa7cda8de8b2c8cccc10981857a883c270c54da9236d8e5037ff0ca0f6eb0ce'
 related:

@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#authoring-surface'
 date: '2026-08-01'
-modified: '2026-09-19'
+modified: '2026-09-23'
 body_schema: 'body-v2'
 body_hash: 'sha256:8ecbdd936b5d332672d67ac1811f0f7b3905ae21c627ac5471fc991f679eb38b'
 related:

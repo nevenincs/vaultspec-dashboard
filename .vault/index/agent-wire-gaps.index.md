@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#agent-wire-gaps'
 date: '2026-08-01'
-modified: '2026-09-19'
+modified: '2026-09-23'
 body_schema: 'body-v2'
 body_hash: 'sha256:614c258c7dad5d69c338d14490c2de9eecfc8efdb0f417b30b12c5c601066d19'
 related:

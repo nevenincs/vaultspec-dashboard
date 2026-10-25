@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#graph-simulation-stability'
 date: '2026-08-01'
-modified: '2026-09-19'
+modified: '2026-10-25'
 body_schema: 'body-v2'
 body_hash: 'sha256:5babb8cb08ef2d962d82c72c01be7ff7d27a205a1743f5d0dbc640c50fef1724'
 related:

@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#langgraph-approval-document-editing'
 date: '2026-08-01'
-modified: '2026-09-19'
+modified: '2026-09-23'
 body_schema: 'body-v2'
 body_hash: 'sha256:5d3a44ce0f90f9be0ffc91310d6b0758b3c3809a247c9cf3296508f6522e93d3'
 related:

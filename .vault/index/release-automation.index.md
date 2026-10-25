@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#release-automation'
 date: '2026-08-01'
-modified: '2026-09-19'
+modified: '2026-09-23'
 body_schema: 'body-v2'
 body_hash: 'sha256:78a8e1fd08620a13f6fcd999c4959110852ad2dc89b29533410add7f7f76c1ca'
 related:

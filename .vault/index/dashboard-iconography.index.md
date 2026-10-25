@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#dashboard-iconography'
 date: '2026-08-01'
-modified: '2026-09-19'
+modified: '2026-09-23'
 body_schema: 'body-v2'
 body_hash: 'sha256:96f8db04d825780830d8ef74f4ad6ca13a8dca467c951034b9a2bb8c42e5e737'
 related:

@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#dashboard-gui'
 date: '2026-08-01'
-modified: '2026-09-19'
+modified: '2026-09-23'
 body_schema: 'body-v2'
 body_hash: 'sha256:9bbad1f2a65a517b1c068b3fe917e0984853e94ccdedd3589898ffad13b86c67'
 related:

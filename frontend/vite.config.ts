@@ -10,8 +10,8 @@ import { engineDevPlugin } from "./vite-plugins/engine-dev.ts";
 
 // The dev orchestrator (engineDevPlugin) may serve the engine on a non-default
 // port; the proxy target tracks the same canonical value so the two never
-// disagree. All dev/test ports live in ./dev/dev-ports.ts (exact, non-default,
-// fail-fast).
+// disagree. Every dev/test port is declared once, in package.json's `devserver`
+// block, and read through ./dev/dev-ports.ts (exact, non-default, fail-fast).
 const enginePort = DEV_PORTS.engine;
 const disableNodeWebStorageArg = "--no-experimental-webstorage";
 const testWorkerExecArgv = process.allowedNodeEnvironmentFlags.has(
@@ -94,7 +94,9 @@ export default defineConfig(({ command }) => ({
     allowedHosts: DEV_ALLOWED_HOSTS,
     // Pin the SPA dev server to an exact, non-default port and FAIL FAST if it
     // is taken (strictPort) rather than silently drifting to the next free port
-    // and colliding with another project's server. See ./dev/dev-ports.ts.
+    // and colliding with another project's server. `just dev` passes the same
+    // declared port on the command line; this keeps a bare `npm run dev` on it
+    // too. See ./dev/dev-ports.ts.
     port: DEV_PORTS.spa,
     strictPort: true,
     // Engine API proxy during development; in production the SPA and API
@@ -106,7 +108,9 @@ export default defineConfig(({ command }) => ({
         // bearer_gate validates Host as a DNS-rebinding guard and only accepts
         // 127.0.0.1/localhost/[::1]; a remote (Tailscale) client sends a foreign
         // Host, so without changeOrigin the proxied request is rejected with 403.
-        // The engine itself stays loopback-bound — only Vite faces the network.
+        // The engine itself stays loopback-bound — only Vite faces the network,
+        // and the same rewrite is what lets the portless route
+        // (`https://vaultspec-dashboard.localhost`) reach the API through Vite.
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ""),
         configure: (proxy) => {

@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#rag-storage-broker'
 date: '2026-08-01'
-modified: '2026-09-19'
+modified: '2026-09-23'
 body_schema: 'body-v2'
 body_hash: 'sha256:37faef0e45f39e850e65ec2e7ee180767da970300ffa8dc007c7ae77e7d508fb'
 related:

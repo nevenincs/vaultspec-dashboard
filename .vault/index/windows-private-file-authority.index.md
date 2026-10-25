@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#windows-private-file-authority'
 date: '2026-08-01'
-modified: '2026-09-19'
+modified: '2026-09-23'
 body_schema: 'body-v2'
 body_hash: 'sha256:b7d487651e18f9ab3cff2441fef905597a71c57a447660a959554707e6ccf27d'
 related:

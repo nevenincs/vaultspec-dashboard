@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#figma-frontend-rewrite'
 date: '2026-08-01'
-modified: '2026-09-19'
+modified: '2026-09-23'
 body_schema: 'body-v2'
 body_hash: 'sha256:b917393fea6f0e68eb38d94cea091c2cd3f08ceeb2389472506cedfc488f592d'
 related:

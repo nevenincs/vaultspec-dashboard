@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#graph-backend-unification'
 date: '2026-08-01'
-modified: '2026-09-19'
+modified: '2026-09-23'
 body_schema: 'body-v2'
 body_hash: 'sha256:2e7eb0f71f0aa1af70e4c8125e3c8be2799909e73901a684df212d93ccec1a88'
 related:

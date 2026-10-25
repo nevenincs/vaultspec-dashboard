@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#ledgered-edit-migration'
 date: '2026-08-01'
-modified: '2026-09-19'
+modified: '2026-09-23'
 body_schema: 'body-v2'
 body_hash: 'sha256:3116099e4569030b76b92b593441fd61f509140e708f00fc75ae2746e68f5cf0'
 related:

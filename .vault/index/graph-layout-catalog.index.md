@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#graph-layout-catalog'
 date: '2026-08-01'
-modified: '2026-09-19'
+modified: '2026-09-23'
 body_schema: 'body-v2'
 body_hash: 'sha256:6c724737553afce8121a803c6507995be917325e8edc311ade15849d5ade026f'
 related:

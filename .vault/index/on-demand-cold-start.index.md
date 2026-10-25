@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#on-demand-cold-start'
 date: '2026-08-01'
-modified: '2026-09-19'
+modified: '2026-09-23'
 body_schema: 'body-v2'
 body_hash: 'sha256:0b38177ef788a825282ea9cd30256f9007e29335a12b05ae3bf17b50ea47a61d'
 related:

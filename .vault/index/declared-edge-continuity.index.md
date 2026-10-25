@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#declared-edge-continuity'
 date: '2026-08-01'
-modified: '2026-09-19'
+modified: '2026-09-23'
 body_schema: 'body-v2'
 body_hash: 'sha256:f56675016def892dcaf1cd6bf10c5ce1dd4a53caa44159c3b1dcdbdd079b4024'
 related:

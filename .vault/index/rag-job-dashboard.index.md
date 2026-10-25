@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#rag-job-dashboard'
 date: '2026-08-01'
-modified: '2026-09-19'
+modified: '2026-09-23'
 body_schema: 'body-v2'
 body_hash: 'sha256:70822d4ed3d41a73e1821dbe45fcf9beb95f7a13018109e3da40bc23aed27f69'
 related:

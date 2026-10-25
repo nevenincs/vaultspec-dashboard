@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#editor-change-fidelity'
 date: '2026-08-01'
-modified: '2026-09-19'
+modified: '2026-09-23'
 body_schema: 'body-v2'
 body_hash: 'sha256:33a6fe45f750246076e35a99bdac40a5e82f67f1f37ce624659bfd8bdca9027b'
 related:

@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#dashboard-command-palette'
 date: '2026-08-01'
-modified: '2026-09-19'
+modified: '2026-09-23'
 body_schema: 'body-v2'
 body_hash: 'sha256:66079c82dab2649d12fcd6518a5c8ec827f3d7ca7d48849e33e853600f14804f'
 related:

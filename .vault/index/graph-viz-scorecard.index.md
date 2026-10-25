@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#graph-viz-scorecard'
 date: '2026-08-01'
-modified: '2026-09-19'
+modified: '2026-09-23'
 body_schema: 'body-v2'
 body_hash: 'sha256:f9c8bf8d99ff7183b1d19f783f43f56e2e62ed5283f3f54cff654579dc799b22'
 related:

@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#resource-hardening'
 date: '2026-08-01'
-modified: '2026-09-19'
+modified: '2026-09-23'
 body_schema: 'body-v2'
 body_hash: 'sha256:7e59543f7aceb0eb8022a3df4e07d2f55a04791852208a3c123e28c26e26e683'
 related:

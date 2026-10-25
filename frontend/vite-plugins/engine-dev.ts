@@ -49,7 +49,10 @@ function warn(message: string): void {
 }
 
 function resolvePort(): number {
-  // Canonical engine dev port (./dev/dev-ports.ts honours VAULTSPEC_DEV_PORT).
+  // Canonical engine dev port: package.json's `devserver.services.engine`, read
+  // through ./dev/dev-ports.ts (which honours VAULTSPEC_DEV_PORT). The shared
+  // harness (`just dev`) frees this port of any foreign holder before Vite
+  // starts, so a healthy engine found here is this checkout's own.
   return DEV_PORTS.engine;
 }
 

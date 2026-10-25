@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#universal-data-loading'
 date: '2026-08-01'
-modified: '2026-09-19'
+modified: '2026-09-23'
 body_schema: 'body-v2'
 body_hash: 'sha256:c6b46f85755784b87586e1c0a8dec9e08eea42ab6d4b8bafcd3f9296c48a896b'
 related:

@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#agentic-document-workspace'
 date: '2026-08-01'
-modified: '2026-09-19'
+modified: '2026-09-23'
 body_schema: 'body-v2'
 body_hash: 'sha256:a151177813c2fdecb2149a80efd15f94aa6e0e7330014715ea1025a58dbb84b0'
 related:

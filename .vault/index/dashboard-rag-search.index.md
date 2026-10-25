@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#dashboard-rag-search'
 date: '2026-08-01'
-modified: '2026-09-19'
+modified: '2026-09-23'
 body_schema: 'body-v2'
 body_hash: 'sha256:d7be2ee26a9ef0b12e925c55cf2d4597a6ba980cd53977f587afee2db07c4cef'
 related:

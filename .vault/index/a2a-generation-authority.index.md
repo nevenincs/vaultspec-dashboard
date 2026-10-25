@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#a2a-generation-authority'
 date: '2026-08-01'
-modified: '2026-09-19'
+modified: '2026-09-23'
 body_schema: 'body-v2'
 body_hash: 'sha256:f8c0e34810aabac7e0d88adcb3c21ccddbc7b8fe1d2aa32e515ee8e805aac424'
 related:

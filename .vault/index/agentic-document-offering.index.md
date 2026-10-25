@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#agentic-document-offering'
 date: '2026-08-01'
-modified: '2026-09-19'
+modified: '2026-09-23'
 body_schema: 'body-v2'
 body_hash: 'sha256:b3ec5affd49d477162efbb0a8a77e9e47da8a5322d2e12f553ebbc1caf90bc72'
 related:

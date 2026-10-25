@@ -255,13 +255,23 @@ export async function spawnEngine(
     }
     return { proc, port, baseUrl, token };
   } catch (startupError) {
+    let cleanupFailure: unknown;
     try {
       await killProcess(proc);
-    } catch (cleanupError) {
+    } catch (error) {
+      cleanupFailure = error;
+    }
+    if (cleanupFailure !== undefined) {
+      const primaryStartupError = startupError;
       throw new AggregateError(
-        [startupError, cleanupError],
+        [primaryStartupError, cleanupFailure],
         "authoring engine startup and cleanup both failed",
-        { cause: cleanupError },
+        // Startup output is the diagnostic evidence; a concurrent taskkill
+        // race is secondary. Keep the primary failure as the causal error so
+        // test reporters do not conceal a bounded engine stdout/stderr trace.
+        // The inner catch is cleanup-only; its error remains a contained
+        // secondary diagnostic.
+        { cause: primaryStartupError }, // eslint-disable-line preserve-caught-error
       );
     }
     throw startupError;
@@ -270,7 +280,15 @@ export async function spawnEngine(
 
 async function killProcess(proc: ChildProcess): Promise<void> {
   if (proc.exitCode !== null || proc.signalCode !== null || !proc.pid) return;
-  forceTerminateProcessTree(proc);
+  try {
+    forceTerminateProcessTree(proc);
+  } catch (error) {
+    // Windows can report taskkill's unsupported-operation race even as this
+    // exact ChildProcess is exiting. Accept it only after observing that child
+    // exit; retain an actual cleanup failure for the caller otherwise.
+    if (await waitForChildExit(proc, 5_000)) return;
+    throw error;
+  }
   if (!(await waitForChildExit(proc, 5_000))) {
     throw new Error(`engine process ${proc.pid} did not exit after force stop`);
   }

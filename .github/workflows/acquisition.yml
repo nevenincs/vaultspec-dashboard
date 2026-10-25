@@ -179,33 +179,6 @@ jobs:
           } >> "$GITHUB_ENV"
           echo "resolved ${archive} on ${tag}"
 
-      # ASK FOR THE ASSET, do not infer it. The trigger established that the
-      # producer finished; it did not establish that this file exists. A green
-      # Release that uploaded nothing looks identical, from the trigger's side,
-      # to one that uploaded everything - and an empty release is precisely what
-      # this workflow is here to catch rather than assume away.
-      #
-      # The condition each leg depends on is "the file I am about to download is
-      # fetchable", so the test is to ask for it: a ranged GET of the first byte,
-      # through the real download URL, following the same redirect the download
-      # follows. Not a HEAD against a different path, not a listing that agrees
-      # with it, not a sleep. A sibling project arrived here the long way,
-      # through two proxies that each reported success while the artefact was
-      # still unresolvable.
-      #
-      # One thing this must never do is fail per-architecture for a reason that
-      # is not architectural. Before the trigger changed, the aarch64 legs failed
-      # this download while the x86_64 legs did not - not because of the
-      # binaries, but because the aarch64 legs run on hosted runners and start
-      # immediately while the x86_64 legs queue behind one self-hosted machine.
-      # The hosted legs lost the race by being fast. Any future change here
-      # should keep the timing question separate from the loader question below,
-      # so a scheduling artefact can never be read as a floor regression.
-      #
-      # THE BUDGET RUNNING OUT IS A FAILURE, not a skip. An asset that never
-      # arrives means publication did not complete or the release is genuinely
-      # bad, and both are things this workflow exists to report. The message
-      # names the asset so the leg cannot be misread as a timeout in the check.
       - name: Wait for the asset to be published
         shell: bash
         run: |

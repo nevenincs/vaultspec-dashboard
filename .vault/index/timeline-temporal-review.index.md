@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#timeline-temporal-review'
 date: '2026-08-01'
-modified: '2026-09-19'
+modified: '2026-09-23'
 body_schema: 'body-v2'
 body_hash: 'sha256:09322fd16a1e76b53cfd4b19574128a8ee63e4fa3c898ad041243902a0792f21'
 related:

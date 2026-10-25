@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#a2a-integration-verification'
 date: '2026-08-02'
-modified: '2026-09-19'
+modified: '2026-09-23'
 body_schema: 'body-v2'
 body_hash: 'sha256:9cfc82f8de3ea1c9b6749bbb186548c139e219c949c7c3fc2667e40c30f25c1b'
 related:

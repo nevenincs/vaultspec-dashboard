@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#frontend-localization'
 date: '2026-08-01'
-modified: '2026-09-19'
+modified: '2026-09-23'
 body_schema: 'body-v2'
 body_hash: 'sha256:40773f3c8ba74a47b80d63e53639182790ac78024c1756e2527a82e0f75f86ca'
 related:

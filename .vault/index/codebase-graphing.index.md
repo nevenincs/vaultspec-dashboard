@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#codebase-graphing'
 date: '2026-08-01'
-modified: '2026-09-19'
+modified: '2026-09-23'
 body_schema: 'body-v2'
 body_hash: 'sha256:cc97ca6c5eef8d110ea7af91b4cbd3c73c7d36d1bc39dab91139ed30c6f4a57f'
 related:

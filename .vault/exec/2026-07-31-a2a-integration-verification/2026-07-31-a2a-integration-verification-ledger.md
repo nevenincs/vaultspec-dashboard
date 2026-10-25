@@ -3,7 +3,7 @@ tags:
   - '#exec'
   - '#a2a-integration-verification'
 date: '2026-07-31'
-modified: '2026-09-19'
+modified: '2026-09-23'
 body_schema: 'body-v2'
 body_hash: 'sha256:92d0e350e6270386cdaccc9538df6239839621c2e236caba1c79aabfd43b0c70'
 related:

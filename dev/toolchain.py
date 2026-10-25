@@ -24,12 +24,15 @@ The verbs split by CONSEQUENCE, not by tool:
     build     Produces artifacts.
     docs      Regenerates committed documentation assets.
     vault     Operates on this repository's own .vault/ corpus.
-    serve     Long-running. Live development survey.
-    review    Long-running. The visual review desk.
     clean     Reclaims dev artifact sprawl.
     tokens    Regenerates the DTCG colour CSS and checks drift.
     precommit Manages the git hooks.
     ci        The full local pipeline.
+
+The long-running dev servers are not verbs here. `just dev` runs the
+machine-wide dev-server harness (`dev/devserver.py`, a byte-identical copy
+shared by every web app on the workstation), which starts, reattaches to,
+health-checks and evicts them from the declaration in frontend/package.json.
 """
 
 from __future__ import annotations
@@ -540,34 +543,6 @@ PRECOMMIT = Verb(
     default="run",
 )
 
-# Live development survey: one command starts the Vite SPA dev server, which in
-# turn supervises the `vaultspec serve` engine. Chrome edits hot-reload (Vite
-# HMR), `.vault/` corpus edits stream live (engine SSE), and engine source edits
-# rebuild + restart the engine and force a browser refresh. Stale caches are
-# cleared on boot. Override the engine port with VAULTSPEC_DEV_PORT and the
-# engine handling with VAULTSPEC_DEV_ENGINE=manage|adopt|off.
-SERVE = Verb(
-    "Start the live development survey: engine plus Vite HMR.",
-    _simple("Start the SPA dev server, which supervises the engine.", npm("dev")),
-    default=SIMPLE,
-)
-
-# The visual review desk: every principal UI surface across the four review
-# states (normal / loading / empty / degraded) under the light, dark, and
-# high-contrast themes.
-#
-# UNTETHERED by design: every specimen renders the real production component
-# from authored inputs and the page's fetch is hermetically inert, so there is
-# no engine to run and no backend whose slowness or absence could blank a cell.
-REVIEW = Verb(
-    "Open the visual review desk: every surface x state x theme.",
-    _simple(
-        "Serve the review desk (Vite only; no engine).",
-        Cmd(("node", "frontend/dev/tooling/visual-review-serve.mjs")),
-    ),
-    default=SIMPLE,
-)
-
 # Reclaim Class-A dev artifact sprawl (resource-hardening). `cargo clean` drops
 # the multi-GB engine target; `git worktree prune` clears administrative entries
 # for removed worktrees; `git clean -fdX -- tmp` drops gitignored scratch under
@@ -644,8 +619,6 @@ VERBS: Mapping[str, Verb] = {
     "vault": VAULT,
     "tokens": TOKENS,
     "precommit": PRECOMMIT,
-    "serve": SERVE,
-    "review": REVIEW,
     "clean": CLEAN,
     "ci": CI,
 }

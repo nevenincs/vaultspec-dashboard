@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#temporal-graph-layout'
 date: '2026-08-01'
-modified: '2026-09-19'
+modified: '2026-09-23'
 body_schema: 'body-v2'
 body_hash: 'sha256:63424eb38557aa2fb6cd14206ba914366035d32d89d9c026db582a0bb05a1ec0'
 related:

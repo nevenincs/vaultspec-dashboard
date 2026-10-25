@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#rag-integration-hardening'
 date: '2026-08-01'
-modified: '2026-09-19'
+modified: '2026-09-23'
 body_schema: 'body-v2'
 body_hash: 'sha256:05b5874b93599b6f6c6674e4cb008baac6cbc20cf478115282e419afbbdabf75'
 related:

@@ -3,7 +3,7 @@ tags:
   - '#research'
   - '#a2a-integration-verification'
 date: '2026-08-01'
-modified: '2026-09-19'
+modified: '2026-09-23'
 body_schema: 'body-v1'
 body_hash: 'sha256:be3f74b4677f02bae0834bd0ae82f8974055e87d15e0dc9d6ffb7f56c7017339'
 related:

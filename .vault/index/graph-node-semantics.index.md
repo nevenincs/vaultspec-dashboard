@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#graph-node-semantics'
 date: '2026-08-01'
-modified: '2026-09-19'
+modified: '2026-09-23'
 body_schema: 'body-v2'
 body_hash: 'sha256:7219da3694312a4f99673c1d3dd7e2912384ba3bf8535d570836d6e560fdbbde'
 related:
