@@ -21,7 +21,7 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use fs4::fs_std::FileExt;
+use fs4::{FileExt, TryLockError};
 use serde::{Deserialize, Serialize};
 
 use crate::paths::ProductPaths;
@@ -933,8 +933,10 @@ fn acquire_os_lock(
             | rustix::fs::OFlags::NOFOLLOW,
         rustix::fs::Mode::RUSR | rustix::fs::Mode::WUSR,
     )?);
-    if !FileExt::try_lock_exclusive(file.file())? {
-        return Ok(Err(()));
+    match FileExt::try_lock(file.file()) {
+        Ok(()) => {}
+        Err(TryLockError::WouldBlock) => return Ok(Err(())),
+        Err(TryLockError::Error(error)) => return Err(error),
     }
     let identity = file.identity()?;
     if identity != authority_file_identity(parent, path)? {

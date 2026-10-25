@@ -24,8 +24,8 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::time::Instant;
 
-use blake2::Blake2bVar;
-use blake2::digest::{Update, VariableOutput};
+use blake2::digest::consts::U6;
+use blake2::{Blake2b, Digest};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -61,12 +61,9 @@ pub fn vault_collection_name(root: &Path) -> String {
     } else {
         resolved
     };
-    let mut hasher = Blake2bVar::new(6).expect("blake2b-6 is a valid output length");
+    let mut hasher = Blake2b::<U6>::new();
     hasher.update(normalised.as_bytes());
-    let mut digest = [0u8; 6];
-    hasher
-        .finalize_variable(&mut digest)
-        .expect("6-byte buffer matches the 6-byte output");
+    let digest = hasher.finalize();
     let hex: String = digest.iter().map(|b| format!("{b:02x}")).collect();
     format!("r{hex}_vault_docs")
 }
