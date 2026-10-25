@@ -371,7 +371,8 @@ export const BUNDLED_LANGUAGE_ALIAS_IDS = [
 
 export type CanonicalLanguageId = (typeof CANONICAL_LANGUAGE_IDS)[number];
 type ClassifiedBundledLanguage =
-  CanonicalLanguageId | (typeof BUNDLED_LANGUAGE_ALIAS_IDS)[number];
+  | CanonicalLanguageId
+  | (typeof BUNDLED_LANGUAGE_ALIAS_IDS)[number];
 type MissingBundledLanguage = Exclude<BundledLanguage, ClassifiedBundledLanguage>;
 const BUNDLED_LANGUAGE_CLASSIFICATION: Record<MissingBundledLanguage, never> = {};
 void BUNDLED_LANGUAGE_CLASSIFICATION;
