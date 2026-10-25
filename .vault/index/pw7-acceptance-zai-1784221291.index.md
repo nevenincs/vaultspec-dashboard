@@ -4,8 +4,8 @@ tags:
   - '#index'
   - '#pw7-acceptance-zai-1784221291'
 date: '2026-08-01'
-modified: '2026-08-01'
-body_schema: 'body-v1'
+modified: '2026-09-23'
+body_schema: 'body-v2'
 body_hash: 'sha256:0ddfd6df6dfab9e39df5ed9ac5ce1f1925a8ddaa21b82957f783100dd3849ad1'
 related:
   - '[[2026-07-16-pw7-acceptance-zai-1784221291-adr]]'

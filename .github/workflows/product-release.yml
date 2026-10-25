@@ -120,7 +120,10 @@ jobs:
           fi
           echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
 
-  # The tagged tree passes the same full job set that guards `main`.
+  # The tagged tree passes the same full job set that guards `main`. The ref is
+  # named rather than inherited: a caller that leaves it to the run's own ref
+  # measures whatever that resolves to, which is how a release gets built on the
+  # strength of a gate that ran against something else.
   merge-gate:
     name: "Check: Merge gate (Linux)"
     needs: prove-ref
@@ -129,6 +132,8 @@ jobs:
       checks: read
       contents: read
       pull-requests: write
+    with:
+      ref: ${{ inputs.tag }}
 
   # A job dispatched to a selector with no ONLINE runner does not fail: it
   # QUEUES, and `timeout-minutes` bounds how long a job RUNS, not how long it
@@ -220,13 +225,14 @@ jobs:
       group: ${{ matrix.constrained_arm && 'vaultspec-native-arm-release' || format('{0}-{1}-{2}', github.workflow, github.run_id, matrix.target) }}
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
       - name: Set up packaging Python
         if: matrix.target == 'aarch64-unknown-linux-gnu'
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
+          prune-cache: false
           enable-cache: false
           python-version: "3.13"
           activate-environment: true
@@ -359,7 +365,7 @@ jobs:
           "$executable" verify-release "$stage"
           "$executable" --version
       - name: Upload the release-set member
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: product-${{ matrix.target }}
           path: |
@@ -397,7 +403,7 @@ jobs:
     needs: build-product-tree
     runs-on: [self-hosted, Linux, X64]
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
       - name: Read pinned toolchain
@@ -411,7 +417,7 @@ jobs:
       - name: Resolve the engine build output directory
         shell: bash
         run: echo "ENGINE_TARGET_DIR=${CARGO_TARGET_DIR:-$GITHUB_WORKSPACE/engine/target}" >> "$GITHUB_ENV"
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           path: members
       - name: Aggregate the four verified members + emit the cohort digest
@@ -431,7 +437,7 @@ jobs:
             --member x86_64-unknown-linux-gnu=members/product-x86_64-unknown-linux-gnu/release-x86_64-unknown-linux-gnu.json \
             --member x86_64-pc-windows-msvc=members/product-x86_64-pc-windows-msvc/release-x86_64-pc-windows-msvc.json \
             --out cohort-descriptor.json
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: cohort-descriptor
           path: cohort-descriptor.json
@@ -460,7 +466,7 @@ jobs:
       matrix:
         python-version: ["3.13", "3.14"]
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
       - name: Set up just
@@ -470,6 +476,7 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
+          prune-cache: false
           enable-cache: false
           python-version: ${{ matrix.python-version }}
       - name: Validate the Python development harness
@@ -504,7 +511,7 @@ jobs:
       value: ${{ steps.v.outputs.value }}
       prior: ${{ steps.v.outputs.prior }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
       - id: v
@@ -570,11 +577,11 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
 
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           path: members
 
@@ -668,56 +675,42 @@ jobs:
           gh release upload "${tag}" dist/* --clobber
           echo "attached ${{ steps.gather.outputs.count }} archive(s) to ${tag}"
 
-  # PUBLISH, BUT NOT AS LATEST. Everything that can condemn the release from
-  # the build side has passed: the merge gate, both archive sets, the
-  # clean-runner verify, the cohort digest and the channel feasibility proof.
-  # The draft now becomes a public prerelease so acquisition can download it
-  # exactly as a user would; `latest` still answers with the previous release.
-  publish-prerelease:
+  # PUBLISH. Everything that can condemn the release from the build side has
+  # passed: the merge gate, both archive sets, the clean-runner verify, the
+  # cohort digest and the channel feasibility proof. The draft becomes the
+  # public release in one step, the release's only visibility change: it is
+  # never published before it is complete, and never held half-published.
+  publish-release:
     timeout-minutes: 15
-    name: "Build: Release candidate (Linux)"
+    name: "Build: Release publication (Linux)"
     needs: [archives, attach-to-release, channel-feasibility]
     runs-on: [self-hosted, Linux, X64]
     permissions:
       contents: write
     steps:
-      - name: Publish the draft as a prerelease
+      - name: Publish the draft as the latest release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ inputs.tag }}
-        run: gh release edit "${TAG}" --repo "${{ github.repository }}" --draft=false --prerelease --latest=false
+        run: gh release edit "${TAG}" --repo "${GITHUB_REPOSITORY}" --draft=false --latest
 
+  # Acquisition downloads the published release exactly as a user would, so it
+  # can only run after publication; it proves what users now receive, and the
+  # package-manager pointers wait for it.
   acquisition:
     name: "Test: Published binaries"
-    needs: publish-prerelease
+    needs: publish-release
     uses: ./.github/workflows/acquisition.yml
     with:
       tag: ${{ inputs.tag }}
 
-  # PROMOTE. The last visibility change, and the reason a defective release can
-  # no longer surface as `latest`. If acquisition fails, the release stays a
-  # prerelease: reachable by its tag for diagnosis, never the default install.
-  promote-release:
-    timeout-minutes: 15
-    name: "Build: Release promotion (Linux)"
-    needs: [publish-prerelease, acquisition]
-    runs-on: [self-hosted, Linux, X64]
-    permissions:
-      contents: write
-    steps:
-      - name: Promote the release to latest
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ inputs.tag }}
-        run: gh release edit "${TAG}" --repo "${{ github.repository }}" --prerelease=false --latest
-
-  # POST-PROMOTION CHANNEL PUBLICATION. Both formula and manifest point at the
+  # POST-ACQUISITION CHANNEL PUBLICATION. Both formula and manifest point at the
   # archives ON THE RELEASE and verify each digest by re-downloading, and each
   # is fail-closed behind `channel-publish-gate`, so a run here publishes
   # nothing until the support matrix marks the channel `supported`.
   homebrew-bump:
     name: "Build: Homebrew channel"
-    needs: [resolve-version, promote-release]
+    needs: [resolve-version, acquisition]
     uses: ./.github/workflows/homebrew-bump.yml
     with:
       version: ${{ needs.resolve-version.outputs.value }}
@@ -726,7 +719,7 @@ jobs:
 
   scoop-bump:
     name: "Build: Scoop channel"
-    needs: [resolve-version, promote-release]
+    needs: [resolve-version, acquisition]
     uses: ./.github/workflows/scoop-bump.yml
     with:
       version: ${{ needs.resolve-version.outputs.value }}

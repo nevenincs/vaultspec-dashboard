@@ -4,8 +4,8 @@ tags:
   - '#index'
   - '#sse-reconnection-mixed'
 date: '2026-08-01'
-modified: '2026-08-01'
-body_schema: 'body-v1'
+modified: '2026-09-23'
+body_schema: 'body-v2'
 body_hash: 'sha256:7ae885192676203f77c2bb46f9382e74fbf95a933bb6f583abfd75795f981cdf'
 related:
   - '[[2026-07-16-sse-reconnection-mixed-adr]]'

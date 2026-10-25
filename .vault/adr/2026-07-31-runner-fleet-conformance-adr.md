@@ -3,10 +3,11 @@ tags:
   - '#adr'
   - '#runner-fleet-conformance'
 date: '2026-07-31'
-modified: '2026-07-31'
+modified: '2026-09-23'
 body_schema: 'body-v1'
 body_hash: 'sha256:b040258e85d22678298b5fe2e12c8bb8fa79c277fc9a81f531462ca74ce1a649'
-related: []
+related:
+  - '[[2026-09-23-runner-fleet-conformance-reference]]'
 ---
 
 # `runner-fleet-conformance` adr: `Fleet topology for the four-target cohort: a macOS runner, an enumerated label set, and an aarch64-linux leg refused then served (amended)` | (**status:** `accepted`)

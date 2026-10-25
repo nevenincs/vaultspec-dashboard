@@ -20,11 +20,14 @@
 # Reclaims a workspace a killed job left root-owned, before checkout is the
 # step that would hit EACCES. The runner fleet's job-completed hook cannot
 # help: this has to run BEFORE the next job's checkout, not after the last
-# job's end.
-ci.yml:Reclaim the workspace from a job that may not have finished
-merge-gate.yml:Reclaim the workspace from a job that may not have finished
-code-health.yml:Reclaim the workspace from a job that may not have finished
-release-please.yml:Reclaim the workspace from a job that may not have finished
+# job's end. INLINE, and not a recipe or a script for the same reason it is not
+# a composite action: nothing under the workspace may execute before the job's
+# own checkout, or the previous branch's copy of it runs with this job's
+# credentials. A guard asserts every copy is byte-identical.
+ci.yml:Reclaim the workspace before checkout
+merge-gate.yml:Reclaim the workspace before checkout
+code-health.yml:Reclaim the workspace before checkout
+release-please.yml:Reclaim the workspace before checkout
 
 # Fails the merge verdict for a fork's pull request, before anything is checked
 # out. A statement about which code may merge; it has no local meaning.
@@ -84,6 +87,16 @@ merge-gate.yml:Component lock + release-set-manifest schema are well-formed
 merge-gate.yml:The committed Cargo.lock agrees with Cargo.toml
 merge-gate.yml:Product builder, manifest verifiers, and lock/capsule/release pins
 release-please.yml:Regenerate and push engine/Cargo.lock
+
+# The release cut. Each step reads or writes state that exists only inside a
+# workflow run - the pending release pull request, its proven head, the tag
+# Release Please produced - so none of them has a local meaning to wrap in a
+# recipe. `Dispatch the merge gate for the
+# release pull request` is a bare `gh` call the shape rule already permits.
+release-please.yml:Find the release pull request and the commit to prove
+release-please.yml:Merge the proven release pull request
+release-please.yml:Name a release this token cannot tag
+release-please.yml:Require the tag on the proven commit
 
 # --- pending, whole lane ----------------------------------------------------
 # The release and channel lanes: ~2,500 lines of inline bash and pwsh across

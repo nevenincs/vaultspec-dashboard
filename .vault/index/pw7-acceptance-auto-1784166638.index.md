@@ -4,8 +4,8 @@ tags:
   - '#index'
   - '#pw7-acceptance-auto-1784166638'
 date: '2026-08-01'
-modified: '2026-08-01'
-body_schema: 'body-v1'
+modified: '2026-09-23'
+body_schema: 'body-v2'
 body_hash: 'sha256:6ce0be89643ff76045223ae2bbf1c58b4e1503ac0eddefc45bbc31cceaac5e56'
 related:
   - '[[2026-07-16-pw7-acceptance-auto-1784166638-adr]]'

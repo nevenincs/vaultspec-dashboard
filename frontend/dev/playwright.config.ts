@@ -1,6 +1,7 @@
 // E2E smoke configuration: runs against a LIVE
 // `vaultspec serve` origin — single origin serving the SPA shell (with
-// the DF-6 token meta tag), the API, and SSE. Start the engine first;
+// the DF-6 token meta tag), the API, and SSE. Start the engine first (`just dev`
+// starts one on the declared `engine` port, the default origin below);
 // override the origin with VAULTSPEC_SERVE_ORIGIN.
 
 import { defineConfig } from "@playwright/test";

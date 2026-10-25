@@ -784,7 +784,10 @@ pub(crate) fn case_offline_default_provider_run(artifact: &Artifact) -> CaseResu
         &runtime,
         &["serve"],
         &[
-            ("VAULTSPEC_DESKTOP_APP_HOME".to_string(), app_home.clone()),
+            (
+                "VAULTSPEC_A2A_DESKTOP_APP_HOME".to_string(),
+                app_home.clone(),
+            ),
             ("VAULTSPEC_APP_HOME".to_string(), app_home),
         ],
         Some(&cwd),

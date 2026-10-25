@@ -113,6 +113,13 @@ tmp_path_retention_policy = "failed"
 # across: those are calibrated per tree, and this one is small enough to hold
 # ruff's defaults.
 [tool.ruff]
+# `dev/devserver.py` is the machine-wide dev-server harness, a byte-identical
+# copy of the one in the private `devservers` repository that every web app on
+# this workstation carries. It is not this repository's code and must not be
+# edited here (`just dev check` fails on any drift), so it is linted and
+# type-checked by the devservers repository's own gate, under that repository's
+# dialect, and left out of this one's.
+extend-exclude = ["dev/devserver.py"]
 line-length = 88
 target-version = "py313"
 
@@ -156,3 +163,9 @@ target-version = "py313"
     # one thing this guard exists to check.
     "dev/guards/test_failure_classification.py" = ["ARG", "E501", "RUF001"]
 
+# ── ty ───────────────────────────────────────────────────────────────────────
+# The shared dev-server harness is excluded for the reason stated at
+# `[tool.ruff]`; it also imports psutil and filelock, which its PEP 723 header
+# provides to `uv run --script` and this repository's `.venv` does not.
+[tool.ty.src]
+exclude = ["dev/devserver.py"]

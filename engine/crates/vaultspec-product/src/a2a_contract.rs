@@ -46,19 +46,27 @@ pub const GATEWAY_DISCOVERY_FILE: &str = "gateway-discovery.json";
 /// own app home.
 ///
 /// This is a2a's own contract, not the dashboard's; the dashboard reads it to
-/// attach to whatever service is already running. a2a is one resident service
-/// per machine, so there is no per-scope variant.
+/// attach to whatever service is already running. a2a's resident state is
+/// project-bound (`2026-09-23-project-bound-state-adr`, a2a repo): the
+/// discovery record lives under the workspace a2a serves, not a per-user or
+/// machine-wide home.
 pub const RESIDENT_DISCOVERY_FILE: &str = "service.json";
 
 /// The owner-restricted bearer credential a2a writes beside its discovery
 /// record. Discovery itself is secret-free; this file holds the token.
 pub const HANDOFF_CREDENTIAL_FILE: &str = "service.token";
 
-/// a2a's default per-user home directory, under the user's home.
-pub const A2A_HOME_DIR: &str = ".vaultspec-a2a";
+/// a2a's default home directory, relative to a2a's PROJECT root — no longer a
+/// per-user home under the user's profile. a2a is project-bound
+/// (`2026-09-23-project-bound-state-adr`, a2a repo): its state home defaults to
+/// `<a2a project root>/.vault/data/agents`, mirroring where the dashboard's own
+/// engine keeps its re-derivable data under a workspace.
+pub const A2A_DEFAULT_HOME_DIR: &str = ".vault/data/agents";
 
 /// The environment variable naming an explicit a2a home, overriding
-/// [`A2A_HOME_DIR`]. a2a honours this for its own state and discovery.
+/// [`A2A_DEFAULT_HOME_DIR`]. a2a honours this for its own state and discovery. A
+/// relative value resolves against a2a's project root — for the dashboard's
+/// discovery candidates, the engine's served workspace root.
 pub const A2A_HOME_ENV: &str = "VAULTSPEC_A2A_HOME";
 
 /// The gateway's administrative shutdown route, absolute from the service root.

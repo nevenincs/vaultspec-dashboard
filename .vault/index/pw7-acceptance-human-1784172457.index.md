@@ -4,8 +4,8 @@ tags:
   - '#index'
   - '#pw7-acceptance-human-1784172457'
 date: '2026-08-01'
-modified: '2026-08-01'
-body_schema: 'body-v1'
+modified: '2026-09-23'
+body_schema: 'body-v2'
 body_hash: 'sha256:625a8751fbc0e93049a614312546cbc8535fed70e0503eb6c73ba46b5216a042'
 related:
   - '[[2026-07-16-pw7-acceptance-human-1784172457-research]]'

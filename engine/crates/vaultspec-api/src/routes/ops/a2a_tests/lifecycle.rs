@@ -1,7 +1,10 @@
 //! Token provisioning, leases, discovery, health, and replay (split from the flat a2a_tests.rs under the module-size gate
 //! — a move, not a re-decision; shared fixtures live in the parent module).
 
-use super::super::discovery::{A2aDiscovery, a2a_endpoint_from, discover_a2a_at};
+use super::super::discovery::{
+    A2aDiscovery, a2a_endpoint_from, a2a_service_json_candidates, a2a_service_json_candidates_for,
+    discover_a2a_at,
+};
 use super::*;
 
 #[test]
@@ -1101,6 +1104,110 @@ fn the_verb_whitelist_is_exactly_the_reviewed_contract_surface() {
         assert!(
             A2A_WHITELIST.contains(verb),
             "expected whitelisted verb `{verb}` is missing"
+        );
+    }
+}
+
+// --- project-bound discovery candidates (2026-09-23-project-bound-state-adr) --
+//
+// Exercised through the pure `a2a_service_json_candidates_for` builder, which
+// takes the `VAULTSPEC_A2A_HOME` override as an explicit argument: this
+// workspace forbids `unsafe` code, so these tests never mutate the process
+// environment (`set_var`/`remove_var` are `unsafe` on this toolchain) and stay
+// safe under `cargo test`'s parallel threads.
+
+#[test]
+fn no_override_yields_only_the_workspace_relative_default() {
+    let workspace = tempfile::tempdir().unwrap();
+    let candidates = a2a_service_json_candidates_for(workspace.path(), None);
+
+    // With no override, the candidate list holds EXACTLY the workspace-relative
+    // default — proving by construction that there is no additional per-user or
+    // machine-wide fallback candidate (the deleted `~/.vaultspec-a2a` entry).
+    assert_eq!(
+        candidates,
+        vec![
+            workspace
+                .path()
+                .join(".vault")
+                .join("data")
+                .join("agents")
+                .join("service.json")
+        ],
+        "the only candidate is the project-relative default; there is no \
+         per-user or machine-wide fallback"
+    );
+}
+
+#[test]
+fn relative_home_override_joins_onto_the_workspace_root_and_is_tried_first() {
+    let workspace = tempfile::tempdir().unwrap();
+    let candidates =
+        a2a_service_json_candidates_for(workspace.path(), Some(PathBuf::from("custom/a2a-home")));
+
+    assert_eq!(
+        candidates,
+        vec![
+            workspace
+                .path()
+                .join("custom")
+                .join("a2a-home")
+                .join("service.json"),
+            workspace
+                .path()
+                .join(".vault")
+                .join("data")
+                .join("agents")
+                .join("service.json"),
+        ],
+        "a relative VAULTSPEC_A2A_HOME resolves against the workspace root and \
+         is tried before the default"
+    );
+}
+
+#[test]
+fn absolute_home_override_is_used_exactly_as_given() {
+    let workspace = tempfile::tempdir().unwrap();
+    let absolute_home = tempfile::tempdir().unwrap();
+    let candidates =
+        a2a_service_json_candidates_for(workspace.path(), Some(absolute_home.path().to_path_buf()));
+
+    assert_eq!(
+        candidates,
+        vec![
+            absolute_home.path().join("service.json"),
+            workspace
+                .path()
+                .join(".vault")
+                .join("data")
+                .join("agents")
+                .join("service.json"),
+        ],
+        "an absolute VAULTSPEC_A2A_HOME is used exactly as given, never joined \
+         onto the workspace root"
+    );
+}
+
+#[test]
+fn public_candidates_are_workspace_rooted_and_never_the_retired_user_profile_path() {
+    // Exercises the real env-reading wrapper (whatever `VAULTSPEC_A2A_HOME` the
+    // test process happens to have, unmutated) rather than the pure builder
+    // above, so the production entry point itself is proven never to
+    // reconstruct the deleted `~/.vaultspec-a2a` fallback.
+    let workspace = tempfile::tempdir().unwrap();
+    let candidates = a2a_service_json_candidates(workspace.path());
+    assert!(
+        candidates.iter().all(|c| c.starts_with(workspace.path())),
+        "every candidate must be rooted at the served workspace, never a \
+         machine- or user-wide path: {candidates:?}"
+    );
+    if let Some(user_home) = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME")) {
+        let retired_legacy_path = PathBuf::from(user_home)
+            .join(".vaultspec-a2a")
+            .join("service.json");
+        assert!(
+            !candidates.contains(&retired_legacy_path),
+            "the retired per-user home must never appear as a candidate: {candidates:?}"
         );
     }
 }

@@ -24,16 +24,58 @@ jobs:
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 30
     steps:
-      - name: Reclaim the workspace from a job that may not have finished
+      # INLINE AND SELF-CONTAINED, because nothing under the workspace may
+      # execute before a job's own checkout. A job the runner is shut down
+      # under never reaches its trailing reclaim, so its whole tree is still
+      # there when the next job starts - and a script read out of that tree is
+      # the previous branch's code running with this job's credentials. This
+      # step therefore reads no repository file, and drops `.git/hooks`, which
+      # survives `git clean` and would otherwise run a previous job's hook.
+      - name: Reclaim the workspace before checkout
         shell: bash
-        run: bash .github/scripts/reclaim-workspace.sh || true
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        run: |
+          set -uo pipefail
+          workspace="${GITHUB_WORKSPACE:-}"
+          if [ -z "${workspace}" ] || [ ! -d "${workspace}" ]; then
+            echo "reclaim: no workspace yet - nothing to do"
+            exit 0
+          fi
+          rm -rf "${workspace}/.git/hooks" 2>/dev/null || true
+          # The live suite spawns a real `vaultspec serve` from the built
+          # binary, which a killed job leaves holding files under
+          # engine/target. Matched on the executable path under THIS
+          # workspace: three runners share the machine, and a pattern broad
+          # enough to catch "a vaultspec engine" would kill another
+          # repository's in-flight test.
+          # Unquoted on purpose below: word splitting is how the newline-
+          # separated pid list becomes kill's arguments.
+          left=$(pgrep -f "${workspace}/engine/target/[^ ]*/vaultspec" 2>/dev/null || true)
+          if [ -n "${left}" ]; then
+            echo "reclaim: stopping engine processes left from a previous job: ${left}"
+            # shellcheck disable=SC2086
+            kill ${left} 2>/dev/null || true
+            sleep 2
+            # shellcheck disable=SC2086
+            kill -9 ${left} 2>/dev/null || true
+          fi
+          # Removing the build directory every time would throw away the
+          # incremental cache, so the test is whether the file the EACCES
+          # actually lands on is writable.
+          probe="${workspace}/engine/target/.rustc_info.json"
+          if [ -e "${probe}" ] && [ ! -w "${probe}" ]; then
+            echo "reclaim: ${probe} is not writable - removing the build directory"
+            rm -rf "${workspace}/engine/target" 2>/dev/null || true
+          fi
+          rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
+          exit 0
+      - id: checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: "22"
-          cache: npm
+          cache: ''
           cache-dependency-path: frontend/package-lock.json
       - name: Set up just
         uses: taiki-e/install-action@6012bba2f8e3e666a2b212f8823c06831704ce92 # just
@@ -44,12 +86,13 @@ jobs:
         with:
           # The runners already share UV_CACHE_DIR; the action's own cache save
           # hung the post step on the fleet.
+          prune-cache: false
           enable-cache: false
       - name: Provision the dev toolchain
         run: just init
       - name: Unused code (just audit-knip)
-        if: ${{ !cancelled() }}
+        if: ${{ steps.checkout.outcome == 'success' && !cancelled() }}
         run: just audit-knip
       - name: Build tooling advisories (just audit-node-tooling)
-        if: ${{ !cancelled() }}
+        if: ${{ steps.checkout.outcome == 'success' && !cancelled() }}
         run: just audit-node-tooling

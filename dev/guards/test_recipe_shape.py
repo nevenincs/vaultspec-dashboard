@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import pytest
 
+from dev.guards.conftest import devserver_constant
+
 #: Constructs that make a recipe body shell-dependent. Each would behave
 #: differently, or fail outright, between `cmd.exe` and `sh`.
 FORBIDDEN_SYNTAX = {
@@ -120,22 +122,61 @@ def test_no_recipe_branches_on_the_platform(justfile_text: str) -> None:
     )
 
 
+#: The machine-wide dev-server recipe, exempt from the dispatch rule by TEXT,
+#: not by name. It is the one recipe this file does not own: every web app on
+#: the workstation carries it verbatim (`dev/devserver.py render recipe`), and
+#: it runs that shared harness through `uv run --script` because the harness is
+#: a PEP 723 script with its own dependencies, identical in every repository.
+#: Routing it through `{{dev}}` would fork it; `just dev check` fails when it
+#: drifts. Only a body byte-identical to the canonical text is exempt, so a
+#: hand-edited `dev` recipe - or any other recipe named `dev` - still fails.
+SHARED_DEV_RECIPE = "dev"
+
+
+def _carries_the_canonical_dev_recipe(justfile_text: str) -> bool:
+    """Whether the justfile holds the shared `dev` recipe exactly as rendered.
+
+    `justfile_text` is read in text mode, so line endings are already `\\n`.
+    """
+    return devserver_constant("RECIPE") in justfile_text
+
+
 def test_every_recipe_dispatches_into_the_harness(
     recipe_bodies: dict[str, list[str]],
+    justfile_text: str,
 ) -> None:
     """A recipe runs the dispatcher, never a tool directly.
 
     A recipe invoking a tool itself is a step that exists outside the table, so
     `dev/toolchain.py` stops being the single source of truth for what the
-    toolchain runs.
+    toolchain runs. The shared `dev` recipe is the stated exception above.
     """
+    exempt = set(SELF_HOSTED_RECIPES)
+    if _carries_the_canonical_dev_recipe(justfile_text):
+        exempt.add(SHARED_DEV_RECIPE)
     offenders = [
         name
         for name, body in recipe_bodies.items()
-        if name not in SELF_HOSTED_RECIPES
-        and not all(line.startswith("{{dev}}") for line in body)
+        if name not in exempt and not all(line.startswith("{{dev}}") for line in body)
     ]
     assert not offenders, (
         "these recipes run something other than the dispatcher, so their steps "
         f"are invisible to dev/toolchain.py: {sorted(offenders)}"
+    )
+
+
+def test_the_shared_dev_recipe_is_the_canonical_one(
+    recipe_bodies: dict[str, list[str]],
+    justfile_text: str,
+) -> None:
+    """The `dev` recipe exists and is byte-identical to the shared harness's.
+
+    Guard the exemption: it is granted by matching the canonical text, so a
+    drifted copy must fail here rather than quietly lose its exemption and fail
+    somewhere less legible.
+    """
+    assert SHARED_DEV_RECIPE in recipe_bodies, "the justfile has no `dev` recipe"
+    assert _carries_the_canonical_dev_recipe(justfile_text), (
+        "the `dev` recipe differs from `dev/devserver.py render recipe`; paste the "
+        "rendered text verbatim"
     )

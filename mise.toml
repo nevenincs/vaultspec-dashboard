@@ -9,6 +9,10 @@
 
 [tools]
 just = "latest" # the task-runner front door for every quality gate
+# Node's major is pinned TWICE on purpose and the two must move together: here,
+# for contributors, and in the root `.nvmrc`, which the shared Dev server
+# workflow (.github/workflows/devserver.yml) reads through actions/setup-node's
+# `node-version-file`. CI's other lanes pin node-version "22" as well.
 node = "22"     # frontend SPA — satisfies package.json engines (>=22.12)
 python = "3.13" # uv dev toolchain: vaultspec-core, rag, markdown + pre-commit tools
 uv = "latest"   # Python env + dependency manager (the only sanctioned path)

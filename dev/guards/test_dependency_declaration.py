@@ -16,11 +16,14 @@ an installer run.
 from __future__ import annotations
 
 import ast
+import re
 import sys
 import tomllib
 from typing import TYPE_CHECKING
 
 import pytest
+
+from dev.guards.conftest import DEVSERVER
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -51,19 +54,33 @@ def declared_dev(manifest: dict) -> set[str]:
     return {_normalise(item) for item in manifest["dependency-groups"]["dev"]}
 
 
-def _third_party_imports(repo_root: Path) -> set[str]:
-    """Collect the top-level non-stdlib modules the harness imports."""
+def _imports_of(path: Path) -> set[str]:
+    """Collect the top-level non-stdlib modules one file imports."""
     found: set[str] = set()
-    for path in (repo_root / "dev").rglob("*.py"):
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                found.update(alias.name.split(".")[0] for alias in node.names)
-            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
-                found.add(node.module.split(".")[0])
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            found.update(alias.name.split(".")[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            found.add(node.module.split(".")[0])
     return {
         name for name in found if name not in sys.stdlib_module_names and name != "dev"
     }
+
+
+def _third_party_imports(repo_root: Path) -> set[str]:
+    """Collect the top-level non-stdlib modules the harness imports.
+
+    `dev/devserver.py` is left out: it is the machine-wide dev-server harness, a
+    PEP 723 script that `uv run --script` runs with the dependencies its own
+    header declares, never from this repository's `.venv`. Its imports are held
+    to that header instead (below).
+    """
+    found: set[str] = set()
+    for path in (repo_root / "dev").rglob("*.py"):
+        if path.resolve() != DEVSERVER.resolve():
+            found |= _imports_of(path)
+    return found
 
 
 def test_every_harness_import_is_declared(
@@ -121,4 +138,30 @@ def test_the_import_scan_found_something(repo_root: Path) -> None:
     assert len(modules) > 5, (
         f"only {len(modules)} harness modules were scanned; the package layout "
         "probably moved"
+    )
+
+
+def test_the_devserver_script_declares_its_own_imports() -> None:
+    """The shared harness runs on its PEP 723 header, so the header must cover it.
+
+    It is exempt from the dev-group check above because nothing installs it into
+    `.venv`; a dependency it imports but its header omits would break
+    `just dev` on a clean machine exactly the way an undeclared dev dependency
+    breaks the guards.
+    """
+    text = DEVSERVER.read_text(encoding="utf-8")
+    header = re.search(r"(?ms)^# /// script$(.*?)^# ///$", text)
+    assert header, f"{DEVSERVER} has no PEP 723 `# /// script` header"
+    metadata = tomllib.loads(
+        "\n".join(line.removeprefix("#").strip() for line in header[1].splitlines())
+    )
+    declared = {_normalise(item) for item in metadata.get("dependencies", [])}
+    imported = {
+        _normalise(DISTRIBUTION_ALIASES.get(name, name))
+        for name in _imports_of(DEVSERVER)
+    }
+    assert imported, "dev/devserver.py imports no third-party module; the scan broke"
+    assert imported <= declared, (
+        f"dev/devserver.py imports {sorted(imported)} but its header declares "
+        f"{sorted(declared)}"
     )
