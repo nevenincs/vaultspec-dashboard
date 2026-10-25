@@ -6,7 +6,7 @@
 // (the minimap bitmap) is honestly absent, and control clicks command a scene that
 // is not mounted on this page.
 
-import type { IDockviewPanelProps } from "dockview";
+import type { IDockviewPanelProps } from "dockview-react";
 
 import {
   GraphNavControls,

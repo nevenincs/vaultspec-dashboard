@@ -10,9 +10,9 @@
 // bespoke restyle (design-system-is-centralized,
 // themes-are-oklch-generated-from-a-token-tier).
 
-import "dockview/dist/styles/dockview.css";
+import "dockview-react/dist/styles/dockview.css";
 
-import type { DockviewTheme } from "dockview";
+import type { DockviewTheme } from "dockview-react";
 
 /** The vaultspec dock theme: a class hook whose `--dv-*` values resolve through
  *  the OKLCH semantic tier remapped in `styles.css`. `gap: 0` keeps panels flush

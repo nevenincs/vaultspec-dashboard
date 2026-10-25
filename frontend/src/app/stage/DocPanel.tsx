@@ -11,7 +11,7 @@
 // toggle) lives inside `MarkdownDocView` (editor-figma-parity), so the panel adds
 // no second header bar.
 
-import type { IDockviewPanelProps } from "dockview";
+import type { IDockviewPanelProps } from "dockview-react";
 import { useMemo } from "react";
 import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 
