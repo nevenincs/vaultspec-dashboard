@@ -25,13 +25,7 @@ import type { MessageDescriptor } from "../../platform/localization/message";
  *  order: a feature's summed served byte size — displayed as its normalized
  *  share of the whole vault. */
 export type RailSortKey =
-  | "recency"
-  | "docs"
-  | "name"
-  | "created"
-  | "modified"
-  | "size"
-  | "weight";
+  "recency" | "docs" | "name" | "created" | "modified" | "size" | "weight";
 export type RailSortDirection = "asc" | "desc";
 
 export interface RailSortValue {

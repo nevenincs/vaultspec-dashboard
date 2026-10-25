@@ -38,12 +38,7 @@ import {
  * collision; the most specific active context wins.
  */
 export type BindingContext =
-  | "global"
-  | "canvas"
-  | "timeline"
-  | "left-rail"
-  | "right-rail"
-  | "filters";
+  "global" | "canvas" | "timeline" | "left-rail" | "right-rail" | "filters";
 
 /** The surface contexts, in declaration order (all more specific than global). */
 export const SURFACE_CONTEXTS: readonly BindingContext[] = [

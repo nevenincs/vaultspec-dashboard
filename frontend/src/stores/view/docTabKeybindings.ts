@@ -66,22 +66,16 @@ export function useDocTabKeybindings(): void {
   useEffect(() => {
     const disposeBindings = registerKeybindings(deriveDocTabKeybindings());
 
-    const disposeNext = registerKeyAction(
-      TAB_NEXT_ACTION_ID,
-      (): ActionDescriptor => ({
-        id: TAB_NEXT_ACTION_ID,
-        label: TAB_NEXT_LABEL,
-        run: () => activateAdjacentDocTab(1),
-      }),
-    );
-    const disposePrev = registerKeyAction(
-      TAB_PREV_ACTION_ID,
-      (): ActionDescriptor => ({
-        id: TAB_PREV_ACTION_ID,
-        label: TAB_PREV_LABEL,
-        run: () => activateAdjacentDocTab(-1),
-      }),
-    );
+    const disposeNext = registerKeyAction(TAB_NEXT_ACTION_ID, (): ActionDescriptor => ({
+      id: TAB_NEXT_ACTION_ID,
+      label: TAB_NEXT_LABEL,
+      run: () => activateAdjacentDocTab(1),
+    }));
+    const disposePrev = registerKeyAction(TAB_PREV_ACTION_ID, (): ActionDescriptor => ({
+      id: TAB_PREV_ACTION_ID,
+      label: TAB_PREV_LABEL,
+      run: () => activateAdjacentDocTab(-1),
+    }));
     const disposeClose = registerKeyAction(
       TAB_CLOSE_ACTION_ID,
       (): ActionDescriptor => ({

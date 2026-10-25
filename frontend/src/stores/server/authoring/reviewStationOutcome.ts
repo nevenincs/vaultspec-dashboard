@@ -47,10 +47,7 @@ export function normalizeReviewCommandOutcome(
 }
 
 export type ReviewCommandFailureKind =
-  | "reviewChanged"
-  | "reviewUnavailable"
-  | "reviewerUnavailable"
-  | "actionFailed";
+  "reviewChanged" | "reviewUnavailable" | "reviewerUnavailable" | "actionFailed";
 
 const REVIEW_CHANGED_ERROR_KINDS = new Set([
   "authoring_stale_review",

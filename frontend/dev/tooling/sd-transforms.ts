@@ -13,8 +13,7 @@
 
 /** A DTCG color value: either an alias ref string `{a.b.c}` or a typed object. */
 export type DtcgColorValue =
-  | string
-  | { colorSpace: string; components?: number[]; hex?: string; alpha?: number };
+  string | { colorSpace: string; components?: number[]; hex?: string; alpha?: number };
 
 /** Serialize DTCG oklch components [L, C, H] to a CSS `oklch(L C H)` string. */
 export function oklchToCss(components: number[]): string {

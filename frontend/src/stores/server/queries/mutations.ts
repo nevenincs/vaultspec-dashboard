@@ -214,9 +214,7 @@ interface RowReconcileSpec<Entry, Listing> {
 }
 
 export type RowReconcileAction<Listing> =
-  | { kind: "patch"; value: Listing }
-  | { kind: "full-drain" }
-  | { kind: "noop" };
+  { kind: "patch"; value: Listing } | { kind: "full-drain" } | { kind: "noop" };
 
 /** Key-keyed merge: drop `removed`, replace/insert `changed`, and re-sort
  *  by key to reproduce the engine's sorted order — producing ONE complete listing at

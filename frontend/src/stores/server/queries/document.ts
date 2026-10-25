@@ -341,12 +341,7 @@ export interface MarkdownReaderView {
 }
 
 export type FrontmatterTagCategory =
-  | "adr"
-  | "audit"
-  | "exec"
-  | "feature"
-  | "plan"
-  | "research";
+  "adr" | "audit" | "exec" | "feature" | "plan" | "research";
 
 export interface FrontmatterTagView {
   value: string;

@@ -161,10 +161,7 @@ export interface GraphControlsAppearanceParams {
 }
 
 export type GraphControlsAppearanceSliderKey =
-  | "nodeSizeScale"
-  | "nodeSalienceScale"
-  | "edgeWidthMax"
-  | "edgeOpacityMax";
+  "nodeSizeScale" | "nodeSalienceScale" | "edgeWidthMax" | "edgeOpacityMax";
 
 export const GRAPH_CONTROLS_APPEARANCE_DEFAULTS: GraphControlsAppearanceParams =
   appearanceDefaults();

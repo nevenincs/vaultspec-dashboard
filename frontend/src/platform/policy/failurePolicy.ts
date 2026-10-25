@@ -12,11 +12,7 @@ import { logger } from "../logger/logger";
 const policyLog = logger.child("policy");
 
 export type FailureKind =
-  | "transient"
-  | "degraded"
-  | "contained"
-  | "fatal"
-  | "cancelled";
+  "transient" | "degraded" | "contained" | "fatal" | "cancelled";
 
 export interface FailureClassification {
   /** transient: retry. degraded: route to the degradation vocabulary.

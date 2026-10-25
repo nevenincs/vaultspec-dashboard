@@ -247,10 +247,7 @@ export function deriveSearchPalettePresentationView(context: {
 }
 
 export type CommandPaletteOpsCondition =
-  | "running"
-  | "succeeded"
-  | "failed"
-  | "unavailable";
+  "running" | "succeeded" | "failed" | "unavailable";
 
 export type CommandPaletteOpsFeedbackTone = "neutral" | "success" | "error";
 

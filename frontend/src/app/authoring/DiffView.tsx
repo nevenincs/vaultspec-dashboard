@@ -32,9 +32,7 @@ import { diffLines, diffStat, type DiffLineKind } from "./diffLines";
  *  otherwise source-agnostic; the value is surfaced as `data-diff-source` so both
  *  call sites are provably exercising the one implementation. */
 export type DiffViewSource =
-  | "draft-vs-saved"
-  | "proposal-preview"
-  | "conflict-resolution";
+  "draft-vs-saved" | "proposal-preview" | "conflict-resolution";
 
 const GUTTER: Record<DiffLineKind, string> = {
   add: "+",

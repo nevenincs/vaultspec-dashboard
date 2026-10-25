@@ -15,14 +15,7 @@ import { searchResultSpecies, type SearchResultSpecies } from "./searchControlle
 // import into the app layer): the stores layer decides WHICH category a result is,
 // and the css variable carries the colour. Mirrors `categoryColorVar`.
 type CategoryToken =
-  | "adr"
-  | "audit"
-  | "code"
-  | "exec"
-  | "feature"
-  | "plan"
-  | "reference"
-  | "research";
+  "adr" | "audit" | "code" | "exec" | "feature" | "plan" | "reference" | "research";
 
 function categoryColorVar(token: CategoryToken): string {
   return `var(--color-scene-category-${token})`;

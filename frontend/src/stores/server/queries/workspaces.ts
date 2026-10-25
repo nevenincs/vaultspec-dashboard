@@ -743,8 +743,7 @@ export function useSwapWorkspace() {
 }
 
 export type AddWorkspaceOutcome =
-  | { ok: true; workspace: WorkspaceRoot | null }
-  | { ok: false; issue: AddProjectIssue };
+  { ok: true; workspace: WorkspaceRoot | null } | { ok: false; issue: AddProjectIssue };
 
 export function classifyAddWorkspaceError(error: unknown): AddProjectIssue {
   if (

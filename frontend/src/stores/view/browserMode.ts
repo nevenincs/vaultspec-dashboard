@@ -25,11 +25,9 @@ import type { MessageDescriptor } from "../../platform/localization/message";
 export type BrowserMode = "vault" | "code";
 
 type BrowserModeLabelKey =
-  | "documents:browserModes.documents"
-  | "documents:browserModes.files";
+  "documents:browserModes.documents" | "documents:browserModes.files";
 type BrowserModeActionLabelKey =
-  | "documents:actions.browseDocuments"
-  | "documents:actions.browseFiles";
+  "documents:actions.browseDocuments" | "documents:actions.browseFiles";
 
 export interface BrowserModePresentation<
   Mode extends BrowserMode = BrowserMode,

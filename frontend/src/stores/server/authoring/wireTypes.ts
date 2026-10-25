@@ -50,9 +50,7 @@ export type RiskClass = "non_destructive" | "destructive";
  *  decision by an authorized actor distinct from the proposer, the system
  *  actor may not auto-approve. */
 export type ApprovalRequirement =
-  | "human_approval_required"
-  | "reviewer_approval_required"
-  | "system_auto_approvable";
+  "human_approval_required" | "reviewer_approval_required" | "system_auto_approvable";
 
 /** The V1 approval queue state: FOUR states collapsed to the single-reviewer
  *  reality. */

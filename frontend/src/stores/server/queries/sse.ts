@@ -157,7 +157,7 @@ export async function* sseChunks(
         return;
       }
       if (chunk.done) throw new StreamLostError("graph stream ended");
-      for (let offset = 0; offset < chunk.value.byteLength; ) {
+      for (let offset = 0; offset < chunk.value.byteLength;) {
         const end = Math.min(chunk.value.byteLength, offset + SSE_DECODE_SLICE_BYTES);
         buffer += decoder.decode(chunk.value.subarray(offset, end), { stream: true });
         bufferedWireBytes += end - offset;

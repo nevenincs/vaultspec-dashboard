@@ -13,9 +13,7 @@ function borderBoxInlineSize(
   entry: ResizeObserverEntry | undefined,
 ): number | undefined {
   const box = entry?.borderBoxSize as
-    | ResizeObserverSize
-    | readonly ResizeObserverSize[]
-    | undefined;
+    ResizeObserverSize | readonly ResizeObserverSize[] | undefined;
   if (Array.isArray(box)) {
     const first = box[0] as ResizeObserverSize | undefined;
     return first?.inlineSize;

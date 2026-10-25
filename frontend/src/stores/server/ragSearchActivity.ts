@@ -178,8 +178,7 @@ export function useRagSearchActivity(
     gcTime: RAG_CONTROL_READ_GC_MS,
     refetchInterval: (q) => {
       const data = q.state.data as
-        | BrokeredResult<RagSearchActivityEnvelope>
-        | undefined;
+        BrokeredResult<RagSearchActivityEnvelope> | undefined;
       if (ragSemanticOffline(data)) return false;
       return RAG_SEARCH_ACTIVITY_POLL_MS;
     },

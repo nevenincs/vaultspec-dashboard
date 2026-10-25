@@ -253,14 +253,7 @@ export function formatDate(
 }
 
 export type RelativeTimeUnit =
-  | "year"
-  | "quarter"
-  | "month"
-  | "week"
-  | "day"
-  | "hour"
-  | "minute"
-  | "second";
+  "year" | "quarter" | "month" | "week" | "day" | "hour" | "minute" | "second";
 
 const RELATIVE_TIME_UNITS = new Set<RelativeTimeUnit>([
   "year",

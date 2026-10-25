@@ -24,14 +24,7 @@ import { DOC_TYPE_PRESENTATION } from "../../stores/server/docTypeVocabulary";
 
 /** The canonical category tokens emitted as --color-scene-category-*. */
 export type CategoryToken =
-  | "adr"
-  | "audit"
-  | "code"
-  | "exec"
-  | "feature"
-  | "plan"
-  | "reference"
-  | "research";
+  "adr" | "audit" | "code" | "exec" | "feature" | "plan" | "reference" | "research";
 
 /** The stable raw category order. Presentation never changes these identities. */
 export const CATEGORY_TOKENS = Object.freeze([
