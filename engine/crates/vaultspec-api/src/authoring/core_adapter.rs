@@ -46,6 +46,7 @@
 //! allow drops once that route wiring lands.
 #![allow(dead_code)]
 
+use std::ffi::OsString;
 use std::io::{Read, Write};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
@@ -429,6 +430,37 @@ impl CoreAdapterError {
     }
 }
 
+/// Assemble the full argument list [`CoreAdapter::invoke`] passes to the
+/// resolved program: the invocation's leading args, an explicit
+/// `--target <cwd>` PRECEDING the capability's verb argv, the argv itself,
+/// and the trailing `--json` flag.
+///
+/// The explicit `--target` is deliberate, not redundant with the sibling
+/// `current_dir(cwd)`: once the core CLI honors an inherited target-directory
+/// variable as a fallback, that variable would otherwise silently outrank the
+/// child's working directory and redirect the write to a different
+/// workspace. Passing `--target` pins the choice to this call, never to
+/// whatever the caller's environment happens to export.
+fn build_invoke_args(invocation: &[String], cwd: &Path, argv: &[String]) -> Vec<OsString> {
+    debug_assert!(cwd.is_absolute(), "cwd must be an absolute path");
+
+    let Some((_, leading)) = invocation.split_first() else {
+        // Invocation must have at least a program name; return early rather than panic.
+        return vec![OsString::from("--target"), cwd.as_os_str().to_os_string()]
+            .into_iter()
+            .chain(argv.iter().map(OsString::from))
+            .chain(std::iter::once(OsString::from("--json")))
+            .collect();
+    };
+
+    let mut full: Vec<OsString> = leading.iter().map(OsString::from).collect();
+    full.push(OsString::from("--target"));
+    full.push(cwd.as_os_str().to_os_string());
+    full.extend(argv.iter().map(OsString::from));
+    full.push(OsString::from("--json"));
+    full
+}
+
 /// The internal core adapter. Holds the project-pinned invocation plus the
 /// call-site output cap and wall-clock timeout that bound every invocation.
 #[derive(Debug, Clone)]
@@ -480,9 +512,7 @@ impl CoreAdapter {
         invocation: &CoreInvocation,
     ) -> Result<CoreEnvelope, CoreAdapterError> {
         let mut cmd = Command::new(&self.invocation[0]);
-        cmd.args(&self.invocation[1..])
-            .args(&invocation.argv)
-            .arg("--json")
+        cmd.args(build_invoke_args(&self.invocation, cwd, &invocation.argv))
             .current_dir(cwd)
             // Force the core's Python into UTF-8 so it reads the streamed body and
             // writes its envelope as UTF-8, not the host locale (cp1252 on
@@ -817,6 +847,58 @@ mod tests {
     }
 
     // --- argument builders + validation -------------------------
+
+    #[test]
+    fn invoke_args_place_target_ahead_of_the_capability_argv() {
+        // An inherited target-directory variable must never outrank the
+        // invocation: `--target` has to precede the capability's verb argv so
+        // it always wins over the process environment.
+        let invocation = vec!["vaultspec-core".to_string()];
+        let cwd = std::env::temp_dir().join("worktree");
+        let argv = vec![
+            "vault".to_string(),
+            "set-body".to_string(),
+            "adr/2026-06-29-x".to_string(),
+        ];
+        let assembled = build_invoke_args(&invocation, &cwd, &argv);
+        assert_eq!(
+            assembled,
+            vec![
+                OsString::from("--target"),
+                cwd.as_os_str().to_os_string(),
+                OsString::from("vault"),
+                OsString::from("set-body"),
+                OsString::from("adr/2026-06-29-x"),
+                OsString::from("--json"),
+            ]
+        );
+    }
+
+    #[test]
+    fn invoke_args_keep_the_uv_launcher_prefix_ahead_of_target() {
+        // The uv-run invocation carries its own leading args; `--target` must
+        // land after those (they select the launcher, not the core) and still
+        // ahead of the capability's verb argv.
+        let invocation = ["uv", "run", "--no-sync", "vaultspec-core"]
+            .map(String::from)
+            .to_vec();
+        let cwd = std::env::temp_dir().join("worktree");
+        let argv = vec!["vault".to_string(), "plan".to_string()];
+        let assembled = build_invoke_args(&invocation, &cwd, &argv);
+        assert_eq!(
+            assembled,
+            vec![
+                OsString::from("run"),
+                OsString::from("--no-sync"),
+                OsString::from("vaultspec-core"),
+                OsString::from("--target"),
+                cwd.as_os_str().to_os_string(),
+                OsString::from("vault"),
+                OsString::from("plan"),
+                OsString::from("--json"),
+            ]
+        );
+    }
 
     #[test]
     fn create_document_builds_value_only_argv() {
