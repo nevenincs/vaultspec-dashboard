@@ -30,7 +30,11 @@ export type SessionStatus = "active" | "cancelled" | "closed";
 
 /** Bounded run lifecycle vocabulary (engine `RunStatus`). */
 export type RunStatus =
-  "active" | "cancel_requested" | "cancelled" | "completed" | "failed";
+  | "active"
+  | "cancel_requested"
+  | "cancelled"
+  | "completed"
+  | "failed";
 
 const SESSION_STATUSES: readonly SessionStatus[] = ["active", "cancelled", "closed"];
 const RUN_STATUSES: readonly RunStatus[] = [
@@ -267,7 +271,8 @@ export interface ResumeRunPayload {
  *  UNTAGGED on the wire (disjoint by their required fields), the SAME language the
  *  read projection speaks. */
 export type AgentInterruptDecision =
-  { decision: "approve" | "reject"; comment?: string } | { prompt: string };
+  | { decision: "approve" | "reject"; comment?: string }
+  | { prompt: string };
 
 export interface ResumeInterruptPayload {
   /** The typed decision the run resumes with (no longer opaque). */

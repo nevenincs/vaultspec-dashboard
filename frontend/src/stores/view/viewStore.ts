@@ -91,7 +91,12 @@ export interface OpenDoc {
  * what the mutation hook returns, and the caller maps it onto this status.
  */
 export type EditorStatus =
-  "idle" | "dirty" | "saving" | "saved" | "save-failed" | "conflict";
+  | "idle"
+  | "dirty"
+  | "saving"
+  | "saved"
+  | "save-failed"
+  | "conflict";
 
 /**
  * The single open editor target (document-editor backend), shaped exactly like

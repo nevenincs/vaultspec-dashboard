@@ -14,7 +14,12 @@
 /** The representation modes carried by the `representation_mode` wire field. Only
  *  `connectivity` is rendered today; the others are accepted/normalized values. */
 export type RepresentationMode =
-  "connectivity" | "temporal" | "lineage" | "hierarchical" | "radial" | "community";
+  | "connectivity"
+  | "temporal"
+  | "lineage"
+  | "hierarchical"
+  | "radial"
+  | "community";
 
 /** The default first-load mode. */
 export const DEFAULT_REPRESENTATION_MODE: RepresentationMode = "connectivity";

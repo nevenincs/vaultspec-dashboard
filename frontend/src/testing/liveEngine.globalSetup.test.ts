@@ -55,7 +55,8 @@ describe("live-engine unexpected-exit diagnostics", () => {
 
   it("reports a child exit through one bounded observer", () => {
     let exitListener:
-      ((code: number | null, signal: NodeJS.Signals | null) => void) | undefined;
+      | ((code: number | null, signal: NodeJS.Signals | null) => void)
+      | undefined;
     const child = {
       once: vi.fn(
         (

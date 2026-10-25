@@ -13,7 +13,13 @@ import { Check } from "lucide-react";
 
 /** Semantic dot tones — bound to the scene state / diff CSS variables. */
 export type FacetDotTone =
-  "active" | "complete" | "archived" | "stale" | "broken" | "provisional" | "danger";
+  | "active"
+  | "complete"
+  | "archived"
+  | "stale"
+  | "broken"
+  | "provisional"
+  | "danger";
 
 const DOT_VAR: Record<FacetDotTone, string> = {
   active: "var(--color-state-active)",

@@ -24,7 +24,10 @@ const GLYPH_PX = 14;
 const FOLDER_BROWSER_ENTRY_LIMIT = 256;
 
 export type FolderBrowserBadge =
-  "already-added" | "project" | "git-repository" | "hidden";
+  | "already-added"
+  | "project"
+  | "git-repository"
+  | "hidden";
 
 export interface FolderBrowserRowView {
   /** Stable row key (the absolute path). */

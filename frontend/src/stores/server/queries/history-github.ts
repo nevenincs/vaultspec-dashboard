@@ -645,7 +645,10 @@ export function useIssuesView(scope: unknown, state: unknown = "open"): IssuesVi
 }
 
 export type StatusTabSectionId =
-  "open-plans" | "pull-requests" | "open-issues" | "recent-commits";
+  | "open-plans"
+  | "pull-requests"
+  | "open-issues"
+  | "recent-commits";
 
 export interface StatusSectionCardView {
   id: StatusTabSectionId;

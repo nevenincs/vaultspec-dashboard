@@ -5,7 +5,12 @@ import { documents as sourceDocuments } from "../../locales/en/documents";
 import type { MessageDescriptor } from "../../platform/localization/message";
 
 export type VaultDocumentType =
-  "research" | "adr" | "plan" | "exec" | "audit" | "reference";
+  | "research"
+  | "adr"
+  | "plan"
+  | "exec"
+  | "audit"
+  | "reference";
 
 type DocumentTypeLabelKey =
   | "documents:documentTypes.research"

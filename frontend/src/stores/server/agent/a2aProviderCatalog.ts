@@ -23,7 +23,10 @@ export interface PassThrough {
  * or an optimistic browser probe. */
 export type ProviderHealthState = "available" | "unavailable" | "unknown";
 export type ProviderAuthenticationState =
-  "authenticated" | "unauthenticated" | "unknown" | "not_applicable";
+  | "authenticated"
+  | "unauthenticated"
+  | "unknown"
+  | "not_applicable";
 export type ProviderAdmissionState = "admitted" | "not_admitted" | "unknown";
 export type ProviderCatalogStatus = "available" | "unavailable" | "stale" | "unknown";
 

@@ -43,7 +43,12 @@ export interface BrowserTreeCodeEntryShape {
  *  the engine's `FileTreeEntry` tokens; restated locally because this view module
  *  maps tokens and must not import the wire client. */
 export type CodeRowGitStatus =
-  "modified" | "added" | "deleted" | "renamed" | "untracked" | "conflicted";
+  | "modified"
+  | "added"
+  | "deleted"
+  | "renamed"
+  | "untracked"
+  | "conflicted";
 
 export type CodeRowIgnoreSource = "git" | "rag";
 

@@ -44,9 +44,11 @@ export const SHELL_PANEL_KEY_STEP = 16;
 export type RailTabId = DashboardPanelState["right_tab"];
 
 type RightRailTabLabelKey =
-  "common:activityTabs.status" | "common:activityTabs.changes";
+  | "common:activityTabs.status"
+  | "common:activityTabs.changes";
 type RightRailTabActionLabelKey =
-  "common:actions.showStatus" | "common:actions.showChanges";
+  | "common:actions.showStatus"
+  | "common:actions.showChanges";
 
 export interface RightRailTabPresentation<
   Tab extends RailTabId = RailTabId,

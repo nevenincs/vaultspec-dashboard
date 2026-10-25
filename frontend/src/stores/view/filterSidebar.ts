@@ -30,7 +30,11 @@ import {
 // and the sidebar registers its scoped vocabulary identity so disclosure state
 // never rides across a different corpus vocabulary.
 export type FilterSidebarSectionKey =
-  "kind" | "feature" | "status" | "health" | "edited";
+  | "kind"
+  | "feature"
+  | "status"
+  | "health"
+  | "edited";
 export type FilterSidebarListKey = "doc-types" | "feature-tags";
 
 const FILTER_SIDEBAR_SECTION_KEYS = [
@@ -107,7 +111,13 @@ export type FilterSidebarMenuSectionView =
   | FilterSidebarDateSectionView;
 
 export type FilterSidebarFacetDotTone =
-  "active" | "complete" | "archived" | "stale" | "broken" | "provisional" | "danger";
+  | "active"
+  | "complete"
+  | "archived"
+  | "stale"
+  | "broken"
+  | "provisional"
+  | "danger";
 
 export const FILTER_SIDEBAR_FEATURE_SEARCH_MAX_CHARS = 128;
 export const FILTER_SIDEBAR_VOCABULARY_VALUE_MAX_CHARS = 256;

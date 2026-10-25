@@ -671,7 +671,8 @@ export type CommandPaletteActivationView =
     };
 
 export type CommandPaletteKeyboardIntent =
-  { kind: "move-cursor"; delta: 1 | -1 } | { kind: "run-active" };
+  | { kind: "move-cursor"; delta: 1 | -1 }
+  | { kind: "run-active" };
 
 export interface CommandPaletteArmedRepair {
   clearArmedCommandId: boolean;

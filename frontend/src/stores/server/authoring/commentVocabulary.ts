@@ -134,7 +134,12 @@ export function commentConnectionIssueDescriptor(value: unknown): MessageDescrip
 }
 
 export type CommentMutationKind =
-  "add" | "save" | "resolve" | "reopen" | "move" | "delete";
+  | "add"
+  | "save"
+  | "resolve"
+  | "reopen"
+  | "move"
+  | "delete";
 
 const SUCCESS_DESCRIPTORS = Object.freeze({
   add: descriptor("documents:viewer.comments.feedback.added"),

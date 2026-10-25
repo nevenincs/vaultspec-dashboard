@@ -33,7 +33,10 @@ export const AGENT_THINKING_TEXT_CAP = 16_384;
 
 /** The SERVED tool-execute disposition tokens (`/agent-tools/execute` envelope). */
 export type AgentToolCallDisposition =
-  "dispatched" | "awaiting_permission" | "refused" | "already_handled";
+  | "dispatched"
+  | "awaiting_permission"
+  | "refused"
+  | "already_handled";
 
 /** The SERVED permission-decision outcome tokens (`permission-decision` route). */
 export type AgentToolPermissionDecision = "granted" | "denied";

@@ -178,7 +178,12 @@ export function latestBackendsRagAvailable(
  * - `error`           — a genuine transport/request failure (still carries tiers).
  */
 export type SearchState =
-  "idle" | "loading" | "results" | "no-results" | "semantic-offline" | "error";
+  | "idle"
+  | "loading"
+  | "results"
+  | "no-results"
+  | "semantic-offline"
+  | "error";
 
 export interface SearchControllerView {
   /** The single interpreted phase the view switches on. */

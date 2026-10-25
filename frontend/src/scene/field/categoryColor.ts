@@ -29,7 +29,14 @@ import { cssColorNumber, type ColorNumberReader } from "./tokenReads";
  *  design system's existing `--color-scene-category-code` token (the same colour
  *  the Files/search surface uses) — same schema, no new colour. */
 export type NodeCategory =
-  "feature" | "research" | "adr" | "plan" | "exec" | "audit" | "reference" | "code";
+  | "feature"
+  | "research"
+  | "adr"
+  | "plan"
+  | "exec"
+  | "audit"
+  | "reference"
+  | "code";
 
 /**
  * Map a node's `kind` (doc type, or `feature`/`code`) onto a category. The vault

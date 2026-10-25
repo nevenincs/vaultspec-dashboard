@@ -255,7 +255,11 @@ export interface ProvisionJob {
         provider: "core" | "claude" | "antigravity" | "codex";
         attempted: boolean;
         state:
-          "succeeded" | "failed" | "timeout_cancelled" | "indeterminate" | "not-run";
+          | "succeeded"
+          | "failed"
+          | "timeout_cancelled"
+          | "indeterminate"
+          | "not-run";
         outcome: {
           exit_code?: number | null;
           outcome_indeterminate?: boolean;
@@ -264,7 +268,10 @@ export interface ProvisionJob {
         } | null;
         reconciliation: {
           status:
-            "confirmed_present" | "confirmed_absent" | "not_attempted" | "unresolved";
+            | "confirmed_present"
+            | "confirmed_absent"
+            | "not_attempted"
+            | "unresolved";
           provider_present: boolean;
         };
       }>;
@@ -320,7 +327,12 @@ export interface GitFileDiff {
  *  surface renders them. `staged` carries an index-side change (porcelain X), the
  *  rest a worktree-side change (porcelain Y). */
 export type GitChangeGroup =
-  "staged" | "modified" | "added" | "deleted" | "renamed" | "untracked";
+  | "staged"
+  | "modified"
+  | "added"
+  | "deleted"
+  | "renamed"
+  | "untracked";
 
 /** One changed file in the working tree, reconciled from porcelain status and
  *  numstat. `code` is the raw two-char porcelain `XY` (the non-color identity);

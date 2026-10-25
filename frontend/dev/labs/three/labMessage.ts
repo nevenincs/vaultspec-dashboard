@@ -67,7 +67,9 @@ export interface LabCountMessageDescriptor {
  * real product messages) or one of its own.
  */
 export type AnyLabDescriptor =
-  AnyMessageDescriptor | LabMessageDescriptor | LabCountMessageDescriptor;
+  | AnyMessageDescriptor
+  | LabMessageDescriptor
+  | LabCountMessageDescriptor;
 
 function isLabDescriptor(descriptor: AnyLabDescriptor): boolean {
   return (

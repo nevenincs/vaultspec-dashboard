@@ -30,7 +30,9 @@ export interface AppearanceBooleanControl extends AppearanceControlBase {
 }
 
 export type AppearanceControl =
-  AppearanceNumberControl | AppearanceEnumControl | AppearanceBooleanControl;
+  | AppearanceNumberControl
+  | AppearanceEnumControl
+  | AppearanceBooleanControl;
 
 const SUBGROUP = {
   nodeSizeScale: "nodes",

@@ -11,7 +11,12 @@ const descriptor = <Key extends MessageDescriptor["key"]>(
 ): MessageDescriptor<Key> => Object.freeze({ key });
 
 export type DocumentViewerState =
-  "loading" | "errored" | "degraded" | "empty" | "missing" | "ready";
+  | "loading"
+  | "errored"
+  | "degraded"
+  | "empty"
+  | "missing"
+  | "ready";
 
 export type DocumentViewerDateKind = "created" | "updated";
 

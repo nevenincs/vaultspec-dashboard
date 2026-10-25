@@ -48,7 +48,11 @@ const MSG = {
  *  served tokens only: the permission outcome (once decided) wins over the
  *  execute disposition it settles. */
 export type ToolCallStatusToken =
-  "done" | "needsPermission" | "allowed" | "denied" | "notAllowed";
+  | "done"
+  | "needsPermission"
+  | "allowed"
+  | "denied"
+  | "notAllowed";
 
 /** Served status token -> plain label (mapped like `EditorStatus`). */
 const TOOL_STATUS_MESSAGE: Readonly<Record<ToolCallStatusToken, MessageDescriptor>> = {

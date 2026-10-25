@@ -199,7 +199,12 @@ export interface CodeFilesResponse {
  *  no key at all and the level body must not grow for them. The frontend maps
  *  each token to a label tone and a one-letter badge and derives nothing. */
 export type FileTreeGitStatus =
-  "modified" | "added" | "deleted" | "renamed" | "untracked" | "conflicted";
+  | "modified"
+  | "added"
+  | "deleted"
+  | "renamed"
+  | "untracked"
+  | "conflicted";
 
 /** Which ignore file claims a listed path (code-tree-legibility ADR D3/D4).
  *  `git` = a `.gitignore` rule (gix's own exclude stack), `rag` = a
@@ -582,7 +587,8 @@ export interface DashboardSelection {
 export type DashboardFilters = GraphFilter;
 
 export type DashboardTimelineMode =
-  { kind: "live" } | { kind: "time-travel"; at: number };
+  | { kind: "live" }
+  | { kind: "time-travel"; at: number };
 
 export const GRAPH_GRANULARITIES = ["document", "feature"] as const;
 export type GraphGranularity = (typeof GRAPH_GRANULARITIES)[number];

@@ -22,7 +22,12 @@
 
 /** The six status equivalence classes the stamp treatment is keyed on. */
 export type StatusClass =
-  "affirmed" | "provisional" | "negated" | "retired" | "graded" | "tiered";
+  | "affirmed"
+  | "provisional"
+  | "negated"
+  | "retired"
+  | "graded"
+  | "tiered";
 
 /**
  * A node's resolved status, as the engine would carry it. `value` is the raw
