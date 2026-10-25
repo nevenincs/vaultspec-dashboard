@@ -17,7 +17,7 @@
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
-use fs4::fs_std::FileExt;
+use fs4::{FileExt, TryLockError};
 
 /// A held seat. Dropping it (or process death) releases the OS lock; the
 /// serve loop keeps it alive for its full lifetime.
@@ -53,10 +53,14 @@ pub fn acquire_seat(home: &Path) -> std::io::Result<Result<SeatGuard, SeatBusy>>
         .write(true)
         .truncate(false)
         .open(home.join("seat.lock"))?;
-    if !FileExt::try_lock_exclusive(&file)? {
-        // Live holder: name it from the seat discovery file, best-effort.
-        let (pid, port) = read_seat_identity(home);
-        return Ok(Err(SeatBusy::Held { pid, port }));
+    match FileExt::try_lock(&file) {
+        Ok(()) => {}
+        Err(TryLockError::WouldBlock) => {
+            // Live holder: name it from the seat discovery file, best-effort.
+            let (pid, port) = read_seat_identity(home);
+            return Ok(Err(SeatBusy::Held { pid, port }));
+        }
+        Err(TryLockError::Error(error)) => return Err(error),
     }
     // Advisory content for humans inspecting the file; the LOCK is the truth.
     let _ = file.set_len(0);

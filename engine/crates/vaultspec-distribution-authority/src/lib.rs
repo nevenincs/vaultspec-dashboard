@@ -25,7 +25,7 @@ pub use publication::{
 
 use base64::Engine as _;
 use cap_std::fs::{Dir, OpenOptions as CapOpenOptions};
-use fs4::fs_std::FileExt as _;
+use fs4::{FileExt, TryLockError};
 use futures_util::TryStreamExt as _;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
@@ -694,10 +694,10 @@ fn acquire_cap_verification_lock(
         file.set_permissions(std::fs::Permissions::from_mode(0o600))
             .map_err(|_| VerificationError::DatastoreUnavailable)?;
     }
-    match file.try_lock_exclusive() {
-        Ok(true) => {}
-        Ok(false) => return Err(VerificationError::VerificationInProgress),
-        Err(_) => return Err(VerificationError::DatastoreUnavailable),
+    match FileExt::try_lock(&file) {
+        Ok(()) => {}
+        Err(TryLockError::WouldBlock) => return Err(VerificationError::VerificationInProgress),
+        Err(TryLockError::Error(_)) => return Err(VerificationError::DatastoreUnavailable),
     }
     Ok(VerificationLock {
         _process: process,

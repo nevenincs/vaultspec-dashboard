@@ -50,7 +50,7 @@ import {
 } from "@app/stores/view/filterPresentation";
 import { DEFAULT_RENDER_CAPABILITY } from "@app/stores/view/renderCapability";
 
-import type { IDockviewPanelProps } from "dockview";
+import type { IDockviewPanelProps } from "dockview-react";
 
 import type { SpecimenDef } from "../registry";
 import type { ReviewState } from "../state";

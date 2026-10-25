@@ -15,7 +15,7 @@
 // contracts; no fetch, no raw tiers.
 
 import { useEffect, useRef } from "react";
-import type { IDockviewPanelProps } from "dockview";
+import type { IDockviewPanelProps } from "dockview-react";
 
 import { ErrorBoundary } from "../../platform/errors/ErrorBoundary";
 import { CrashZone } from "../../platform/errors/crashInjection";
