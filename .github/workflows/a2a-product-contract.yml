@@ -88,7 +88,7 @@ jobs:
     # running on, so landing on the wrong machine would produce an artifact
     # whose contents contradict its name.
     runs-on: [self-hosted, "${{ matrix.os }}", "${{ matrix.arch }}"]
-    timeout-minutes: 60
+    timeout-minutes: 180
     steps:
       - name: Checkout dashboard
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

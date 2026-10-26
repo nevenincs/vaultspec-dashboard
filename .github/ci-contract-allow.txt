@@ -10,8 +10,8 @@
 #   runner-plane   Acts on the MACHINE, not the product. It has no meaning on
 #                  a laptop, so there is no recipe it could be hiding. These
 #                  belong in the shared runner tooling, which already owns
-#                  the job hooks and the preflight; they are listed here
-#                  until that render exists rather than pretended away.
+#                  the job hooks; they are listed here until that render
+#                  exists rather than pretended away.
 #
 #   pending        Product-plane work that SHOULD be a recipe and is not yet.
 #                  Each names the recipe it is waiting for.
@@ -27,27 +27,19 @@
 ci.yml:Reclaim the workspace before checkout
 merge-gate.yml:Reclaim the workspace before checkout
 code-health.yml:Reclaim the workspace before checkout
-release-please.yml:Reclaim the workspace before checkout
 
-# Fails the merge verdict for a fork's pull request, before anything is checked
-# out. A statement about which code may merge; it has no local meaning.
-merge-gate.yml:Refuse fork pull requests
-
-# Folds the run's own job results (`needs`) and the head commit's earlier gate
-# conclusion into the one required check. Both inputs exist only inside a
-# workflow run, so there is no recipe it could be.
+# Folds the run's own job results (`needs`) into the one required check. That
+# input exists only inside a workflow run, so there is no recipe it could be.
 merge-gate.yml:Decide the merge verdict
 
 # Reads engine/rust-toolchain.toml so the pin can be passed to
 # dtolnay/rust-toolchain, which otherwise exports RUSTUP_TOOLCHAIN and
 # overrides the file. Feeds a `uses:`, so it cannot be a recipe.
 merge-gate.yml:Read pinned toolchain
-release-please.yml:Read pinned toolchain
 
 # Absorbs a transient `socket hang up` from the toolchain action, which does
 # not retry. Machine-level, idempotent, `|| true`.
 merge-gate.yml:Warm the pinned toolchain, retrying a dropped connection
-release-please.yml:Warm the pinned toolchain, retrying a dropped connection
 
 # Names the shared cargo target directory for later steps, and repairs a
 # runner whose sccache port has been squatted. Both write GITHUB_ENV; both are
@@ -86,13 +78,11 @@ merge-gate.yml:Stop serve
 merge-gate.yml:Component lock + release-set-manifest schema are well-formed
 merge-gate.yml:The committed Cargo.lock agrees with Cargo.toml
 merge-gate.yml:Product builder, manifest verifiers, and lock/capsule/release pins
-release-please.yml:Regenerate and push engine/Cargo.lock
 
 # The release cut. Each step reads or writes state that exists only inside a
 # workflow run - the pending release pull request, its proven head, the tag
 # Release Please produced - so none of them has a local meaning to wrap in a
-# recipe. `Dispatch the merge gate for the
-# release pull request` is a bare `gh` call the shape rule already permits.
+# recipe.
 release-please.yml:Find the release pull request and the commit to prove
 release-please.yml:Merge the proven release pull request
 release-please.yml:Name a release this token cannot tag
