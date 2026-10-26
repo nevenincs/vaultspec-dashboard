@@ -4,9 +4,9 @@ tags:
   - '#index'
   - '#graph-simulation-stability'
 date: '2026-08-01'
-modified: '2026-09-23'
+modified: '2026-10-25'
 body_schema: 'body-v2'
-body_hash: 'sha256:7d497d0ae135664f74bd9d7df12f417d09bddb2369e6c599340560ed17489b48'
+body_hash: 'sha256:5babb8cb08ef2d962d82c72c01be7ff7d27a205a1743f5d0dbc640c50fef1724'
 related:
   - '[[2026-06-29-graph-simulation-stability-adr]]'
   - '[[2026-06-29-graph-simulation-stability-ledger]]'
@@ -19,6 +19,7 @@ related:
   - '[[2026-07-03-graph-simulation-stability-research]]'
   - '[[2026-09-05-graph-simulation-stability-force-balance-audit]]'
   - '[[2026-09-05-graph-simulation-stability-force-balance-reference]]'
+  - '[[2026-09-05-graph-simulation-stability-ledger]]'
   - '[[2026-09-05-graph-simulation-stability-performance-audit]]'
   - '[[2026-09-05-graph-simulation-stability-performance-engineering-research]]'
   - '[[2026-09-05-graph-simulation-stability-performance-implementation-audit]]'
@@ -48,6 +49,7 @@ Auto-generated index of all documents tagged with `#graph-simulation-stability`.
 ### exec
 
 - `2026-06-29-graph-simulation-stability-ledger` - `graph-simulation-stability` ledger
+- `2026-09-05-graph-simulation-stability-ledger` - `graph-simulation-stability` ledger
 
 ### plan
 

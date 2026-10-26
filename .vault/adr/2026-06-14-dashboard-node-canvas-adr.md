@@ -3,8 +3,8 @@ tags:
   - '#adr'
   - '#dashboard-node-canvas'
 date: '2026-06-14'
-modified: '2026-06-15'
-body_hash: 'sha256:0111b67037ed2d52205a16912576a7ea4b6657b6dc7e9bfc3402138a4796d9e7'
+modified: '2026-09-19'
+body_hash: 'sha256:0ada1ce12c69eec5480ddc1f1f5ebf25e4bd029d352ecafb93fd5a3de5cbba78'
 related:
   - "[[2026-06-14-dashboard-design-language-adr]]"
   - "[[2026-06-14-dashboard-iconography-adr]]"
@@ -77,3 +77,12 @@ The treatment-first, hue-redundant encoding is retained because it is both the a
 ## Codification candidates
 
 None. The constraints this ADR honors are already codified — `graph-compute-is-cpu-gpu-is-render-and-search`, `graph-queries-are-bounded-by-default`, `dashboard-layer-ownership`, `views-are-projections-of-one-model`, and `provenance-stable-keys-are-identity-bearing` — and the new visual obligations (treatment-first grayscale identity, warmth-in-tokens, icons from the two sanctioned families) are pending candidates on the base design-language and iconography ADRs that must hold across a full execution cycle before promotion. This ADR introduces no further durable cross-surface constraint of its own.
+
+## Amendment note (2026-09-19), recording the reversal made by `2026-06-19-graph-backend-unification-adr` (accepted)
+
+That record's D1 retires the PixiJS rendering stack this ADR specifies against; every clause not named below stands unchanged.
+
+- **The named module set is retired.** `field/nodeSprites.ts` (`NodeSpriteLayer` + `GlyphTextureProvider`), `field/edgeMeshes.ts` (`EdgeMeshLayer` + the `write*` buffer writers), and `field/camera.ts` (the pixi-bound `Camera` class) no longer exist under `frontend/src/scene/field/`. Their pixi-free helper logic survives under renamed modules (`edgeStyle.ts`, `cameraCore.ts`, `nodeVisualEncoding.ts`) now consumed by the three.js field.
+- **The four-tier edge-encoding clause narrows to three.** "Four fixed line treatments" (declared/structural/temporal/semantic) no longer holds: `EDGE_TIERS` in `frontend/src/scene/field/edgeStyle.ts:12` is `["declared", "structural", "temporal"]`, and `edgeGroupKey` (`edgeStyle.ts:34-47`) throws `UnknownTierError` at `edgeStyle.ts:46` for any other tier, including `semantic`, instead of rendering the haze treatment this ADR describes.
+- **The `GlyphTextureProvider` pattern survives, re-homed** to the three.js field's own mark-loading path (`field/marks.ts`); it is the class instance that retired, not the seam concept.
+- Every other clause — level of detail, the browse interaction, bounded-query discipline, states, keyboard/a11y, and layer ownership — stands unchanged; it describes rendered behaviour, not the removed implementation modules.

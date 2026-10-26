@@ -3,8 +3,8 @@ tags:
   - '#adr'
   - '#dashboard-rag-manager'
 date: '2026-06-14'
-modified: '2026-07-12'
-body_hash: 'sha256:e78397e050db1d7aef9733399df44a9f6c7890bef0333e85294c8f4f8cf56689'
+modified: '2026-09-19'
+body_hash: 'sha256:055db83e9736c31c626713e24fa1e38dd18b9e3dc19ce08cbf4df88d03d33cb9'
 related:
   - "[[2026-06-14-dashboard-design-language-adr]]"
   - "[[2026-06-14-dashboard-iconography-adr]]"
@@ -54,8 +54,7 @@ proxy and status sections, and it reads the current code as the starting point.
   state.
 
 - **Current form — the status rollup.** `NowStrip.tsx`'s `ragCard` is the rag rollup: it
-  reads `status.rag` from the `/status` recovery snapshot (typed `{ service, watcher?,
-  index?, jobs? }`), renders "down/absent" when the service is not running, and otherwise
+  reads `status.rag` from the `/status` recovery snapshot (typed `{ service, watcher?, index?, jobs? }`), renders "down/absent" when the service is not running, and otherwise
   a one-line detail of `watcher · index · jobs`. The strip refreshes on the `backends` and
   `git` SSE channels through a debounced `/status` invalidation. Tones are mapped to the
   retired token palette.
@@ -253,3 +252,11 @@ durable cross-session constraint, so promoting a new rule would fragment discipl
 already captured. The arm-then-confirm and ops-disabled-in-time-travel patterns are
 likewise behaviors of the platform confirm guard and the GUI ADR, not new obligations this
 feature originates.
+
+## Amendment note (2026-09-19), recording the reversal made by `2026-08-01-advanced-service-console-adr`
+
+**`2026-08-01-advanced-service-console-adr` (2026-08-01, accepted) relocates and redesigns this ADR's control surface; every clause not named below stands unchanged.**
+
+- The right-rail placement this ADR specified for the rag control surface — `OpsPanel.tsx`'s R1-whitelist buttons and `NowStrip.tsx`'s `ragCard` status rollup — is retired; neither file exists in the current tree. `advanced-service-console` D1/D2 moves every operational console into a Settings ▸ Advanced section ("the rag dashboard and A2A lifecycle panels leave `ControlPanels`"), and its D4 redesigns the surface as a single panel — service identity header, lifecycle controls, job monitoring, log tail, and storage/projects summary — now `frontend/src/app/panels/IndexConsole.tsx`.
+- The surface's on-screen name also changed: `advanced-service-console`'s D4 re-correction (2026-08-02) fixed the label at "Search Service," a narrowing of the labels-are-user-facing rule scoped to that one word within the Advanced console namespace only.
+- What this ADR's successor does NOT reverse: engine read-and-infer over the whitelisted `/ops/rag/{verb}` proxy, the one-dispatch-seam (`dispatchOps`) requirement, and the ban on GUI-side whitelist growth all survive unchanged — `advanced-service-console` rehomes and redesigns the surface; it does not touch the wire contract this ADR fixed.

@@ -41,8 +41,8 @@ Every replayable message must carry an `id:` value. Heartbeats should use SSE co
 Cursor retention is part of the server contract. Given cursor `C`, the server must produce exactly one of three outcomes:
 
 1. Replay all retained events strictly after `C`.
-2. Establish that the client is current and continue waiting for new events.
-3. Report that `C` is unknown or older than retained history and require a fresh snapshot.
+1. Establish that the client is current and continue waiting for new events.
+1. Report that `C` is unknown or older than retained history and require a fresh snapshot.
 
 Treating an expired cursor as an empty stream is unsafe because the client cannot distinguish “caught up” from “irrecoverably behind.”
 
@@ -63,11 +63,11 @@ A snapshot and stream opened independently can race: events committed after the 
 A safe startup sequence is:
 
 1. Load the persisted record and verify that its schema, stream identity, and authorization scope match.
-2. If no compatible state checkpoint exists, request a fresh snapshot carrying checkpoint cursor `S`.
-3. Install the snapshot, then durably store `S`.
-4. Open the event stream after `S`.
-5. For each event, reject malformed data, apply it idempotently, and then persist its cursor.
-6. On an expired or invalid cursor, discard the incompatible checkpoint and repeat the snapshot handshake.
+1. If no compatible state checkpoint exists, request a fresh snapshot carrying checkpoint cursor `S`.
+1. Install the snapshot, then durably store `S`.
+1. Open the event stream after `S`.
+1. For each event, reject malformed data, apply it idempotently, and then persist its cursor.
+1. On an expired or invalid cursor, discard the incompatible checkpoint and repeat the snapshot handshake.
 
 The stale-cursor signal should be machine-readable and terminal for that connection. A fetch-based client can interpret a documented HTTP status such as 409 or 410 with a structured error body before parsing the SSE stream. HTTP 410 means access to the target resource is no longer available and is likely permanent; it is suitable only if the endpoint contract defines the cursor, rather than the stream resource, as the unavailable item. (S2, section 15.5.11)
 
@@ -91,19 +91,19 @@ Cross-tab leader election through `BroadcastChannel`, shared-worker compatibilit
 
 ## Alternatives Considered
 
-| Alternative | Disposition | Rationale |
-| --- | --- | --- |
-| Native `EventSource` with in-memory `Last-Event-ID` only | Rejected | Reloads and restarts lose the resume position; stale-cursor recovery and jittered backoff cannot be controlled. |
-| Native `EventSource` plus cursor in the URL | Kept as a constrained option | It preserves native parsing and reconnect behavior, but cursor exposure, custom recovery responses, and retry orchestration remain limited. It fits only when replay gaps are exceptional and retention exceeds every required offline interval. |
-| Fetch-based SSE with application-controlled reconnect | Evidence-favored | It supports an initial durable cursor, explicit stale-cursor responses, bounded jitter, cancellation, and authentication headers at the cost of owning standards-conformant parsing. |
-| Persist cursor before applying an event | Rejected | A crash between persistence and application causes permanent event loss. |
-| Persist cursor after applying an idempotent event | Kept | A crash can cause duplicate delivery but does not skip the event, providing recoverable at-least-once behavior. |
-| Persist only a cursor beside unrelated in-memory state | Rejected unless startup always fetches a checkpointed snapshot | The cursor can advance beyond state that disappears on reload. |
-| Persist state and cursor in one IndexedDB transaction | Kept where offline cached state is required | It provides an atomic local checkpoint but adds schema, migration, and storage complexity. |
-| Use `localStorage` for a scoped scalar snapshot cursor | Kept where state is rebuilt from the server | It is durable across sessions, provided the snapshot cursor is stored only after snapshot installation and event handlers tolerate replay. |
-| Use timestamps as cursors | Rejected | Equal timestamps, clock behavior, and distributed writers do not establish an unambiguous replay position. |
-| Silently start at the current head when a cursor expires | Rejected | It converts a detectable retention gap into silent data loss. |
-| Reset through a fresh snapshot and checkpoint cursor | Kept | It restores a known-consistent state before replay continues. |
+| Alternative                                              | Disposition                                                    | Rationale                                                                                                                                                                                                                                        |
+| -------------------------------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Native `EventSource` with in-memory `Last-Event-ID` only | Rejected                                                       | Reloads and restarts lose the resume position; stale-cursor recovery and jittered backoff cannot be controlled.                                                                                                                                  |
+| Native `EventSource` plus cursor in the URL              | Kept as a constrained option                                   | It preserves native parsing and reconnect behavior, but cursor exposure, custom recovery responses, and retry orchestration remain limited. It fits only when replay gaps are exceptional and retention exceeds every required offline interval. |
+| Fetch-based SSE with application-controlled reconnect    | Evidence-favored                                               | It supports an initial durable cursor, explicit stale-cursor responses, bounded jitter, cancellation, and authentication headers at the cost of owning standards-conformant parsing.                                                             |
+| Persist cursor before applying an event                  | Rejected                                                       | A crash between persistence and application causes permanent event loss.                                                                                                                                                                         |
+| Persist cursor after applying an idempotent event        | Kept                                                           | A crash can cause duplicate delivery but does not skip the event, providing recoverable at-least-once behavior.                                                                                                                                  |
+| Persist only a cursor beside unrelated in-memory state   | Rejected unless startup always fetches a checkpointed snapshot | The cursor can advance beyond state that disappears on reload.                                                                                                                                                                                   |
+| Persist state and cursor in one IndexedDB transaction    | Kept where offline cached state is required                    | It provides an atomic local checkpoint but adds schema, migration, and storage complexity.                                                                                                                                                       |
+| Use `localStorage` for a scoped scalar snapshot cursor   | Kept where state is rebuilt from the server                    | It is durable across sessions, provided the snapshot cursor is stored only after snapshot installation and event handlers tolerate replay.                                                                                                       |
+| Use timestamps as cursors                                | Rejected                                                       | Equal timestamps, clock behavior, and distributed writers do not establish an unambiguous replay position.                                                                                                                                       |
+| Silently start at the current head when a cursor expires | Rejected                                                       | It converts a detectable retention gap into silent data loss.                                                                                                                                                                                    |
+| Reset through a fresh snapshot and checkpoint cursor     | Kept                                                           | It restores a known-consistent state before replay continues.                                                                                                                                                                                    |
 
 ## Evidence-Favored Direction
 
@@ -129,7 +129,7 @@ The ADR must decide the wire fields, cursor transport, stale-cursor status, stor
 ## Sources
 
 1. WHATWG, “HTML Living Standard: Server-sent events,” sections 9.2.2–9.2.6, accessed 2026-07-16: https://html.spec.whatwg.org/multipage/server-sent-events.html
-2. IETF, RFC 9110, “HTTP Semantics,” June 2022, sections 15.5.11 and 17.9: https://www.rfc-editor.org/rfc/rfc9110
-3. W3C, “Indexed Database API 3.0,” sections 2.7 and 5.4, W3C Recommendation, 2025-05-13: https://www.w3.org/TR/IndexedDB-3/
-4. WHATWG, “Web Storage Living Standard,” sections 4.1–4.3, accessed 2026-07-16: https://storage.spec.whatwg.org/
-5. Marc Brooker, AWS Architecture Blog, “Exponential Backoff and Jitter,” updated 2023-05-16: https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/
+1. IETF, RFC 9110, “HTTP Semantics,” June 2022, sections 15.5.11 and 17.9: https://www.rfc-editor.org/rfc/rfc9110
+1. W3C, “Indexed Database API 3.0,” sections 2.7 and 5.4, W3C Recommendation, 2025-05-13: https://www.w3.org/TR/IndexedDB-3/
+1. WHATWG, “Web Storage Living Standard,” sections 4.1–4.3, accessed 2026-07-16: https://storage.spec.whatwg.org/
+1. Marc Brooker, AWS Architecture Blog, “Exponential Backoff and Jitter,” updated 2023-05-16: https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/

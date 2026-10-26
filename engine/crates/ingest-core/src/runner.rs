@@ -5,6 +5,7 @@
 //! --json` inside the scope's checkout, and every payload passes schema
 //! pinning before parsing: unknown schema versions fail loud, never guess.
 
+use std::ffi::OsString;
 use std::io::Read;
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
@@ -158,6 +159,36 @@ impl Envelope {
     }
 }
 
+/// Assemble the full argument list `run_json` passes to the resolved program:
+/// the invocation's leading args, an explicit `--target <cwd>` PRECEDING the
+/// subcommand, the verb's own args, and the trailing `--json` flag.
+///
+/// The explicit `--target` is deliberate, not redundant with the sibling
+/// `current_dir(cwd)`: once the core CLI honors an inherited target-directory
+/// variable as a fallback, that variable would otherwise silently outrank the
+/// child's working directory and redirect the read to a different workspace.
+/// Passing `--target` pins the choice to this call, never to whatever the
+/// caller's environment happens to export.
+fn build_run_json_args(invocation: &[String], cwd: &Path, args: &[&str]) -> Vec<OsString> {
+    debug_assert!(cwd.is_absolute(), "cwd must be an absolute path");
+
+    let Some((_, leading)) = invocation.split_first() else {
+        // Invocation must have at least a program name; return early rather than panic.
+        return vec![OsString::from("--target"), cwd.as_os_str().to_os_string()]
+            .into_iter()
+            .chain(args.iter().map(|s| OsString::from(*s)))
+            .chain(std::iter::once(OsString::from("--json")))
+            .collect();
+    };
+
+    let mut full: Vec<OsString> = leading.iter().map(OsString::from).collect();
+    full.push(OsString::from("--target"));
+    full.push(cwd.as_os_str().to_os_string());
+    full.extend(args.iter().map(|s| OsString::from(*s)));
+    full.push(OsString::from("--json"));
+    full
+}
+
 /// Invocation recipe for the core CLI. `detect()` prefers the bare binary
 /// on PATH and falls back to the uv-managed environment, mirroring the
 /// project's own runtime guidance.
@@ -224,9 +255,7 @@ impl CoreRunner {
     /// parsed envelope.
     pub fn run_json(&self, cwd: &Path, args: &[&str], supported: &[&str]) -> Result<Envelope> {
         let mut cmd = Command::new(&self.invocation[0]);
-        cmd.args(&self.invocation[1..])
-            .args(args)
-            .arg("--json")
+        cmd.args(build_run_json_args(&self.invocation, cwd, args))
             .current_dir(cwd)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
@@ -575,6 +604,51 @@ mod tests {
             Envelope::parse_pinned("not json", &[]),
             Err(CoreError::Json(_))
         ));
+    }
+
+    #[test]
+    fn run_json_args_place_target_ahead_of_the_subcommand() {
+        // An inherited target-directory variable must never outrank the
+        // invocation: `--target` has to precede the subcommand so it always
+        // wins over the process environment.
+        let invocation = vec!["vaultspec-core".to_string()];
+        let cwd = std::env::temp_dir().join("workspace");
+        let assembled = build_run_json_args(&invocation, &cwd, &["vault", "graph"]);
+        assert_eq!(
+            assembled,
+            vec![
+                OsString::from("--target"),
+                cwd.as_os_str().to_os_string(),
+                OsString::from("vault"),
+                OsString::from("graph"),
+                OsString::from("--json"),
+            ]
+        );
+    }
+
+    #[test]
+    fn run_json_args_keep_the_uv_launcher_prefix_ahead_of_target() {
+        // The uv-run invocation carries its own leading args; `--target` must
+        // land after those (they select the launcher, not the core) and still
+        // ahead of the subcommand.
+        let invocation = ["uv", "run", "--no-sync", "vaultspec-core"]
+            .map(String::from)
+            .to_vec();
+        let cwd = std::env::temp_dir().join("workspace");
+        let assembled = build_run_json_args(&invocation, &cwd, &["vault", "stats"]);
+        assert_eq!(
+            assembled,
+            vec![
+                OsString::from("run"),
+                OsString::from("--no-sync"),
+                OsString::from("vaultspec-core"),
+                OsString::from("--target"),
+                cwd.as_os_str().to_os_string(),
+                OsString::from("vault"),
+                OsString::from("stats"),
+                OsString::from("--json"),
+            ]
+        );
     }
 
     /// A CoreRunner that invokes the OS shell, so `run_json`'s subprocess plumbing

@@ -3,12 +3,13 @@ tags:
   - '#adr'
   - '#dashboard-gui'
 date: '2026-06-12'
-modified: '2026-07-18'
-body_hash: 'sha256:cdb49c7d3d4b66f0fdf0ac81919df46dea3e808d429ea6d6b2fe0cb8a2c41880'
+modified: '2026-09-19'
+body_hash: 'sha256:d592135683140dc0d1a00ec9d49c540a81eb7ec76b62b8d9919a7bc716c81f13'
 related:
   - "[[2026-06-12-dashboard-foundation-research]]"
   - '[[2026-07-18-dashboard-gui-research]]'
 ---
+
 # `dashboard-gui` adr: `dashboard GUI architecture` | (**status:** `accepted`)
 
 Migrated from the kickoff working set (`tmp/kickoff/`) on 2026-06-12; this
@@ -794,3 +795,10 @@ react-19-2); Vite 6 (vite.dev/blog/announcing-vite6); streamedQuery
 (tanstack.com/query/v5/docs/reference/streamedQuery); Tailwind v4
 (tailwindcss.com/blog/tailwindcss-v4); rust-embed axum example
 (docs.rs/crate/rust-embed/latest/source/examples/axum.rs).
+
+## Amendment note (2026-09-19), recording one reversal made elsewhere and one abandonment with no successor record
+
+**Two independent clauses, in §6 and §5.2, no longer hold; only the §6 renderer clause has a governing successor.**
+
+- §6's renderer recommendation (PixiJS v8 + graphology + d3-interpolators, gated on a week-one spike) was first settled BY that spike: `2026-06-12-dashboard-foundation-adr` records "W01.P01.S01–S03: PixiJS v8 CONFIRMED; fallback not invoked." That outcome was itself later reversed: `2026-06-19-graph-backend-unification-adr` (2026-06-19, accepted) unifies the field on three.js + d3-force and retires PixiJS outright (along with an intervening Cosmos experiment never recorded here) — "Cosmos and PixiJS are then deleted entirely and their npm dependencies purged." `frontend/package.json` carries `three` and no `pixi.js`/`graphology` entry. §6's evaluation criteria and its hybrid GPU-field-plus-DOM-islands architecture are not reversed and stand.
+- §5.2's UI-primitives clause (Base UI, falling back to Radix Primitives) was never adopted. `frontend/package.json` carries neither package; the bespoke `frontend/src/app/kit/` (`Button.tsx`, `Chip.tsx`, and peers) shipped in their place. No later ADR was found recording this choice — it is an unrecorded abandonment, not a reversal this note can attribute to a successor. §5.2's other clauses (React/TypeScript/Vite, the three-store split, Tailwind, no CSS-in-JS) are unaffected and stand.

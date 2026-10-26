@@ -29,6 +29,7 @@ Usage:
     [--dashboard-name vaultspec.exe --updater-name vaultspec-updater.exe] \
     > build-spec.json
 """
+
 import argparse
 import json
 import os
@@ -65,7 +66,9 @@ def main() -> int:
         default=None,
         help="the launchable binary's name inside the onedir (default: vaultspec-a2a[.exe])",
     )
-    p.add_argument("--lock", default=None, help="the component lock; pair with --a2a-runtime")
+    p.add_argument(
+        "--lock", default=None, help="the component lock; pair with --a2a-runtime"
+    )
     p.add_argument("--sbom", required=True)
     p.add_argument("--sbom-format", default="cyclonedx")
     p.add_argument("--dashboard-name", default=None)
@@ -89,7 +92,9 @@ def main() -> int:
     args = p.parse_args()
 
     windows = args.target.endswith("windows-msvc")
-    dashboard_name = args.dashboard_name or ("vaultspec.exe" if windows else "vaultspec")
+    dashboard_name = args.dashboard_name or (
+        "vaultspec.exe" if windows else "vaultspec"
+    )
     updater_name = args.updater_name or (
         "vaultspec-updater.exe" if windows else "vaultspec-updater"
     )
@@ -152,8 +157,10 @@ def main() -> int:
             ("--updater", args.updater),
             ("--sbom", args.sbom),
             *((("--lock", args.lock),) if args.lock is not None else ()),
-            *((f"--license {component}", path)
-              for component, _spdx, path in args.license),
+            *(
+                (f"--license {component}", path)
+                for component, _spdx, path in args.license
+            ),
         )
         if not os.path.isfile(path)
     ]
@@ -196,9 +203,15 @@ def main() -> int:
             "release_manifest_path": "release.json",
             "dashboard_version": args.version,
             "dashboard_commit": args.commit,
-            "dashboard": {"source": slashed(args.dashboard), "dest_relative": f"bin/{dashboard_name}"},
+            "dashboard": {
+                "source": slashed(args.dashboard),
+                "dest_relative": f"bin/{dashboard_name}",
+            },
             "updater_version": args.version,
-            "updater": {"source": slashed(args.updater), "dest_relative": f"bin/{updater_name}"},
+            "updater": {
+                "source": slashed(args.updater),
+                "dest_relative": f"bin/{updater_name}",
+            },
             **({"a2a": a2a} if a2a is not None else {}),
             "licenses": licenses,
             "sbom": {"source": slashed(args.sbom), "dest_relative": "sbom.cdx.json"},

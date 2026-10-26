@@ -3,8 +3,8 @@ tags:
   - '#adr'
   - '#node-graph-rework'
 date: '2026-06-17'
-modified: '2026-07-12'
-body_hash: 'sha256:30dc8809a5988284127dfb386f3a510b99690ba061b2ccbe5000e90c85aaa321'
+modified: '2026-09-19'
+body_hash: 'sha256:8dd30437dc81cbd81600f32ea6373a12d048117735f179c3b9b1d6afa8d184dd'
 related:
   - "[[2026-06-17-node-graph-rework-research]]"
 ---
@@ -219,3 +219,11 @@ User directive: follow the norm.
   re-introduces the corner-squeeze) is forbidden. (Candidate only — promote per the
   codify discipline after it holds across the cycle, not on first encounter. Sibling of
   `graph-compute-is-cpu-gpu-is-render-and-search`.)
+
+## Amendment note (2026-09-19), recording the reversal made by `2026-06-19-graph-backend-unification-adr` (accepted)
+
+That record's D1 retires the renderer this ADR's D1 chose; every clause not named below stands unchanged.
+
+- **D1's renderer clause is retired.** "cosmos.gl as a pure GPU point/line renderer" (`enableSimulation:false`, `rescalePositions:false`, positions pushed each frame via `setPointPositions`/`render()`) no longer applies: `@cosmos.gl/graph` is absent from `frontend/package.json`, and no `cosmosField`/`cosmosConfig`/`set-cosmos-config` module remains anywhere under `frontend/src/scene/`. The live surface is the three.js field.
+- **D2 and D3 survive, re-homed.** The CPU d3-force layout driving node positions (originally `FieldLayout` in `forceLayout.ts`) survives as the three.js field's own solver, `frontend/src/scene/three/d3ForceSolver.ts` (a ground-up rewrite for the three.js cutover, not a rename), still the single source of node positions each frame. The `set-bounds { shape, size }` seam command (D3) survives verbatim: defined in `frontend/src/scene/sceneController.ts`, dispatched from `stores/view/stageSceneCommands.ts`, and handled in `frontend/src/scene/three/threeField/data.ts`.
+- Every other clause — the Considerations, Constraints, D4 edge-semantics mapping, D5 performance discipline, D6 scale gate, D7 tier ordering, Rationale, and the 2026-06-17 layout-norm addendum — is renderer-agnostic and stands unchanged; it describes the CPU layout, not the retired cosmos renderer.

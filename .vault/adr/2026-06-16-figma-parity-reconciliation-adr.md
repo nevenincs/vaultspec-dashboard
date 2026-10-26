@@ -7,8 +7,8 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-research]]"
 supersedes:
   - '2026-06-14-dashboard-activity-rail-adr'
-modified: '2026-07-12'
-body_hash: 'sha256:a77e0e9e9461be57df6c0e8bda1efc4eee0bba1fd37ea636dcae5fe9e2190d49'
+modified: '2026-09-19'
+body_hash: 'sha256:8820220a28406dcec02b8559b7a3cb022ca127534db44327b6434287f9182559'
 ---
 
 # `figma-parity-reconciliation` adr: `Figma-binding frontend rewrite and reconciliation` | (**status:** `accepted`)
@@ -165,3 +165,9 @@ than a moving target — directly the stated goal.
   `SceneController` command/event contract unchanged — it adds no fetch, mints no model, and
   changes those contracts only through a reviewed contract event.
 - (`figma-code-connect-via-cli` was already codified this cycle.)
+
+## Amendment note (2026-09-19), recording the reversal made by `2026-06-27-figma-naming-contract-adr` (accepted)
+
+**The "Foundation — Code Connect linkage" clause in Implementation is reversed.** That clause committed to wiring the codebase to Figma through the `@figma/code-connect` CLI — a `figma.config.json`, `*.figma.tsx` mappings from code components to Figma Kit primitives, validated by `figma connect parse`, with publish as a human-gated step. Code Connect was removed entirely (no Org/Enterprise seat) and replaced by the name-as-contract scheme: a component's Figma node name equals its bare PascalCase React export, with an opt-in `// @figma <Name> · <fileKey> · <nodeId>[ · alias-of <Export>]` source citation as the only fallback, validated by the local `figma:names` gate. No `figma.config.json`, `*.figma.tsx`, or `component-map.json` exists in the tree (`frontend/dev/tooling/figma-names-check.mjs:4-5` states this outright).
+
+Every other clause stands unchanged: the layer-ownership boundary, the preserved `frontend/src/stores/` and `SceneController` contract, the DTCG token pipeline, the historical-diff route, and the view-rewrite scope. The Phase-5 tab-IA amendment note already appended to this record is unaffected and also stands.

@@ -3,8 +3,8 @@ tags:
   - '#adr'
   - '#activity-rail-realignment'
 date: '2026-07-14'
-modified: '2026-07-14'
-body_hash: 'sha256:1584b1e9b27d9e00e94ce23114b21dc3fbcd663c2f56565b831dd3d4aaadc6e0'
+modified: '2026-09-19'
+body_hash: 'sha256:ff001f39c57af43af6019edbfb9271a05a7e2a20cedeaa09fc492341c9313c8c'
 related:
   - "[[2026-07-14-activity-rail-realignment-research]]"
   - '[[2026-06-16-status-overview-adr]]'
@@ -149,3 +149,11 @@ on this feature (2026-07-14).
   on bound frames per the design-system law.
 - Opens a clean pathway for future panels (e.g. provisioning, data activity
   detail) to enroll as cluster chips without touching the rail again.
+
+## Amendment note (2026-09-19), recording the reversal made by `2026-08-01-advanced-service-console-adr`
+
+**`2026-08-01-advanced-service-console-adr` (2026-08-01, accepted) narrows this ADR's D2/D3 footer-cluster clause; every clause not named below stands unchanged.**
+
+- D2's four-chip footer cluster (Search service, Approvals, Backend health, Vault health) is narrowed to one chip. `advanced-service-console` D2: "`FrameworkStatusCluster` leaves the rail footer; the rag dashboard and A2A lifecycle panels leave `ControlPanels`." Its D3 keeps only the pending-approvals affordance, deferring that chip's final form to the in-flight agent-panel campaign. `frontend/src/app/right/FrameworkStatusCluster.tsx:5-12` records the narrowing in comment: the cluster "used to carry one chip per FRAMEWORK STATUS surface (Search service, Vault health)... What SURVIVES here is the pending-changes affordance."
+- The Search-service and Backend/Vault-health panels this ADR's D3 specified as rail-reached modal `Dialog` panels move to a Settings ▸ Advanced section (`advanced-service-console` D1, D4, D6) rather than being reached from the rail footer at all.
+- D1 (the rail is status-only) and D5/D6 (Figma-first authoring, compact-shell parity) are not reversed and continue to govern.
