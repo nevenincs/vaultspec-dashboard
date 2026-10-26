@@ -119,9 +119,9 @@ create-release = false
   # build-local-artifacts `runs-on` (hand-maintained, see allow-dirty above):
   #   linux-x64 -> [self-hosted, Linux, X64]      linux-arm64 -> [self-hosted, Linux, ARM64]
   #   macOS     -> [self-hosted, macOS, ARM64]    Windows     -> [self-hosted, Windows, X64]
-  # The release preflight derives its selectors from that same translation, and
-  # dev/guards/test_preflight_coverage.py fails on any key added here without an
-  # arm there. An untranslated key would otherwise queue its leg forever.
+  # An untranslated key falls through to `unmapped-dist-runner-<key>`, which no
+  # runner carries, so its leg queues until the orchestrator's queue watchdog
+  # cancels the run.
   # The two non-Linux targets keep the short form: one label, no container.
   [dist.github-custom-runners]
   aarch64-apple-darwin = "macOS"

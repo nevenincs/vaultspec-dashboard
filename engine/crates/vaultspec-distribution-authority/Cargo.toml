@@ -20,9 +20,9 @@ unsealed-verify = []
 
 [dependencies]
 base64 = "0.23.1"
-cap-std = "3.4.4"
+cap-std = "4.0.3"
 futures-util = { version = "0.3.31", default-features = false, features = ["std"] }
-fs4 = { version = "0.13", default-features = false, features = ["sync"] }
+fs4 = { version = "1.1", default-features = false, features = ["sync"] }
 jiff = "0.2.15"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
@@ -39,7 +39,7 @@ nix = { version = "0.31", default-features = false, features = ["user"] }
 # cap-std holds directories as O_PATH descriptors, on which fchmod/fsync fail
 # EBADF; rustix reopens them relative to the capability for durability syncs,
 # matching the credentials lane's directory handling.
-rustix = { version = "=1.1.4", features = ["fs"] }
+rustix = { version = "=1.1.5", features = ["fs"] }
 
 [target.'cfg(windows)'.dependencies]
 vaultspec-windows-authority = { path = "../vaultspec-windows-authority" }

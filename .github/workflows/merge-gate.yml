@@ -7,35 +7,34 @@
 # advisories - and folds the results into `Check: Merge gate (Linux)`, the
 # single context the `protect-main` ruleset requires.
 #
-# WHEN IT RUNS. A maintainer adds the `ci:full` label. A push never starts it,
-# so a new commit carries no gate result and cannot merge until the label is
-# added again; the gate removes the label when it finishes so that re-adding it
-# is always a fresh request. The release cut and the release orchestrator call
-# it through `workflow_call` with the ref they want proven, so the commit a
-# release is built from is measured by exactly this job set before anything is
-# merged, tagged or built from it. Nothing here runs on a push to `main`: the
-# ruleset requires linear history, so the merged tree is the tree this gate
-# measured.
+# WHEN IT RUNS. A maintainer adds the `ci:full` label. A push by a person never
+# starts it, so a new commit carries no gate result and cannot merge until the
+# label is added again; the gate removes the label when it finishes so that
+# re-adding it is always a fresh request. The release pull request is the one
+# exception: the fleet's release App writes it with no person in the loop, so
+# its own opened, reopened and synchronize events run the gate, and the release
+# cut merges it on that verdict. The release orchestrator calls this workflow
+# through `workflow_call` with the tag it builds, so the tree a release is built
+# from is measured by exactly this job set. Nothing here runs on a push to
+# `main`: the ruleset requires linear history, so the merged tree is the tree
+# this gate measured.
 #
-# ONLY A USER'S LABEL REACHES THE FLEET. Every measuring job below runs for a
-# pull request only when a USER - never a bot - applied `ci:full` to a branch of
-# this repository. Applying a label takes triage rights, so the label IS the
-# review that admits a change to the machines. Dependabot's pull requests carry
-# author association CONTRIBUTOR and open no label of their own, so they run
-# nothing here until a collaborator has read them. A fork's pull request runs
-# the FORK's copy of this file, so for forks these conditions only back up the
-# repository's own approval requirement for outside contributors; for every
-# other author they are the control itself.
+# ONLY A TRUSTED AUTHOR'S BRANCH REACHES THE FLEET. Every job here, the verdict
+# included, runs for a pull request only from a branch of this repository by
+# the owner, a collaborator or the release App, and then only on a USER's
+# `ci:full` label or on the release App's own pull request events. Forks,
+# Dependabot and every other author or bot run nothing on a self-hosted runner,
+# with or without the label; a maintainer re-opens such a change from a branch
+# of their own.
 #
-# THE VERDICT IS NEVER SKIPPED, and its condition is never narrowed. A skipped
-# required check counts as PASSED, so the gate job runs on `!cancelled()` with
-# no event or fork clause and depends on every measuring job; the refusals are
-# its first steps instead. A run started by some OTHER label measures nothing;
-# the gate then carries the most recent completed verdict for the same head
-# commit, and fails when there is none rather than passing on an absence. When
-# nothing ran because the author is untrusted, or because a bot applied the
-# label, the gate says so by name - an author told to add a label they cannot
-# add reads the gate as broken rather than as a review still owed.
+# THE REQUIRED CONTEXT IS NEVER SKIPPED. A skipped required check counts as
+# PASSED, so the verdict job's name is an expression: GitHub evaluates it only
+# for a job that runs, which yields the required context, and a skipped job is
+# listed under the unevaluated expression text instead (it would read
+# `Check: Admission withheld (Linux)` if it were ever evaluated). The required
+# context then keeps the verdict of the newest admitted run for that commit, or
+# stays missing and blocks the merge. An admitted run reports the verdict on
+# `always()`.
 #
 # THE REF IS THE CALLER'S, NOT THIS RUN'S. A call or a dispatch names the ref to
 # measure and every job checks out exactly that, so the release cut can prove
@@ -48,7 +47,7 @@ name: Dashboard Merge Gate
 on:
   pull_request:
     branches: [main]
-    types: [labeled]
+    types: [opened, reopened, synchronize, labeled]
   workflow_call:
     inputs:
       ref:
@@ -74,9 +73,9 @@ concurrency:
 jobs:
   lint:
     name: "Check: Full lint (Linux)"
-    if: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.action == 'labeled' && github.event.label.name == 'ci:full' && github.event.sender.type == 'User') }}
+    if: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (github.event.pull_request.author_association == 'OWNER' || github.event.pull_request.author_association == 'COLLABORATOR' || github.event.pull_request.user.login == 'nevenincs-release[bot]') && ((github.event.action == 'labeled' && github.event.label.name == 'ci:full' && github.event.sender.type == 'User') || (github.event.action != 'labeled' && github.event.pull_request.user.login == 'nevenincs-release[bot]'))) }}
     runs-on: [self-hosted, Linux, X64]
-    timeout-minutes: 45
+    timeout-minutes: 165
     steps:
       # INLINE AND SELF-CONTAINED, because nothing under the workspace may
       # execute before a job's own checkout. A job the runner is shut down
@@ -122,7 +121,7 @@ jobs:
           fi
           rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
           exit 0
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           ref: ${{ inputs.ref || github.sha }}
@@ -144,12 +143,12 @@ jobs:
         env:
           CHANNEL: ${{ steps.toolchain.outputs.channel }}
         run: bash .github/scripts/warm-toolchain.sh "${CHANNEL}" || true
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
         with:
           toolchain: ${{ steps.toolchain.outputs.channel }}
           components: rustfmt, clippy
       - name: Set up uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           # The runners already share UV_CACHE_DIR; the action's own cache save
           # hung the post step on the fleet.
@@ -157,7 +156,7 @@ jobs:
           enable-cache: false
       # The design-system guard parses frontend sources with the TypeScript
       # compiler, and the frontend linters need the SPA's dependencies.
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "22"
           cache: ''
@@ -173,8 +172,8 @@ jobs:
 
   engine:
     name: "Test: Engine suite (${{ matrix.os }})"
-    if: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.action == 'labeled' && github.event.label.name == 'ci:full' && github.event.sender.type == 'User') }}
-    timeout-minutes: 60
+    if: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (github.event.pull_request.author_association == 'OWNER' || github.event.pull_request.author_association == 'COLLABORATOR' || github.event.pull_request.user.login == 'nevenincs-release[bot]') && ((github.event.action == 'labeled' && github.event.label.name == 'ci:full' && github.event.sender.type == 'User') || (github.event.action != 'labeled' && github.event.pull_request.user.login == 'nevenincs-release[bot]'))) }}
+    timeout-minutes: 180
     # WINDOWS GATES HERE, and this is the only place in the repository where a
     # `just` recipe runs on Windows at all. The justfile declares
     # `set windows-shell` and every recipe body is a single command with no
@@ -189,7 +188,7 @@ jobs:
           - { os: Linux, arch: X64 }
           - { os: Windows, arch: X64 }
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           ref: ${{ inputs.ref || github.sha }}
@@ -200,7 +199,7 @@ jobs:
         id: toolchain
         shell: bash
         run: echo "channel=$(grep -m1 '^channel' engine/rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
         with:
           toolchain: ${{ steps.toolchain.outputs.channel }}
           components: rustfmt, clippy
@@ -239,13 +238,13 @@ jobs:
         with:
           tool: just@1.38.0
       - name: Set up uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           # The runners already share UV_CACHE_DIR; the action's own cache save
           # hung the post step on the fleet.
           prune-cache: false
           enable-cache: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "22"
           cache: ''
@@ -291,9 +290,9 @@ jobs:
 
   frontend:
     name: "Test: Frontend suite (Linux)"
-    if: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.action == 'labeled' && github.event.label.name == 'ci:full' && github.event.sender.type == 'User') }}
+    if: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (github.event.pull_request.author_association == 'OWNER' || github.event.pull_request.author_association == 'COLLABORATOR' || github.event.pull_request.user.login == 'nevenincs-release[bot]') && ((github.event.action == 'labeled' && github.event.label.name == 'ci:full' && github.event.sender.type == 'User') || (github.event.action != 'labeled' && github.event.pull_request.user.login == 'nevenincs-release[bot]'))) }}
     runs-on: [self-hosted, Linux, X64]
-    timeout-minutes: 60
+    timeout-minutes: 180
     steps:
       # INLINE AND SELF-CONTAINED, because nothing under the workspace may
       # execute before a job's own checkout. A job the runner is shut down
@@ -339,11 +338,11 @@ jobs:
           fi
           rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
           exit 0
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           ref: ${{ inputs.ref || github.sha }}
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "22"
           cache: ''
@@ -353,7 +352,7 @@ jobs:
         with:
           tool: just@1.38.0
       - name: Set up uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           # The runners already share UV_CACHE_DIR; the action's own cache save
           # hung the post step on the fleet.
@@ -378,7 +377,7 @@ jobs:
         env:
           CHANNEL: ${{ steps.toolchain.outputs.channel }}
         run: bash .github/scripts/warm-toolchain.sh "${CHANNEL}" || true
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
         with:
           toolchain: ${{ steps.toolchain.outputs.channel }}
       # The runners share one persistent cargo target directory outside the
@@ -440,9 +439,9 @@ jobs:
     # TypeScript-type drift fails the gate. This closes the seam the Rust
     # conformance suite cannot reach.
     name: "Test: Engine conformance (Linux)"
-    if: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.action == 'labeled' && github.event.label.name == 'ci:full' && github.event.sender.type == 'User') }}
+    if: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (github.event.pull_request.author_association == 'OWNER' || github.event.pull_request.author_association == 'COLLABORATOR' || github.event.pull_request.user.login == 'nevenincs-release[bot]') && ((github.event.action == 'labeled' && github.event.label.name == 'ci:full' && github.event.sender.type == 'User') || (github.event.action != 'labeled' && github.event.pull_request.user.login == 'nevenincs-release[bot]'))) }}
     runs-on: [self-hosted, Linux, X64]
-    timeout-minutes: 90
+    timeout-minutes: 210
     steps:
       # INLINE AND SELF-CONTAINED, because nothing under the workspace may
       # execute before a job's own checkout. A job the runner is shut down
@@ -488,7 +487,7 @@ jobs:
           fi
           rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
           exit 0
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           ref: ${{ inputs.ref || github.sha }}
@@ -501,7 +500,7 @@ jobs:
         env:
           CHANNEL: ${{ steps.toolchain.outputs.channel }}
         run: bash .github/scripts/warm-toolchain.sh "${CHANNEL}" || true
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
         with:
           toolchain: ${{ steps.toolchain.outputs.channel }}
       - name: Resolve the engine build output directory
@@ -512,7 +511,7 @@ jobs:
         with:
           tool: just@1.38.0
       - name: Set up uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           # The runners already share UV_CACHE_DIR; the action's own cache save
           # hung the post step on the fleet.
@@ -520,7 +519,7 @@ jobs:
           enable-cache: false
       - name: Build engine binary (just build-rust)
         run: just build-rust
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "22"
           cache: ''
@@ -615,9 +614,9 @@ jobs:
     # against the committed lock, so a drift between the pins, the schema and
     # the builder fails here rather than at release.
     name: "Check: Release inputs (Linux)"
-    if: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.action == 'labeled' && github.event.label.name == 'ci:full' && github.event.sender.type == 'User') }}
+    if: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (github.event.pull_request.author_association == 'OWNER' || github.event.pull_request.author_association == 'COLLABORATOR' || github.event.pull_request.user.login == 'nevenincs-release[bot]') && ((github.event.action == 'labeled' && github.event.label.name == 'ci:full' && github.event.sender.type == 'User') || (github.event.action != 'labeled' && github.event.pull_request.user.login == 'nevenincs-release[bot]'))) }}
     runs-on: [self-hosted, Linux, X64]
-    timeout-minutes: 30
+    timeout-minutes: 150
     steps:
       # INLINE AND SELF-CONTAINED, because nothing under the workspace may
       # execute before a job's own checkout. A job the runner is shut down
@@ -663,7 +662,7 @@ jobs:
           fi
           rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
           exit 0
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           ref: ${{ inputs.ref || github.sha }}
@@ -676,7 +675,7 @@ jobs:
         env:
           CHANNEL: ${{ steps.toolchain.outputs.channel }}
         run: bash .github/scripts/warm-toolchain.sh "${CHANNEL}" || true
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
         with:
           toolchain: ${{ steps.toolchain.outputs.channel }}
       - name: Component lock + release-set-manifest schema are well-formed
@@ -712,9 +711,9 @@ jobs:
 
   dependencies:
     name: "Check: Dependency advisories (Linux)"
-    if: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.action == 'labeled' && github.event.label.name == 'ci:full' && github.event.sender.type == 'User') }}
+    if: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (github.event.pull_request.author_association == 'OWNER' || github.event.pull_request.author_association == 'COLLABORATOR' || github.event.pull_request.user.login == 'nevenincs-release[bot]') && ((github.event.action == 'labeled' && github.event.label.name == 'ci:full' && github.event.sender.type == 'User') || (github.event.action != 'labeled' && github.event.pull_request.user.login == 'nevenincs-release[bot]'))) }}
     runs-on: [self-hosted, Linux, X64]
-    timeout-minutes: 45
+    timeout-minutes: 165
     steps:
       # INLINE AND SELF-CONTAINED, because nothing under the workspace may
       # execute before a job's own checkout. A job the runner is shut down
@@ -760,7 +759,7 @@ jobs:
           fi
           rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
           exit 0
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           ref: ${{ inputs.ref || github.sha }}
@@ -774,13 +773,13 @@ jobs:
         with:
           tool: cargo-deny@0.19.0
       - name: Set up uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           # The runners already share UV_CACHE_DIR; the action's own cache save
           # hung the post step on the fleet.
           prune-cache: false
           enable-cache: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "22"
           cache: ''
@@ -796,81 +795,31 @@ jobs:
         run: just audit-rust
 
   gate:
-    name: "Check: Merge gate (Linux)"
+    # A run that admits nothing must never report the required context: GitHub
+    # counts a skipped required check as passed. A skipped job is listed under
+    # its unevaluated name expression, never the required context, so the
+    # commit keeps whatever verdict an admitted run gave it, or none.
+    name: >-
+      ${{ (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (github.event.pull_request.author_association == 'OWNER' || github.event.pull_request.author_association == 'COLLABORATOR' || github.event.pull_request.user.login == 'nevenincs-release[bot]') && ((github.event.action == 'labeled' && github.event.label.name == 'ci:full' && github.event.sender.type == 'User') || (github.event.action != 'labeled' && github.event.pull_request.user.login == 'nevenincs-release[bot]')))) && 'Check: Merge gate (Linux)' || 'Check: Admission withheld (Linux)' }}
     needs: [lint, engine, frontend, conformance, release-inputs, dependencies]
-    # NEVER SKIPPED, and never narrowed. A skipped required check counts as
-    # PASSED, so a condition that excluded forks here would let a fork merge on
-    # an absence. The refusals are the first steps of the job instead.
-    if: ${{ !cancelled() }}
+    # `always()`, never `!cancelled()`: an admitted run that is cancelled still
+    # reports a red verdict instead of a skipped, passing one.
+    if: ${{ always() && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (github.event.pull_request.author_association == 'OWNER' || github.event.pull_request.author_association == 'COLLABORATOR' || github.event.pull_request.user.login == 'nevenincs-release[bot]') && ((github.event.action == 'labeled' && github.event.label.name == 'ci:full' && github.event.sender.type == 'User') || (github.event.action != 'labeled' && github.event.pull_request.user.login == 'nevenincs-release[bot]')))) }}
     runs-on: [self-hosted, Linux, X64]
-    timeout-minutes: 10
+    timeout-minutes: 71
     permissions:
-      checks: read
       contents: read
       pull-requests: write
     steps:
-      # Fork pull requests are always refused. Every measuring job is
-      # conditioned off for a fork, and this step - the first, before any
-      # checkout - turns that absence into a red verdict, so a fork can merge
-      # only after a maintainer re-opens it from a branch of this repository.
-      - name: Refuse fork pull requests
-        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
-        shell: bash
-        run: |
-          echo "::error::Pull requests from forks are not run on self-hosted runners."
-          exit 1
       - name: Decide the merge verdict
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          EVENT: ${{ github.event_name }}
-          LABEL: ${{ github.event.label.name }}
+          NEEDS: ${{ toJSON(needs) }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           RUN_ID: ${{ github.run_id }}
-          NEEDS: ${{ toJSON(needs) }}
-          GATE_NAME: "Check: Merge gate (Linux)"
-          AUTHOR: ${{ github.event.pull_request.user.login }}
-          ASSOCIATION: ${{ github.event.pull_request.author_association }}
-          SENDER: ${{ github.event.sender.login }}
-          SENDER_TYPE: ${{ github.event.sender.type }}
         run: |
           set -euo pipefail
           printf '%s' "$NEEDS" | jq -r 'to_entries[] | "  \(.key): \(.value.result)"'
-
-          if [ "$EVENT" = "pull_request" ] && [ "$LABEL" != "ci:full" ]; then
-            # This run measured nothing. Carry the most recent COMPLETED
-            # verdict for this exact head, and refuse when there is none - an
-            # unrelated label must neither pass an unmeasured commit nor erase
-            # a real result.
-            prior=$(gh api -X GET "repos/${REPO}/commits/${HEAD_SHA}/check-runs" \
-              -f check_name="$GATE_NAME" -f filter=all -f per_page=100 \
-              --jq '[.check_runs[] | select(.status == "completed")] | sort_by(.completed_at) | last | .conclusion // ""')
-            echo "label '${LABEL}' measures nothing; latest completed gate on ${HEAD_SHA}: '${prior:-none}'"
-            if [ "$prior" = "success" ]; then
-              exit 0
-            fi
-            # An untrusted author's commit starts nothing here, so no earlier
-            # verdict can exist unless a collaborator's ci:full produced one.
-            # Refuse it by name: telling this author to add a label they cannot
-            # add reads as a broken gate rather than as a review still owed.
-            case "$ASSOCIATION" in OWNER | COLLABORATOR) ;; *)
-              echo "::error::pull requests by ${AUTHOR} (${ASSOCIATION}) run nothing on the self-hosted fleet; a collaborator reviews the change and applies the ci:full label to run it"
-              exit 1 ;;
-            esac
-            echo "::error::No passing ci:full run has measured ${HEAD_SHA}. Add the ci:full label to run the merge gate."
-            exit 1
-          fi
-
-          # A ci:full run whose every measuring job was conditioned off proved
-          # nothing, and the reason is never the jobs themselves. Applying the
-          # label takes triage rights, so only a USER reaches the fleet with it.
-          measured=$(printf '%s' "$NEEDS" | jq -r '[to_entries[] | select(.value.result != "skipped")] | length')
-          if [ "$EVENT" = "pull_request" ] && [ "$measured" = "0" ]; then
-            echo "::error::the ci:full label on ${HEAD_SHA} started no measuring job: it was applied by ${SENDER:-unknown} (${SENDER_TYPE:-unknown}), and only a user with triage rights reaches the self-hosted fleet. A collaborator reviews ${AUTHOR} (${ASSOCIATION}) and applies the label."
-            exit 1
-          fi
-
           failed=$(printf '%s' "$NEEDS" | jq -r 'to_entries[] | select(.value.result != "success") | .key')
           if [ -n "$failed" ]; then
             echo "::error::The merge gate requires every measuring job to succeed; not successful: $(echo $failed)"

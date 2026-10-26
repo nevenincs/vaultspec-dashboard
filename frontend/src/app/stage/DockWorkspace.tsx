@@ -29,7 +29,7 @@ import {
   type DockviewReadyEvent,
   type IDockviewHeaderActionsProps,
   type IDockviewPanelHeaderProps,
-} from "dockview";
+} from "dockview-react";
 import { X } from "lucide-react";
 
 import { useActiveScope } from "../../stores/server/queries";
@@ -450,7 +450,7 @@ export function DockWorkspace() {
         );
       });
       // User-driven activation -> store (ignore reserved panels and our own syncs).
-      api.onDidActivePanelChange((panel) => {
+      api.onDidActivePanelChange(({ panel }) => {
         if (syncingRef.current || !panel || isReservedPanel(panel.id)) return;
         activateDocTab(panel.id);
       });

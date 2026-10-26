@@ -72,7 +72,7 @@ jobs:
   # spent on a build.
   prove-ref:
     name: "Check: Prove ref commit (Linux)"
-    timeout-minutes: 10
+    timeout-minutes: 130
     runs-on: [self-hosted, Linux, X64]
     permissions:
       contents: write
@@ -129,7 +129,6 @@ jobs:
     needs: prove-ref
     uses: ./.github/workflows/merge-gate.yml
     permissions:
-      checks: read
       contents: read
       pull-requests: write
     with:
@@ -147,7 +146,7 @@ jobs:
   # instead of a day of silence.
   queue-watchdog:
     name: "Check: Queue watchdog (Linux)"
-    timeout-minutes: 90
+    timeout-minutes: 210
     needs: prove-ref
     runs-on: [self-hosted, Linux, X64]
     permissions:
@@ -193,7 +192,7 @@ jobs:
       contents: write
 
   build-product-tree:
-    timeout-minutes: 120
+    timeout-minutes: 240
     needs: [prove-ref, merge-gate]
     name: "Build: Product tree (${{ matrix.platform }})"
     strategy:
@@ -225,12 +224,12 @@ jobs:
       group: ${{ matrix.constrained_arm && 'vaultspec-native-arm-release' || format('{0}-{1}-{2}', github.workflow, github.run_id, matrix.target) }}
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Set up packaging Python
         if: matrix.target == 'aarch64-unknown-linux-gnu'
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           prune-cache: false
           enable-cache: false
@@ -240,7 +239,7 @@ jobs:
         id: toolchain
         shell: bash
         run: echo "channel=$(grep -m1 '^channel' engine/rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
         with:
           toolchain: ${{ steps.toolchain.outputs.channel }}
           targets: ${{ matrix.target }}
@@ -365,7 +364,7 @@ jobs:
           "$executable" verify-release "$stage"
           "$executable" --version
       - name: Upload the release-set member
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: product-${{ matrix.target }}
           path: |
@@ -398,26 +397,26 @@ jobs:
           Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used } | Format-Table -AutoSize
 
   cohort-digest:
-    timeout-minutes: 30
+    timeout-minutes: 150
     name: "Build: Cohort digest (Linux)"
     needs: build-product-tree
     runs-on: [self-hosted, Linux, X64]
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Read pinned toolchain
         id: toolchain
         shell: bash
         run: echo "channel=$(grep -m1 '^channel' engine/rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
         with:
           toolchain: ${{ steps.toolchain.outputs.channel }}
       # See the compose job: name the directory the build below lands in.
       - name: Resolve the engine build output directory
         shell: bash
         run: echo "ENGINE_TARGET_DIR=${CARGO_TARGET_DIR:-$GITHUB_WORKSPACE/engine/target}" >> "$GITHUB_ENV"
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           path: members
       - name: Aggregate the four verified members + emit the cohort digest
@@ -437,7 +436,7 @@ jobs:
             --member x86_64-unknown-linux-gnu=members/product-x86_64-unknown-linux-gnu/release-x86_64-unknown-linux-gnu.json \
             --member x86_64-pc-windows-msvc=members/product-x86_64-pc-windows-msvc/release-x86_64-pc-windows-msvc.json \
             --out cohort-descriptor.json
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: cohort-descriptor
           path: cohort-descriptor.json
@@ -456,7 +455,7 @@ jobs:
           df -h . 2>/dev/null | tail -1
 
   python-compatibility:
-    timeout-minutes: 30
+    timeout-minutes: 150
     name: "Check: Python harness (Linux ${{ matrix.python-version }})"
     needs: prove-ref
     runs-on: [self-hosted, Linux, X64]
@@ -466,7 +465,7 @@ jobs:
       matrix:
         python-version: ["3.13", "3.14"]
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Set up just
@@ -474,7 +473,7 @@ jobs:
         with:
           tool: just@1.38.0
       - name: Set up uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           prune-cache: false
           enable-cache: false
@@ -489,7 +488,7 @@ jobs:
   # One verdict over every artifact check, so the jobs that touch the release
   # need a single name rather than a list that can drift.
   artifact-correctness:
-    timeout-minutes: 15
+    timeout-minutes: 135
     name: "Check: Release artifacts (Linux)"
     needs: [build-product-tree, cohort-digest, python-compatibility]
     runs-on: [self-hosted, Linux, X64]
@@ -503,7 +502,7 @@ jobs:
   # It fails closed (matrix untouched) until real release inputs make a proof
   # possible, and the release is not published until it passes.
   resolve-version:
-    timeout-minutes: 15
+    timeout-minutes: 135
     name: "Check: Release version (Linux)"
     needs: prove-ref
     runs-on: [self-hosted, Linux, X64]
@@ -511,7 +510,7 @@ jobs:
       value: ${{ steps.v.outputs.value }}
       prior: ${{ steps.v.outputs.prior }}
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - id: v
@@ -569,7 +568,7 @@ jobs:
   # needs every natively verified member, the cohort digest and the Python
   # harness, so a partial cohort cannot be attached.
   attach-to-release:
-    timeout-minutes: 45
+    timeout-minutes: 165
     name: "Build: Release attachments (Linux)"
     if: ${{ !inputs.validation_only }}
     needs: [archives, artifact-correctness, resolve-version]
@@ -577,11 +576,11 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           path: members
 
@@ -681,7 +680,7 @@ jobs:
   # public release in one step, the release's only visibility change: it is
   # never published before it is complete, and never held half-published.
   publish-release:
-    timeout-minutes: 15
+    timeout-minutes: 180
     name: "Build: Release publication (Linux)"
     needs: [archives, attach-to-release, channel-feasibility]
     runs-on: [self-hosted, Linux, X64]

@@ -60,11 +60,13 @@ unreleased launch, update, or single-instance behavior.
 Use conventional commit messages such as `feat:`, `fix:`, and `feat!:`.
 [Release Please](.github/workflows/release-please.yml) maintains a release pull request
 with the next version and the [engine changelog](engine/CHANGELOG.md), rebuilt on every
-commit that lands on `main`. Merging it does not release anything.
+commit that lands on `main`. The fleet's release GitHub App writes it, so its own pull
+request events run the full merge gate like any trusted pull request. Merging it does not
+release anything.
 
 To release, dispatch `Dashboard Release Please`. The cut finds the release pull request,
-proves its head with the full merge gate, squash-merges it, and seconds later creates the
-tag `v<version>` and an unpublished draft release, then dispatches
+requires the merge gate's passing verdict on its exact head, squash-merges it, and seconds
+later creates the tag `v<version>` and an unpublished draft release, then dispatches
 [the release orchestrator](.github/workflows/product-release.yml) for that tag. The
 orchestrator measures the tagged tree, builds and verifies every artifact, attaches them
 to the draft, publishes it once as `latest`, proves acquisition on the oldest supported
@@ -112,19 +114,19 @@ gh workflow run product-release.yml --repo "$REPO" --ref "$TAG" \
 ```
 
 No credential with `workflows` permission may be stored in this repository, which is why
-this is a runbook rather than a workflow. Nothing beyond the workflow token is needed to
-release; the checks on the release pull request are reported by a merge gate the proposal
-job dispatches, because a pull request the workflow token authored starts no runs of its
-own.
+this is a runbook rather than a workflow. The release App holds contents and pull-request
+write only; tags and releases are created with the workflow token.
 
 ### Who can run CI
 
-Only the repository owner and collaborators reach the self-hosted fleet directly. Every
-other author — Dependabot included, whose pull requests carry author association
-`CONTRIBUTOR` — runs nothing until a collaborator has read the change and applied the
-`ci:full` label, which is what starts the merge gate. Until then the gate refuses the
-commit and says so by name. Applying the label takes triage rights, so the label is the
-review. A bot cannot grant it.
+Only pull requests from a branch of this repository by the owner, a collaborator, or the
+release App (`nevenincs-release[bot]`) reach the self-hosted fleet. Every other author —
+forks, Dependabot, whose pull requests carry author association `CONTRIBUTOR`, and any
+other bot — runs nothing there, with or without a label, and its merge gate is skipped
+without ever reporting the required check. To land such a change, a maintainer reviews it
+and re-opens it from a branch of their own. A collaborator starts
+the merge gate on a pull request by applying the `ci:full` label; a label applied by a bot
+starts nothing.
 
 Regenerate terminal README assets with:
 
