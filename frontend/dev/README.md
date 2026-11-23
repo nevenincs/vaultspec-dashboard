@@ -41,9 +41,7 @@ authored under `src/` would breach the latter.
 
 ## Visual review desk
 
-`just dev up review` (or `npm run dev:visual-review`) → `/visual-review/` on the `review`
-port declared in `frontend/package.json` (`https://review.vaultspec-dashboard.localhost/visual-review/`
-through portless). `just dev status` prints the URLs.
+`just dev-review` (or `npm run dev:visual-review`) → `http://localhost:5322/visual-review/`
 
 Every principal UI surface, rendered across the four review states — **normal /
 loading / empty / degraded** — under the light, dark, and high-contrast themes. Pick a
