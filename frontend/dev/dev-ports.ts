@@ -1,17 +1,15 @@
-import { readFileSync } from "node:fs";
 import { hostname } from "node:os";
 
-// Every vaultspec-dashboard dev/test server port, read from the ONE place that
-// declares them: the `portless` and `devserver` keys of frontend/package.json.
+// Single source of truth for every vaultspec-dashboard dev/test server port.
 //
-// That declaration is the machine-wide dev-server standard shared by every web
-// app on this workstation (`dev/devserver.py`, driven by `just dev`). It gives
-// this app the block 5320-5339, clear of the framework defaults (Vite 5173,
+// Other projects on this machine run their own dev/test servers, so a port left
+// on a framework default (Vite's 5173) or allowed to drift to "the next free
+// port" silently lands on whatever is open and collides without warning. This
+// app owns the block 5320-5339, clear of the framework defaults (Vite 5173,
 // 3000, 8080) and of the 87xx neighbourhood where vaultspec-rag (8766), Qdrant
-// (8764/8765) and the installed engine's product default (8767) live. The
-// harness starts, reattaches, health-checks and evicts; this module only tells
-// the Vite configs, the engine plugin, Playwright and the tooling which number
-// to use, so nothing here restates a port.
+// (8764/8765) and the installed engine's product default (8767) live. The Vite
+// configs, the engine plugin, Playwright and the tooling all read their number
+// from here, so nothing else restates a port.
 //
 // Two rules keep us deterministic:
 //
@@ -26,29 +24,6 @@ import { hostname } from "node:os";
 // liveEngine.globalSetup.ts): a free-port pick is the strongest anti-collision
 // guarantee for an automated, possibly-parallel test process.
 
-interface Declaration {
-  portless?: { appPort?: unknown };
-  devserver?: { services?: Record<string, { port?: unknown } | undefined> };
-}
-
-const DECLARATION = JSON.parse(
-  readFileSync(new URL("../package.json", import.meta.url), "utf8"),
-) as Declaration;
-
-/** The port frontend/package.json declares for `service` (`dev` is the SPA). */
-function declared(service: string): number {
-  const value =
-    service === "dev"
-      ? DECLARATION.portless?.appPort
-      : DECLARATION.devserver?.services?.[service]?.port;
-  if (typeof value !== "number" || !Number.isInteger(value)) {
-    throw new Error(
-      `frontend/package.json declares no port for dev-server service "${service}"`,
-    );
-  }
-  return value;
-}
-
 function port(envVar: string, fallback: number): number {
   const raw = process.env[envVar];
   if (raw === undefined || raw === "") return fallback;
@@ -62,22 +37,20 @@ function port(envVar: string, fallback: number): number {
 }
 
 export const DEV_PORTS = {
-  /** Main SPA dev server (`portless.appPort`) - `just dev`. */
-  spa: port("VAULTSPEC_DEV_SPA_PORT", declared("dev")),
+  /** Main SPA dev server - `npm run dev` / `just dev-serve`. */
+  spa: port("VAULTSPEC_DEV_SPA_PORT", 5320),
   /**
    * Rust engine (`vaultspec serve`) the SPA dev server proxies `/api` to. The
-   * engine-dev Vite plugin spawns it; the harness frees this port of any foreign
-   * holder (another worktree's engine) before the SPA starts, so the plugin never
-   * adopts an engine serving some other checkout. Not the installed product's
-   * default port - that stays the engine's own `DEFAULT_PORT`.
+   * engine-dev Vite plugin spawns it. Not the installed product's default port -
+   * that stays the engine's own `DEFAULT_PORT`.
    */
-  engine: port("VAULTSPEC_DEV_PORT", declared("engine")),
+  engine: port("VAULTSPEC_DEV_PORT", 5321),
   /** Adverse-condition and localization Playwright SPA (mock engine, dev affordances). */
-  adverse: port("VAULTSPEC_DEV_ADVERSE_PORT", declared("adverse")),
+  adverse: port("VAULTSPEC_DEV_ADVERSE_PORT", 5324),
   /** Graph performance harness's static server (dev/tooling/graph-performance.ts). */
-  perf: port("VAULTSPEC_DEV_PERF_PORT", declared("perf")),
-  /** Visual review desk - `just dev up review`, served from frontend/dev/. */
-  visualReview: port("VAULTSPEC_DEV_VISUAL_REVIEW_PORT", declared("review")),
+  perf: port("VAULTSPEC_DEV_PERF_PORT", 5325),
+  /** Visual review desk - `npm run dev:visual-review` / `just dev-review`, served from frontend/dev/. */
+  visualReview: port("VAULTSPEC_DEV_VISUAL_REVIEW_PORT", 5322),
 } as const;
 
 // Vite's dev server validates the request `Host` header as a DNS-rebinding guard
