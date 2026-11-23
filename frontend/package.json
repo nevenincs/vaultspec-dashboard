@@ -78,53 +78,5 @@
   },
   "engines": {
     "node": "^22.12.0 || ^24.0.0 || >=26.0.0"
-  },
-  "portless": {
-    "name": "vaultspec-dashboard",
-    "appPort": 5320
-  },
-  "devserver": {
-    "block": [
-      5320,
-      5339
-    ],
-    "dev": {
-      "ready": 900
-    },
-    "services": {
-      "engine": {
-        "port": 5321,
-        "replace": true
-      },
-      "review": {
-        "port": 5322,
-        "run": [
-          "node",
-          "node_modules/vite/bin/vite.js",
-          "--config",
-          "vite.dev.config.ts",
-          "--port",
-          "{port}",
-          "--strictPort",
-          "--host",
-          "{host}"
-        ],
-        "health": {
-          "path": "/visual-review/",
-          "expect": "/@vite/client"
-        }
-      },
-      "adverse": {
-        "port": 5324
-      },
-      "perf": {
-        "port": 5325
-      }
-    },
-    "ci": {
-      "env": {
-        "VAULTSPEC_DEV_ENGINE": "off"
-      }
-    }
   }
 }

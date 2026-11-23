@@ -33,7 +33,6 @@ from pathlib import Path
 import pytest
 import yaml
 
-from dev.guards.conftest import devserver_constant
 from dev.runner import VerbRef
 from dev.toolchain import SIMPLE, VERBS
 
@@ -115,28 +114,10 @@ def _needs(spec: dict) -> set[str]:
     return {needs} if isinstance(needs, str) else set(needs)
 
 
-def _shared_workflows(repo_root: Path) -> set[str]:
-    """The machine-wide Dev server workflow, when it is byte-identical to canonical.
-
-    `.github/workflows/devserver.yml` is not this repository's lane. It is
-    rendered from the shared dev-server harness (`dev/devserver.py render
-    workflow`) and identical in every web app on the workstation, so it carries
-    the harness's own name ("Dev server", not "Dashboard ...") and its own push
-    trigger, and `just dev check` fails when it drifts. Exempting it only while
-    it matches the canonical text keeps the exemption from covering a hand-edited
-    copy - or anything else placed at that path.
-    """
-    path = devserver_constant("WORKFLOW_PATH")
-    text = (repo_root / path).read_text("utf-8") if (repo_root / path).is_file() else ""
-    return {Path(path).name} if text == devserver_constant("WORKFLOW") else set()
-
-
 def test_every_workflow_is_named_for_the_product(repo_root: Path) -> None:
     """One prefix, and no two workflows share a display name."""
     names = {
-        w: str(_load(repo_root, w).get("name", ""))
-        for w in _all_workflows(repo_root)
-        if w not in _shared_workflows(repo_root)
+        w: str(_load(repo_root, w).get("name", "")) for w in _all_workflows(repo_root)
     }
     unprefixed = sorted(
         w for w, n in names.items() if not n.startswith(WORKFLOW_PREFIX)
@@ -189,16 +170,9 @@ def test_every_scheduling_job_has_a_literal_timeout(repo_root: Path) -> None:
 
 
 def test_only_release_please_runs_on_a_push(repo_root: Path) -> None:
-    """The merge gate measured the merged tree; a push to main re-measures nothing.
-
-    The shared Dev server workflow is exempt (see `_shared_workflows`): its
-    triggers are fixed machine-wide, not by this repository's lane design.
-    """
+    """The merge gate measured the merged tree; a push to main re-measures nothing."""
     pushed = [
-        w
-        for w in _all_workflows(repo_root)
-        if w not in _shared_workflows(repo_root)
-        and "push" in _triggers(_load(repo_root, w))
+        w for w in _all_workflows(repo_root) if "push" in _triggers(_load(repo_root, w))
     ]
     assert pushed == ["release-please.yml"], (
         f"only release-please may run on a push; found {pushed}. Tag triggers are "
@@ -369,8 +343,7 @@ def test_only_a_trusted_authors_branch_reaches_the_fleet(repo_root: Path) -> Non
     Dependabot and other authors who are neither owner, collaborator nor the
     release App push branches of THIS repository, so the fork clause alone
     never stops them and the approval requirement for outside contributors does
-    not cover them. The shared Dev server workflow is held to the same clause:
-    it runs on the same machines.
+    not cover them.
 
     Mutation proof: replacing the author clause in `ci.yml`'s `static` condition
     with `true` fails with `ci.yml:static can run for an untrusted author`;
@@ -395,12 +368,6 @@ def test_only_a_trusted_authors_branch_reaches_the_fleet(repo_root: Path) -> Non
         (CHEAP_LANE, "static", FORK_CLAUSE, "can run for a fork"),
         (GATE_WORKFLOW, GATE_JOB, FORK_CLAUSE, "can run for a fork"),
         (GATE_WORKFLOW, "lint", _USER_SENDER, f"admits a bot's {FULL_LABEL} label"),
-        (
-            "devserver.yml",
-            "devserver",
-            TRUSTED_AUTHOR,
-            "can run for an untrusted author",
-        ),
     ],
 )
 def test_the_containment_guard_notices_a_removed_clause(

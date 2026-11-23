@@ -10,7 +10,7 @@ import { DEV_PORTS } from "../dev-ports.ts";
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "../../..");
 const outputDir = resolve(repoRoot, "docs/assets");
-// Defaults to the SPA dev server `just dev` runs (port declared in package.json).
+// Defaults to the SPA dev server `just dev-serve` runs (port from ../dev-ports.ts).
 const origin = process.env.VAULTSPEC_README_ORIGIN ?? `http://127.0.0.1:${DEV_PORTS.spa}`;
 const outputs = {
   workspace: resolve(outputDir, "workspace.png"),
